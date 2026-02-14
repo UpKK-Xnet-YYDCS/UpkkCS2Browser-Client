@@ -1,0 +1,278 @@
+name: Desktop App Build
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'desktop/**'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'desktop/**'
+  workflow_dispatch:
+    inputs:
+      devtools:
+        description: '启用开发者工具 (F12)'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  APP_NAME: upkk-server-browser
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop/src-tauri -> target'
+
+      - name: Sync version from version.txt
+        working-directory: desktop
+        shell: bash
+        run: |
+          chmod +x sync-version.sh
+          bash sync-version.sh
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: desktop
+        shell: bash
+        run: |
+          if [ "${{ inputs.devtools }}" = "true" ]; then
+            npm run tauri:build -- --features devtools
+          else
+            npm run tauri:build
+          fi
+
+      - name: Rename Windows portable exe
+        shell: bash
+        run: |
+          cp "desktop/src-tauri/target/release/${{ env.APP_NAME }}.exe" \
+             "desktop/src-tauri/target/release/${{ env.APP_NAME }}-Windows.exe"
+
+      - name: Upload Windows portable exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: xproj-desktop-Windows
+          path: desktop/src-tauri/target/release/${{ env.APP_NAME }}-Windows.exe
+          if-no-files-found: warn
+
+  build-linux:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop/src-tauri -> target'
+
+      - name: Sync version from version.txt
+        working-directory: desktop
+        run: |
+          chmod +x sync-version.sh
+          bash sync-version.sh
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Build Tauri app
+        working-directory: desktop
+        run: |
+          if [ "${{ inputs.devtools }}" = "true" ]; then
+            npm run tauri:build -- --features devtools
+          else
+            npm run tauri:build
+          fi
+
+      - name: Rename Linux AppImage
+        shell: bash
+        run: |
+          for f in desktop/src-tauri/target/release/bundle/appimage/*.AppImage; do
+            cp "$f" "desktop/src-tauri/target/release/bundle/appimage/${{ env.APP_NAME }}-Linux.AppImage"
+          done
+
+      - name: Upload Linux AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: xproj-desktop-Linux-AppImage
+          path: desktop/src-tauri/target/release/bundle/appimage/${{ env.APP_NAME }}-Linux.AppImage
+          if-no-files-found: warn
+
+      - name: Rename Linux deb
+        shell: bash
+        run: |
+          for f in desktop/src-tauri/target/release/bundle/deb/*.deb; do
+            cp "$f" "desktop/src-tauri/target/release/bundle/deb/${{ env.APP_NAME }}-Linux.deb"
+          done
+
+      - name: Upload Linux deb
+        uses: actions/upload-artifact@v4
+        with:
+          name: xproj-desktop-Linux-deb
+          path: desktop/src-tauri/target/release/bundle/deb/${{ env.APP_NAME }}-Linux.deb
+          if-no-files-found: warn
+
+  build-macos-intel:
+    runs-on: macos-15-intel
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop/src-tauri -> target'
+
+      - name: Sync version from version.txt
+        working-directory: desktop
+        run: |
+          chmod +x sync-version.sh
+          bash sync-version.sh
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Detach stale DMG mounts
+        run: |
+          hdiutil info | grep '/Volumes/' | awk '{print $1}' | while read dev; do
+            hdiutil detach "$dev" -force || true
+          done
+
+      - name: Build Tauri app
+        working-directory: desktop
+        run: |
+          if [ "${{ inputs.devtools }}" = "true" ]; then
+            npm run tauri:build -- --features devtools --target x86_64-apple-darwin
+          else
+            npm run tauri:build -- --target x86_64-apple-darwin
+          fi
+
+      - name: Rename Mac-intel DMG
+        shell: bash
+        run: |
+          for f in desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg; do
+            cp "$f" "desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/${{ env.APP_NAME }}-Mac-intel.dmg"
+          done
+
+      - name: Upload Mac-intel DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: xproj-desktop-Mac-intel
+          path: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/${{ env.APP_NAME }}-Mac-intel.dmg
+          if-no-files-found: warn
+
+  build-macos-arm:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop/src-tauri -> target'
+
+      - name: Sync version from version.txt
+        working-directory: desktop
+        run: |
+          chmod +x sync-version.sh
+          bash sync-version.sh
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Detach stale DMG mounts
+        run: |
+          hdiutil info | grep '/Volumes/' | awk '{print $1}' | while read dev; do
+            hdiutil detach "$dev" -force || true
+          done
+
+      - name: Build Tauri app
+        working-directory: desktop
+        run: |
+          if [ "${{ inputs.devtools }}" = "true" ]; then
+            npm run tauri:build -- --features devtools --target aarch64-apple-darwin
+          else
+            npm run tauri:build -- --target aarch64-apple-darwin
+          fi
+
+      - name: Rename Mac-arm DMG
+        shell: bash
+        run: |
+          for f in desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg; do
+            cp "$f" "desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${{ env.APP_NAME }}-Mac-arm.dmg"
+          done
+
+      - name: Upload Mac-arm DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: xproj-desktop-Mac-arm
+          path: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${{ env.APP_NAME }}-Mac-arm.dmg
+          if-no-files-found: warn

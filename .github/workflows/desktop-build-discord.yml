@@ -1,0 +1,242 @@
+name: Desktop App Build & Release & discord notification
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号 (例如: 1.0.0)'
+        required: true
+        type: string
+      devtools:
+        description: '启用开发者工具 (F12)'
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: '标记为预发布版本'
+        required: false
+        type: boolean
+        default: false
+      draft:
+        description: '创建为草稿 Release'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: upkk-server-browser
+
+jobs:
+  # ──────────────────────────────────────
+  #  构建
+  # ──────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            rust_target: x86_64-pc-windows-msvc
+            label: Windows
+          - platform: ubuntu-latest
+            rust_target: x86_64-unknown-linux-gnu
+            label: Linux
+          - platform: macos-15-intel
+            rust_target: x86_64-apple-darwin
+            label: Mac-intel
+          - platform: macos-latest
+            rust_target: aarch64-apple-darwin
+            label: Mac-arm
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './desktop/src-tauri -> target'
+
+      - name: Sync version from workflow input
+        working-directory: desktop
+        shell: bash
+        run: |
+          chmod +x sync-version.sh
+          bash sync-version.sh "${{ inputs.version }}"
+
+      - name: Install frontend dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Detach stale DMG mounts (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          hdiutil info | grep '/Volumes/' | awk '{print $1}' | while read dev; do
+            hdiutil detach "$dev" -force || true
+          done
+
+      - name: Build Tauri app
+        working-directory: desktop
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ "${{ inputs.devtools }}" = "true" ]; then
+            npm run tauri:build -- --features devtools --target ${{ matrix.rust_target }}
+          else
+            npm run tauri:build -- --target ${{ matrix.rust_target }}
+          fi
+
+      # ── Windows: portable single-file exe ──
+      - name: Rename Windows portable exe
+        if: matrix.label == 'Windows'
+        shell: bash
+        run: |
+          cp "desktop/src-tauri/target/${{ matrix.rust_target }}/release/${{ env.APP_NAME }}.exe" \
+             "desktop/src-tauri/target/${{ matrix.rust_target }}/release/${{ env.APP_NAME }}-v${{ inputs.version }}-Windows.exe"
+
+      - name: Upload Windows artifacts
+        if: matrix.label == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-Windows
+          path: desktop/src-tauri/target/${{ matrix.rust_target }}/release/${{ env.APP_NAME }}-v${{ inputs.version }}-Windows.exe
+          if-no-files-found: warn
+
+      # ── Linux ──
+      - name: Rename Linux artifacts
+        if: matrix.label == 'Linux'
+        shell: bash
+        run: |
+          for f in desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/appimage/*.AppImage; do
+            cp "$f" "desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/appimage/${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.AppImage"
+          done
+          for f in desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/deb/*.deb; do
+            cp "$f" "desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/deb/${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.deb"
+          done
+
+      - name: Upload Linux artifacts
+        if: matrix.label == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-Linux
+          path: |
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/appimage/${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.AppImage
+            desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/deb/${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.deb
+          if-no-files-found: warn
+
+      # ── macOS: DMG only ──
+      - name: Rename macOS DMG
+        if: matrix.label == 'Mac-intel' || matrix.label == 'Mac-arm'
+        shell: bash
+        run: |
+          for f in desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg; do
+            cp "$f" "desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/${{ env.APP_NAME }}-v${{ inputs.version }}-${{ matrix.label }}.dmg"
+          done
+
+      - name: Upload macOS artifacts
+        if: matrix.label == 'Mac-intel' || matrix.label == 'Mac-arm'
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.label }}
+          path: desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/${{ env.APP_NAME }}-v${{ inputs.version }}-${{ matrix.label }}.dmg
+          if-no-files-found: warn
+
+  # ──────────────────────────────────────
+  #  自动发布 Release + Discord 通知
+  # ──────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: List release assets
+        run: find release-assets -type f | sort
+
+      - name: Create tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: "v${{ inputs.version }}"
+          name: "🚀 ${{ env.APP_NAME }} v${{ inputs.version }}"
+          draft: ${{ inputs.draft }}
+          prerelease: ${{ inputs.prerelease }}
+          body: |
+            ## 📥 下载 / Download
+
+            | 平台 Platform | 文件 File | 说明 Note |
+            |:---:|:---:|:---:|
+            | 🪟 Windows | `${{ env.APP_NAME }}-v${{ inputs.version }}-Windows.exe` | 單文件免安裝版 / Portable single-file |
+            | 🍎 Mac-arm | `${{ env.APP_NAME }}-v${{ inputs.version }}-Mac-arm.dmg` | Apple Silicon M1/M2/M3/M4 |
+            | 🍎 Mac-intel | `${{ env.APP_NAME }}-v${{ inputs.version }}-Mac-intel.dmg` | Intel 芯片 |
+            | 🐧 Linux | `${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.AppImage` | 通用版 / Universal |
+            | 🐧 Linux | `${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.deb` | Debian / Ubuntu |
+          files: |
+            release-assets/**/*.exe
+            release-assets/**/*.AppImage
+            release-assets/**/*.deb
+            release-assets/**/*.dmg
+          fail_on_unmatched_files: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify Discord - Release Published
+        if: success()
+        uses: appleboy/discord-action@master
+        with:
+          webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
+          webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
+          username: "upkk-server-browser Bot"
+          message: |
+            🚀 **${{ env.APP_NAME }} v${{ inputs.version }}** 已發布！
+
+            📥 下載 / Download:
+            🪟 Windows — 單文件免安裝版 (.exe)
+            🍎 Mac-arm — Apple Silicon M1/M2/M3/M4 (.dmg)
+            🍎 Mac-intel — Intel 芯片 (.dmg)
+            🐧 Linux — AppImage / deb
+
+            🔗 https://github.com/${{ github.repository }}/releases/tag/v${{ inputs.version }}
