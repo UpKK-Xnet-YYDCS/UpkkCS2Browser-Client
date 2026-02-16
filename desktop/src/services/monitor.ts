@@ -76,7 +76,7 @@ interface MonitorServerInfo {
 
 // ============== Storage Keys ==============
 
-const MONITOR_RULES_KEY = 'xproj_monitor_rules';
+export const MONITOR_RULES_KEY = 'xproj_monitor_rules';
 const MONITOR_INTERVAL_KEY = 'xproj_monitor_interval';
 const MONITOR_ENABLED_KEY = 'xproj_monitor_enabled';
 const MONITOR_NOTIFY_KEY = 'xproj_monitor_notify';
@@ -181,6 +181,39 @@ export function formatNotificationMessage(template: string, server: MatchedServe
     .replace(/\{mapimage\}/gi, getMapPreviewUrl(server.mapName));
 }
 
+// ============== File-based Persistence (Tauri) ==============
+
+/**
+ * Persist monitor rules to a file in the app data directory via Tauri.
+ * This ensures data survives app restarts even if WebView localStorage is cleared.
+ * Fire-and-forget: errors are silently ignored (localStorage serves as fallback).
+ */
+function persistMonitorRulesToFile(rules: MonitorRule[]): void {
+  (async () => {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      await invoke('save_monitor_data', { data: JSON.stringify(rules) });
+    } catch { /* Tauri not available or save failed — localStorage is the fallback */ }
+  })();
+}
+
+/**
+ * Load monitor rules from the file in the app data directory.
+ * Returns the rules array, or null if the file doesn't exist or Tauri is unavailable.
+ */
+export async function loadMonitorRulesFromFile(): Promise<MonitorRule[] | null> {
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    const raw = await invoke<string>('load_monitor_data');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      // Handle both array format and wrapped format
+      return Array.isArray(parsed) ? parsed : null;
+    }
+  } catch { /* Tauri not available or load failed */ }
+  return null;
+}
+
 // ============== Rule Management ==============
 
 export function loadMonitorRules(): MonitorRule[] {
@@ -197,6 +230,8 @@ export function saveMonitorRules(rules: MonitorRule[]): void {
   try {
     localStorage.setItem(MONITOR_RULES_KEY, JSON.stringify(rules));
   } catch { /* ignore */ }
+  // Also persist to file for reliable storage across app restarts
+  persistMonitorRulesToFile(rules);
 }
 
 export function getMonitorInterval(): number {

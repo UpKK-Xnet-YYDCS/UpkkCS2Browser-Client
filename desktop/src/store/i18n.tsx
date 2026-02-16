@@ -1799,7 +1799,7 @@ const zhCN: Translations = {
   autoJoinCheckInterval: '检测间隔',
 
   // Multi-server (data consolidation)
-  multiServerSelect: '多服可选',
+  multiServerSelect: '多IP可选',
   multiServerTitle: '选择服务器',
   multiServerJoin: '加入',
   

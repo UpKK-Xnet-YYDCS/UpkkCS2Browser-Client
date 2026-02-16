@@ -1098,6 +1098,37 @@ async fn write_text_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(p, contents).map_err(|e| format!("Failed to write file: {}", e))
 }
 
+/// Save monitor data (rules, settings) to a JSON file in the app data directory.
+/// This provides reliable persistence that survives app restarts, unlike WebView localStorage.
+#[tauri::command]
+async fn save_monitor_data(app: tauri::AppHandle, data: String) -> Result<(), String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    std::fs::create_dir_all(&app_data_dir)
+        .map_err(|e| format!("Failed to create app data dir: {}", e))?;
+    let path = app_data_dir.join("monitor_data.json");
+    std::fs::write(&path, data)
+        .map_err(|e| format!("Failed to save monitor data: {}", e))
+}
+
+/// Load monitor data from the JSON file in the app data directory.
+/// Returns empty string if file doesn't exist (first launch).
+#[tauri::command]
+async fn load_monitor_data(app: tauri::AppHandle) -> Result<String, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let path = app_data_dir.join("monitor_data.json");
+    if !path.exists() {
+        return Ok(String::new());
+    }
+    std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read monitor data: {}", e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
@@ -1125,7 +1156,10 @@ pub fn run() {
         secure_storage::clear_credentials,
         secure_storage::get_device_fingerprint,
         secure_storage::has_stored_credentials,
-        write_text_file
+        write_text_file,
+        // Monitor data persistence commands
+        save_monitor_data,
+        load_monitor_data
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

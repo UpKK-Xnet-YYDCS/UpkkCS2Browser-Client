@@ -12,7 +12,9 @@ import {
   type MonitorStatus,
   type MatchedServer,
   type MonitorNotifySettings,
+  MONITOR_RULES_KEY,
   loadMonitorRules,
+  loadMonitorRulesFromFile,
   saveMonitorRules,
   getMonitorInterval,
   setMonitorInterval as saveMonitorInterval,
@@ -600,6 +602,19 @@ export function MonitorPage() {
   useEffect(() => {
     setMonitorEnabled(isEnabled);
   }, [isEnabled]);
+
+  // Load monitor rules from file-based storage on mount (authoritative source).
+  // localStorage serves as a fast synchronous cache for initial render,
+  // but file storage is the reliable persistent source across app restarts.
+  useEffect(() => {
+    loadMonitorRulesFromFile().then(fileRules => {
+      if (fileRules !== null) {
+        setRules(fileRules);
+        // Sync localStorage cache with file data
+        try { localStorage.setItem(MONITOR_RULES_KEY, JSON.stringify(fileRules)); } catch { /* ignore */ }
+      }
+    });
+  }, []);
 
   // Auth state — initialize optimistically from token to avoid login screen flash
   const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
