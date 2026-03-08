@@ -225,7 +225,7 @@ jobs:
 
       - name: Notify Discord - Release Published
         if: success()
-        uses: appleboy/discord-action@v1
+        uses: appleboy/discord-action@master
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
