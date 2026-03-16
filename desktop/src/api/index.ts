@@ -197,14 +197,39 @@ function buildQuery(params: Record<string, string | number | undefined>): string
   return filtered.length ? `?${filtered.join('&')}` : '';
 }
 
+// Geographic filter parameters for server-side continent/region/country filtering
+export interface GeoFilterParams {
+  continent?: string;
+  geo_region?: string;
+  country?: string;
+}
+
+// Server filter metadata from /api/servers/metadata
+export interface CountryInfo {
+  code: string;
+  name: string;
+  count: number;
+}
+
+export interface ServerFilterMetadata {
+  countries: CountryInfo[];
+  maps: string[];
+}
+
 // Server APIs
 export const getServers = async (
   region: ServerRegion = 'all',
   page?: number,
   perPage?: number,
-  game?: GameType
+  game?: GameType,
+  geoFilter?: GeoFilterParams
 ): Promise<ServerStatus[] | PaginatedResponse<ServerStatus>> => {
-  const query = buildQuery({ region, page, per_page: perPage, game: game === 'all' ? undefined : game });
+  const query = buildQuery({
+    region, page, per_page: perPage, game: game === 'all' ? undefined : game,
+    continent: geoFilter?.continent && geoFilter.continent !== 'all' ? geoFilter.continent : undefined,
+    geo_region: geoFilter?.geo_region && geoFilter.geo_region !== 'all' ? geoFilter.geo_region : undefined,
+    country: geoFilter?.country && geoFilter.country !== 'all' ? geoFilter.country : undefined,
+  });
   return fetchWithRetry(`/api/servers${query}`);
 };
 
@@ -224,9 +249,15 @@ export const searchServers = async (
   region: ServerRegion = 'all',
   page?: number,
   perPage?: number,
-  game?: GameType
+  game?: GameType,
+  geoFilter?: GeoFilterParams
 ): Promise<SearchResponse> => {
-  const query = buildQuery({ q, region, page, per_page: perPage, game: game === 'all' ? undefined : game });
+  const query = buildQuery({
+    q, region, page, per_page: perPage, game: game === 'all' ? undefined : game,
+    continent: geoFilter?.continent && geoFilter.continent !== 'all' ? geoFilter.continent : undefined,
+    geo_region: geoFilter?.geo_region && geoFilter.geo_region !== 'all' ? geoFilter.geo_region : undefined,
+    country: geoFilter?.country && geoFilter.country !== 'all' ? geoFilter.country : undefined,
+  });
   return fetchWithRetry(`/api/servers/search${query}`);
 };
 
@@ -263,15 +294,35 @@ export const getServersByCategory = async (
   region: ServerRegion = 'all',
   page?: number,
   perPage?: number,
-  game?: GameType
+  game?: GameType,
+  geoFilter?: GeoFilterParams
 ): Promise<PaginatedResponse<ServerStatus>> => {
-  const query = buildQuery({ category, region, page, per_page: perPage, game: game === 'all' ? undefined : game });
+  const query = buildQuery({
+    category, region, page, per_page: perPage, game: game === 'all' ? undefined : game,
+    continent: geoFilter?.continent && geoFilter.continent !== 'all' ? geoFilter.continent : undefined,
+    geo_region: geoFilter?.geo_region && geoFilter.geo_region !== 'all' ? geoFilter.geo_region : undefined,
+    country: geoFilter?.country && geoFilter.country !== 'all' ? geoFilter.country : undefined,
+  });
   return fetchWithRetry(`/api/servers/by-category${query}`);
 };
 
 // Get global stats
 export const getStats = async (): Promise<ServerStats> => {
   return fetchWithRetry('/api/stats');
+};
+
+// Get server filter metadata (country stats + map names) from all servers
+export const getServerMetadata = async (
+  region: ServerRegion = 'all',
+  game?: GameType,
+  category?: string
+): Promise<ServerFilterMetadata> => {
+  const query = buildQuery({
+    region,
+    game: game === 'all' ? undefined : game,
+    category: category || undefined,
+  });
+  return fetchWithRetry(`/api/servers/metadata${query}`);
 };
 
 // Get top 50 online servers

@@ -8,6 +8,7 @@ export { PlayerHistoryChart } from './PlayerHistoryChart';
 export { MapHistory } from './MapHistory';
 export { SearchBar } from './SearchBar';
 export { RegionFilter } from './RegionFilter';
+export { ContinentFilter } from './ContinentFilter';
 export { GameTypeFilter } from './GameTypeFilter';
 export { CategoryFilter } from './CategoryFilter';
 export { FavoriteFilter } from './FavoriteFilter';

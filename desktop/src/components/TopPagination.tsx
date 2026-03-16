@@ -14,7 +14,7 @@ const ChevronRight = () => (
   </svg>
 );
 
-const PER_PAGE_OPTIONS = [10, 20, 30, 50, 100];
+const PER_PAGE_OPTIONS = [5, 10, 20, 30, 50, 100];
 
 interface TopPaginationProps {
   overrideCurrentPage?: number;

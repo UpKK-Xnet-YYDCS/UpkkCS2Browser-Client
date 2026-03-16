@@ -139,6 +139,8 @@ function favoriteToServerStatus(fav: FavoriteServer): ServerStatus {
     submitter_uid: 0,
     country_code: fav.country_code || '',
     country_name: fav.country_name || '',
+    continent: '',
+    geo_region: '',
     server_type: '',
     environment: '',
     vac: false,

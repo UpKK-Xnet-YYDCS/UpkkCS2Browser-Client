@@ -10,6 +10,7 @@ import {
   ServerListItemSkeleton,
   SearchBar, 
   RegionFilter,
+  ContinentFilter,
   GameTypeFilter,
   CategoryFilter,
   FavoriteFilter,
@@ -185,11 +186,15 @@ export function HomePage() {
     error, 
     fetchServers, 
     fetchStats,
+    fetchMetadata,
     clearError,
     searchQuery,
     selectedRegion,
     selectedGameType,
     selectedCategory,
+    selectedContinent,
+    selectedGeoRegion,
+    selectedCountry,
     viewMode,
     setViewMode,
     perPage,
@@ -233,7 +238,7 @@ export function HomePage() {
   const resetSignalRef = useRef(0); // Increment to signal countdown reset
   
   // Keep refs for filter values so auto-refresh can use latest values
-  const filtersRef = useRef({ searchQuery, selectedRegion, selectedGameType, selectedCategory, perPage });
+  const filtersRef = useRef({ searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage });
   
   // Keep refs in sync with current values
   useEffect(() => {
@@ -241,8 +246,8 @@ export function HomePage() {
   }, [currentPage]);
   
   useEffect(() => {
-    filtersRef.current = { searchQuery, selectedRegion, selectedGameType, selectedCategory, perPage };
-  }, [searchQuery, selectedRegion, selectedGameType, selectedCategory, perPage]);
+    filtersRef.current = { searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage };
+  }, [searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage]);
 
   // Fetch local favorite servers via A2S queries
   // Phase 1: Instantly show all favorites as placeholders (IP visible immediately)
@@ -260,7 +265,8 @@ export function HomePage() {
       players: 0, max_players: 0, bots: 0, real_players: 0, map_name: '',
       comments: '', display_address: ip, mapnamecn: '', category: '',
       priority: 0, config_order: 0, admin_sort_priority: 0, submitter_uid: 0,
-      country_code: '', country_name: '', server_type: '', environment: '',
+      country_code: '', country_name: '', continent: '', geo_region: '',
+      server_type: '', environment: '',
       vac: false, password: false, version: '', game_id: 0,
       last_updated: new Date().toISOString(), Online: false,
     });
@@ -298,7 +304,8 @@ export function HomePage() {
                 bots: a2s.bots, real_players: a2s.real_players, map_name: a2s.map_name,
                 comments: '', display_address: parsed.ip, mapnamecn: '', category: '',
                 priority: 0, config_order: 0, admin_sort_priority: 0, submitter_uid: 0,
-                country_code: '', country_name: '', server_type: a2s.server_type,
+                country_code: '', country_name: '', continent: '', geo_region: '',
+                server_type: a2s.server_type,
                 environment: a2s.environment, vac: a2s.vac, password: a2s.password,
                 version: a2s.version, game_id: 0,
                 last_updated: new Date().toISOString(), Online: true,
@@ -400,9 +407,12 @@ export function HomePage() {
   }, [favSearchQuery, favGameFilter]);
 
   const displayedServers = useMemo(() => {
-    if (!showFavoritesOnly) return servers;
-    const start = (favPage - 1) * perPage;
-    return filteredFavServers.slice(start, start + perPage);
+    // Geo filters (continent/geo_region/country) are applied server-side via API params,
+    // so no client-side filtering is needed here. Just paginate local favorites.
+    let result = showFavoritesOnly 
+      ? filteredFavServers.slice((favPage - 1) * perPage, (favPage - 1) * perPage + perPage)
+      : servers;
+    return result;
   }, [servers, showFavoritesOnly, filteredFavServers, favPage, perPage]);
 
   // Reorder local favorites
@@ -449,6 +459,9 @@ export function HomePage() {
             selectedCategory: currentFilters.selectedCategory,
             selectedRegion: currentFilters.selectedRegion,
             selectedGameType: currentFilters.selectedGameType,
+            selectedContinent: currentFilters.selectedContinent,
+            selectedGeoRegion: currentFilters.selectedGeoRegion,
+            selectedCountry: currentFilters.selectedCountry,
             perPage: currentFilters.perPage,
           });
           fetchStats();
@@ -469,19 +482,28 @@ export function HomePage() {
   useEffect(() => {
     fetchServers(1);
     fetchStats();
-  }, [fetchServers, fetchStats]);
+    fetchMetadata();
+  }, [fetchServers, fetchStats, fetchMetadata]);
 
   // Refetch when filters or perPage change (reset to page 1 for filter changes)
   // Filter changes are always manual, so show loading overlay
   // Pass new filter values directly to avoid race conditions with stale state
-  const filterDepsRef = useRef({ searchQuery, selectedRegion, selectedGameType, selectedCategory, perPage });
+  const filterDepsRef = useRef({ searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage });
   useEffect(() => {
     const prev = filterDepsRef.current;
     const changed = prev.searchQuery !== searchQuery || 
                    prev.selectedRegion !== selectedRegion || 
                    prev.selectedGameType !== selectedGameType ||
                    prev.selectedCategory !== selectedCategory || 
+                   prev.selectedContinent !== selectedContinent ||
+                   prev.selectedGeoRegion !== selectedGeoRegion ||
+                   prev.selectedCountry !== selectedCountry ||
                    prev.perPage !== perPage;
+    
+    // Reload metadata when region/game/category changes
+    const metadataChanged = prev.selectedRegion !== selectedRegion ||
+                           prev.selectedGameType !== selectedGameType ||
+                           prev.selectedCategory !== selectedCategory;
     
     if (changed) {
       // Filter changes are always user-initiated, so show loading overlay
@@ -493,14 +515,21 @@ export function HomePage() {
         selectedCategory,
         selectedRegion,
         selectedGameType,
+        selectedContinent,
+        selectedGeoRegion,
+        selectedCountry,
         perPage,
       });
       // Signal countdown reset via ref (interval will pick this up)
       resetSignalRef.current += 1;
+      
+      if (metadataChanged) {
+        fetchMetadata();
+      }
     }
     
-    filterDepsRef.current = { searchQuery, selectedRegion, selectedGameType, selectedCategory, perPage };
-  }, [searchQuery, selectedRegion, selectedGameType, selectedCategory, perPage, fetchServers]);
+    filterDepsRef.current = { searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage };
+  }, [searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage, fetchServers, fetchMetadata]);
 
   const handleRefresh = () => {
     setIsManualRefresh(true);
@@ -608,7 +637,7 @@ export function HomePage() {
             </div>
             <StatsBar />
           </div>
-          {/* Row 2: Search bar + Favorites + Import/Export + Refresh controls */}
+          {/* Row 2: Search bar + Continent/Country + Favorites + Refresh controls */}
           <div className="flex items-center gap-3">
             <div className="flex-1">
               {showFavoritesOnly ? (
@@ -638,6 +667,7 @@ export function HomePage() {
                 <SearchBar />
               )}
             </div>
+            {!showFavoritesOnly && <ContinentFilter />}
             <FavoriteFilter 
               showFavoritesOnly={showFavoritesOnly} 
               onToggle={setShowFavoritesOnly}

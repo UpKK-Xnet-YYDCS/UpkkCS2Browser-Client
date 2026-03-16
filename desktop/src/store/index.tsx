@@ -1,6 +1,7 @@
 import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { ServerStatus, ServerRegion, ServerStats, GameType } from '@/types';
 import type { ViewMode } from '@/components';
+import type { CountryInfo } from '@/api';
 import * as api from '@/api';
 
 // State type
@@ -16,11 +17,17 @@ interface AppState {
   searchQuery: string;
   selectedRegion: ServerRegion;
   selectedGameType: GameType;  // Game type filter: CS2 or CSGO
+  selectedContinent: string;   // Continent filter: 'all' | 'AS' | 'EU' | 'NA' | 'SA' | 'OC' | 'AF'
+  selectedGeoRegion: string;   // Geographic sub-region filter: 'all' | 'east_asia' | 'west_europe' etc.
+  selectedCountry: string;     // Country filter by country_code: 'all' | 'US' | 'CN' etc.
   stats: ServerStats | null;
   apiBaseUrl: string;
   favorites: string[];
   viewMode: ViewMode;
   perPage: number;
+  // Filter metadata from /api/servers/metadata (global country/map data)
+  metadataCountries: CountryInfo[];
+  metadataMaps: string[];
 }
 
 // Filter parameters type - passed to fetchServers to avoid race conditions
@@ -29,6 +36,9 @@ export interface FetchFilters {
   selectedCategory?: string | null;
   selectedRegion?: ServerRegion;
   selectedGameType?: GameType;
+  selectedContinent?: string;
+  selectedGeoRegion?: string;
+  selectedCountry?: string;
   perPage?: number;
 }
 
@@ -42,6 +52,9 @@ type Action =
   | { type: 'SET_SEARCH_QUERY'; payload: string }
   | { type: 'SET_REGION'; payload: ServerRegion }
   | { type: 'SET_GAME_TYPE'; payload: GameType }
+  | { type: 'SET_CONTINENT'; payload: string }
+  | { type: 'SET_GEO_REGION'; payload: string }
+  | { type: 'SET_COUNTRY'; payload: string }
   | { type: 'SET_CATEGORY'; payload: string | null }
   | { type: 'SET_API_URL'; payload: string }
   | { type: 'ADD_FAVORITE'; payload: string }
@@ -49,7 +62,8 @@ type Action =
   | { type: 'SET_FAVORITES'; payload: string[] }
   | { type: 'REORDER_FAVORITES'; payload: { from: number; to: number } }
   | { type: 'SET_VIEW_MODE'; payload: ViewMode }
-  | { type: 'SET_PER_PAGE'; payload: number };
+  | { type: 'SET_PER_PAGE'; payload: number }
+  | { type: 'SET_METADATA'; payload: { countries: CountryInfo[]; maps: string[] } };
 
 // Load persisted state
 const loadPersistedState = (): Partial<AppState> => {
@@ -62,6 +76,9 @@ const loadPersistedState = (): Partial<AppState> => {
         apiBaseUrl: parsed.apiBaseUrl || 'https://servers.upkk.com',
         selectedRegion: parsed.selectedRegion || 'all',
         selectedGameType: parsed.selectedGameType || 'cs2',  // Default to CS2
+        selectedContinent: parsed.selectedContinent || 'all',
+        selectedGeoRegion: parsed.selectedGeoRegion || 'all',
+        selectedCountry: parsed.selectedCountry || 'all',
         viewMode: parsed.viewMode || 'card',
         perPage: parsed.perPage || 20,
       };
@@ -85,11 +102,16 @@ const initialState: AppState = {
   searchQuery: '',
   selectedRegion: 'all',
   selectedGameType: 'cs2',  // Default to CS2
+  selectedContinent: 'all',
+  selectedGeoRegion: 'all',
+  selectedCountry: 'all',
   stats: null,
   apiBaseUrl: 'https://servers.upkk.com',
   favorites: [],
   viewMode: 'card',
   perPage: 20,
+  metadataCountries: [],
+  metadataMaps: [],
   ...loadPersistedState(),
 };
 
@@ -119,6 +141,12 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, selectedRegion: action.payload, currentPage: 1, selectedCategory: null };
     case 'SET_GAME_TYPE':
       return { ...state, selectedGameType: action.payload, currentPage: 1 };
+    case 'SET_CONTINENT':
+      return { ...state, selectedContinent: action.payload, selectedGeoRegion: 'all', selectedCountry: 'all', currentPage: 1 };
+    case 'SET_GEO_REGION':
+      return { ...state, selectedGeoRegion: action.payload, selectedCountry: 'all', currentPage: 1 };
+    case 'SET_COUNTRY':
+      return { ...state, selectedCountry: action.payload, currentPage: 1 };
     case 'SET_CATEGORY':
       return { ...state, selectedCategory: action.payload, currentPage: 1, searchQuery: '' };
     case 'SET_API_URL':
@@ -141,6 +169,8 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, viewMode: action.payload };
     case 'SET_PER_PAGE':
       return { ...state, perPage: action.payload, currentPage: 1 };
+    case 'SET_METADATA':
+      return { ...state, metadataCountries: action.payload.countries, metadataMaps: action.payload.maps };
     default:
       return state;
   }
@@ -151,9 +181,13 @@ interface AppContextType extends AppState {
   fetchServers: (page?: number, filters?: FetchFilters) => Promise<void>;
   fetchCategories: () => Promise<void>;
   fetchStats: () => Promise<void>;
+  fetchMetadata: () => Promise<void>;
   setSearchQuery: (query: string) => void;
   setSelectedRegion: (region: ServerRegion) => void;
   setSelectedGameType: (gameType: GameType) => void;
+  setSelectedContinent: (continent: string) => void;
+  setSelectedGeoRegion: (geoRegion: string) => void;
+  setSelectedCountry: (country: string) => void;
   setSelectedCategory: (category: string | null) => void;
   setApiBaseUrl: (url: string) => void;
   addFavorite: (addr: string) => void;
@@ -184,11 +218,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
       apiBaseUrl: state.apiBaseUrl,
       selectedRegion: state.selectedRegion,
       selectedGameType: state.selectedGameType,
+      selectedContinent: state.selectedContinent,
+      selectedGeoRegion: state.selectedGeoRegion,
+      selectedCountry: state.selectedCountry,
       viewMode: state.viewMode,
       perPage: state.perPage,
     };
     localStorage.setItem('xproj-desktop-state', JSON.stringify(toPersist));
-  }, [state.favorites, state.apiBaseUrl, state.selectedRegion, state.selectedGameType, state.viewMode, state.perPage]);
+  }, [state.favorites, state.apiBaseUrl, state.selectedRegion, state.selectedGameType, state.selectedContinent, state.selectedGeoRegion, state.selectedCountry, state.viewMode, state.perPage]);
 
   // fetchServers accepts optional filter overrides to avoid race conditions with stale state
   // When filters parameter is provided, use those values instead of current state
@@ -205,12 +242,22 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const selectedCategory = filters?.selectedCategory !== undefined ? filters.selectedCategory : state.selectedCategory;
     const selectedRegion = filters?.selectedRegion ?? state.selectedRegion;
     const selectedGameType = filters?.selectedGameType ?? state.selectedGameType;
+    const selectedContinent = filters?.selectedContinent ?? state.selectedContinent;
+    const selectedGeoRegion = filters?.selectedGeoRegion ?? state.selectedGeoRegion;
+    const selectedCountry = filters?.selectedCountry ?? state.selectedCountry;
     const perPage = filters?.perPage ?? state.perPage;
+    
+    // Build geo filter for server-side filtering
+    const geoFilter: api.GeoFilterParams = {
+      continent: selectedContinent,
+      geo_region: selectedGeoRegion,
+      country: selectedCountry,
+    };
     
     try {
       let result;
       if (searchQuery) {
-        result = await api.searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType);
+        result = await api.searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter);
         
         // Check if this request is still the latest one - discard stale responses
         if (requestVersionRef.current !== currentVersion) {
@@ -227,7 +274,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
           },
         });
       } else if (selectedCategory) {
-        result = await api.getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType);
+        result = await api.getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType, geoFilter);
         
         // Check if this request is still the latest one - discard stale responses
         if (requestVersionRef.current !== currentVersion) {
@@ -245,7 +292,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         });
       } else {
         // The API returns an array directly, not a paginated object
-        const servers = await api.getServers(selectedRegion, page, perPage, selectedGameType);
+        const servers = await api.getServers(selectedRegion, page, perPage, selectedGameType, geoFilter);
         
         // Check if this request is still the latest one - discard stale responses
         if (requestVersionRef.current !== currentVersion) {
@@ -287,7 +334,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.searchQuery, state.selectedRegion, state.selectedCategory, state.selectedGameType, state.perPage]);
+  }, [state.searchQuery, state.selectedRegion, state.selectedCategory, state.selectedGameType, state.selectedContinent, state.selectedGeoRegion, state.selectedCountry, state.perPage]);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -307,6 +354,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Fetch global filter metadata (country stats + map names) for dropdown population
+  const fetchMetadata = useCallback(async () => {
+    try {
+      const metadata = await api.getServerMetadata(
+        state.selectedRegion,
+        state.selectedGameType,
+        state.selectedCategory || undefined
+      );
+      dispatch({ type: 'SET_METADATA', payload: { countries: metadata.countries || [], maps: metadata.maps || [] } });
+    } catch (error) {
+      console.error('Failed to fetch server metadata:', error);
+    }
+  }, [state.selectedRegion, state.selectedGameType, state.selectedCategory]);
+
   const setSearchQuery = useCallback((query: string) => {
     dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
   }, []);
@@ -317,6 +378,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   const setSelectedGameType = useCallback((gameType: GameType) => {
     dispatch({ type: 'SET_GAME_TYPE', payload: gameType });
+  }, []);
+
+  const setSelectedContinent = useCallback((continent: string) => {
+    dispatch({ type: 'SET_CONTINENT', payload: continent });
+  }, []);
+
+  const setSelectedGeoRegion = useCallback((geoRegion: string) => {
+    dispatch({ type: 'SET_GEO_REGION', payload: geoRegion });
+  }, []);
+
+  const setSelectedCountry = useCallback((country: string) => {
+    dispatch({ type: 'SET_COUNTRY', payload: country });
   }, []);
 
   const setSelectedCategory = useCallback((category: string | null) => {
@@ -365,9 +438,13 @@ export function AppProvider({ children }: { children: ReactNode }) {
     fetchServers,
     fetchCategories,
     fetchStats,
+    fetchMetadata,
     setSearchQuery,
     setSelectedRegion,
     setSelectedGameType,
+    setSelectedContinent,
+    setSelectedGeoRegion,
+    setSelectedCountry,
     setSelectedCategory,
     setApiBaseUrl,
     addFavorite,

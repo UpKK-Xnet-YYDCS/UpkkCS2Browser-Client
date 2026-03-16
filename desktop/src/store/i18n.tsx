@@ -393,6 +393,33 @@ export interface Translations {
   regionChina: string;
   regionInternational: string;
   
+  // Continent and geo-region filter
+  continentAll: string;
+  continentAsia: string;
+  continentEurope: string;
+  continentNorthAmerica: string;
+  continentSouthAmerica: string;
+  continentOceania: string;
+  continentAfrica: string;
+  geoRegionAll: string;
+  geoRegionEastAsia: string;
+  geoRegionSoutheastAsia: string;
+  geoRegionSouthAsia: string;
+  geoRegionCentralAsia: string;
+  geoRegionWestAsia: string;
+  geoRegionWestEurope: string;
+  geoRegionEastEurope: string;
+  geoRegionNorthEurope: string;
+  geoRegionSouthEurope: string;
+  geoRegionNorthAmerica: string;
+  geoRegionCentralAmerica: string;
+  geoRegionCaribbean: string;
+  geoRegionSouthAmerica: string;
+  geoRegionNorthAfrica: string;
+  geoRegionSubSaharanAfrica: string;
+  geoRegionOceania: string;
+  countryAll: string;
+  
   // Server detail modal extended
   currentStatus: string;
   serverRunning: string;
@@ -898,6 +925,33 @@ const en: Translations = {
   regionAll: 'All',
   regionChina: 'China',
   regionInternational: 'International',
+  
+  // Continent and geo-region filter
+  continentAll: 'All Continents',
+  continentAsia: 'Asia',
+  continentEurope: 'Europe',
+  continentNorthAmerica: 'North America',
+  continentSouthAmerica: 'South America',
+  continentOceania: 'Oceania',
+  continentAfrica: 'Africa',
+  geoRegionAll: 'All Sub-regions',
+  geoRegionEastAsia: 'East Asia',
+  geoRegionSoutheastAsia: 'Southeast Asia',
+  geoRegionSouthAsia: 'South Asia',
+  geoRegionCentralAsia: 'Central Asia',
+  geoRegionWestAsia: 'Middle East',
+  geoRegionWestEurope: 'Western Europe',
+  geoRegionEastEurope: 'Eastern Europe',
+  geoRegionNorthEurope: 'Northern Europe',
+  geoRegionSouthEurope: 'Southern Europe',
+  geoRegionNorthAmerica: 'North America',
+  geoRegionCentralAmerica: 'Central America',
+  geoRegionCaribbean: 'Caribbean',
+  geoRegionSouthAmerica: 'South America',
+  geoRegionNorthAfrica: 'North Africa',
+  geoRegionSubSaharanAfrica: 'Sub-Saharan Africa',
+  geoRegionOceania: 'Oceania',
+  countryAll: 'All Countries',
   
   // Server detail modal extended
   currentStatus: 'Current',
@@ -1405,6 +1459,33 @@ const ja: Translations = {
   regionChina: '中国',
   regionInternational: '海外',
   
+  // Continent and geo-region filter
+  continentAll: 'すべての大陸',
+  continentAsia: 'アジア',
+  continentEurope: 'ヨーロッパ',
+  continentNorthAmerica: '北アメリカ',
+  continentSouthAmerica: '南アメリカ',
+  continentOceania: 'オセアニア',
+  continentAfrica: 'アフリカ',
+  geoRegionAll: 'すべてのサブリージョン',
+  geoRegionEastAsia: '東アジア',
+  geoRegionSoutheastAsia: '東南アジア',
+  geoRegionSouthAsia: '南アジア',
+  geoRegionCentralAsia: '中央アジア',
+  geoRegionWestAsia: '中東',
+  geoRegionWestEurope: '西ヨーロッパ',
+  geoRegionEastEurope: '東ヨーロッパ',
+  geoRegionNorthEurope: '北ヨーロッパ',
+  geoRegionSouthEurope: '南ヨーロッパ',
+  geoRegionNorthAmerica: '北アメリカ',
+  geoRegionCentralAmerica: '中央アメリカ',
+  geoRegionCaribbean: 'カリブ海',
+  geoRegionSouthAmerica: '南アメリカ',
+  geoRegionNorthAfrica: '北アフリカ',
+  geoRegionSubSaharanAfrica: 'サハラ以南アフリカ',
+  geoRegionOceania: 'オセアニア',
+  countryAll: '全ての国',
+  
   // Server detail modal extended
   currentStatus: '現在',
   serverRunning: '稼働中',
@@ -1910,6 +1991,33 @@ const zhCN: Translations = {
   regionAll: '全部',
   regionChina: '中国',
   regionInternational: '国际',
+  
+  // Continent and geo-region filter
+  continentAll: '全部大洲',
+  continentAsia: '亚洲',
+  continentEurope: '欧洲',
+  continentNorthAmerica: '北美洲',
+  continentSouthAmerica: '南美洲',
+  continentOceania: '大洋洲',
+  continentAfrica: '非洲',
+  geoRegionAll: '全部子区域',
+  geoRegionEastAsia: '东亚',
+  geoRegionSoutheastAsia: '东南亚',
+  geoRegionSouthAsia: '南亚',
+  geoRegionCentralAsia: '中亚',
+  geoRegionWestAsia: '中东',
+  geoRegionWestEurope: '西欧',
+  geoRegionEastEurope: '东欧',
+  geoRegionNorthEurope: '北欧',
+  geoRegionSouthEurope: '南欧',
+  geoRegionNorthAmerica: '北美',
+  geoRegionCentralAmerica: '中美洲',
+  geoRegionCaribbean: '加勒比',
+  geoRegionSouthAmerica: '南美',
+  geoRegionNorthAfrica: '北非',
+  geoRegionSubSaharanAfrica: '撒哈拉以南非洲',
+  geoRegionOceania: '大洋洲',
+  countryAll: '全部国家',
   
   // Server detail modal extended
   currentStatus: '当前',
@@ -2417,6 +2525,33 @@ const zhTW: Translations = {
   regionChina: '中國',
   regionInternational: '國際',
   
+  // Continent and geo-region filter
+  continentAll: '全部大洲',
+  continentAsia: '亞洲',
+  continentEurope: '歐洲',
+  continentNorthAmerica: '北美洲',
+  continentSouthAmerica: '南美洲',
+  continentOceania: '大洋洲',
+  continentAfrica: '非洲',
+  geoRegionAll: '全部子區域',
+  geoRegionEastAsia: '東亞',
+  geoRegionSoutheastAsia: '東南亞',
+  geoRegionSouthAsia: '南亞',
+  geoRegionCentralAsia: '中亞',
+  geoRegionWestAsia: '中東',
+  geoRegionWestEurope: '西歐',
+  geoRegionEastEurope: '東歐',
+  geoRegionNorthEurope: '北歐',
+  geoRegionSouthEurope: '南歐',
+  geoRegionNorthAmerica: '北美',
+  geoRegionCentralAmerica: '中美洲',
+  geoRegionCaribbean: '加勒比',
+  geoRegionSouthAmerica: '南美',
+  geoRegionNorthAfrica: '北非',
+  geoRegionSubSaharanAfrica: '撒哈拉以南非洲',
+  geoRegionOceania: '大洋洲',
+  countryAll: '全部國家',
+  
   // Server detail modal extended
   currentStatus: '當前',
   serverRunning: '運行中',
@@ -2922,6 +3057,33 @@ const ko: Translations = {
   regionAll: '전체',
   regionChina: '중국',
   regionInternational: '해외',
+  
+  // Continent and geo-region filter
+  continentAll: '모든 대륙',
+  continentAsia: '아시아',
+  continentEurope: '유럽',
+  continentNorthAmerica: '북아메리카',
+  continentSouthAmerica: '남아메리카',
+  continentOceania: '오세아니아',
+  continentAfrica: '아프리카',
+  geoRegionAll: '모든 하위 지역',
+  geoRegionEastAsia: '동아시아',
+  geoRegionSoutheastAsia: '동남아시아',
+  geoRegionSouthAsia: '남아시아',
+  geoRegionCentralAsia: '중앙아시아',
+  geoRegionWestAsia: '중동',
+  geoRegionWestEurope: '서유럽',
+  geoRegionEastEurope: '동유럽',
+  geoRegionNorthEurope: '북유럽',
+  geoRegionSouthEurope: '남유럽',
+  geoRegionNorthAmerica: '북아메리카',
+  geoRegionCentralAmerica: '중앙아메리카',
+  geoRegionCaribbean: '카리브해',
+  geoRegionSouthAmerica: '남아메리카',
+  geoRegionNorthAfrica: '북아프리카',
+  geoRegionSubSaharanAfrica: '사하라 이남 아프리카',
+  geoRegionOceania: '오세아니아',
+  countryAll: '모든 국가',
   
   // Server detail modal extended
   currentStatus: '현재',

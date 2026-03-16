@@ -24,6 +24,8 @@ export interface ServerStatus {
   submitter_uid: number;
   country_code: string;
   country_name: string;
+  continent: string;       // Continent code (e.g. AS, EU, NA) derived from country_code
+  geo_region: string;      // Geographic sub-region (e.g. east_asia, west_europe) derived from country_code
   server_type: string;
   environment: string;
   vac: boolean;
