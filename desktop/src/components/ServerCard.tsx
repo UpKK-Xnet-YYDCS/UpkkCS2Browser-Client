@@ -3,6 +3,7 @@ import { useAppStore } from '@/store';
 import { useState, useEffect, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '@/api';
+import { getApiToken } from '@/api';
 import { buildJoinUrl } from './SteamClientSwitch';
 import { AutoJoinModal } from './AutoJoinModal';
 import { useI18n } from '@/store/i18n';
@@ -84,7 +85,8 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
   const [imageError, setImageError] = useState(false);
   const [isCloudFavorite, setIsCloudFavorite] = useState(false);
   const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  // Determine login status synchronously from stored token to avoid per-card API calls
+  const isLoggedIn = Boolean(getApiToken());
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
   const [autoJoinTarget, setAutoJoinTarget] = useState<ServerStatus | null>(null);
   const [showCloudPrompt, setShowCloudPrompt] = useState<'add' | 'remove' | null>(null);
@@ -129,25 +131,8 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
   const baseAddress = rawBaseAddress.includes(':') ? rawBaseAddress.split(':')[0] : rawBaseAddress;
   const displayAddress = serverPort ? `${baseAddress}:${serverPort}` : baseAddress;
   
-  // Check auth status and cloud favorite status
-  useEffect(() => {
-    const checkStatus = async () => {
-      try {
-        const authStatus = await api.checkAuthStatus();
-        setIsLoggedIn(authStatus.logged_in);
-        
-        if (authStatus.logged_in && serverIp && serverPort) {
-          const favoriteStatus = await api.checkFavorite(String(serverIp), String(serverPort));
-          setIsCloudFavorite(favoriteStatus.is_favorite);
-        }
-      } catch {
-        // Ignore errors - use local favorites
-      }
-    };
-    checkStatus();
-  }, [serverIp, serverPort]);
-  
-  // Show local favorite state (always up-to-date since we toggle it immediately)
+  // Favorite state: use only local favorites to avoid per-card API calls.
+  // Cloud favorite status is checked lazily when user clicks the favorite button.
   // Use baseAddress (from display_address) to keep domain names consistent
   const favoriteAddr = serverPort ? `${baseAddress}:${serverPort}` : baseAddress;
   const localFav = isLocalFavorite(favoriteAddr);
