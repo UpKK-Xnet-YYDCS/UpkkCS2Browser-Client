@@ -30,10 +30,11 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.generate-token.outputs.token || secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js
+      - name: Setup Node.js latest stable
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: 'latest'
+          check-latest: true
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable

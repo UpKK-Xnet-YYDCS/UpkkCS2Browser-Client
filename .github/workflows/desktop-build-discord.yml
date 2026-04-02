@@ -67,10 +67,11 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Setup Node.js
+      - name: Setup Node.js latest stable
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: 'latest'
+          check-latest: true
           cache: 'npm'
           cache-dependency-path: desktop/package-lock.json
 
