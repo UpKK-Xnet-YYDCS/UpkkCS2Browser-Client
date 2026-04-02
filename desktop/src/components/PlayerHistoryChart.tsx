@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServerPlayerHistory, type PlayerHistoryStat } from '@/api';
 import { useI18n } from '@/store/i18n';
+import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 interface PlayerHistoryChartProps {
   serverId: string;
@@ -36,12 +37,6 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
     loadData();
   }, [serverId, period]);
 
-  useEffect(() => {
-    if (stats.length > 0) {
-      drawChart();
-    }
-  }, [stats]);
-
   const loadData = async () => {
     setLoading(true);
     setError(null);
@@ -56,28 +51,12 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
     }
   };
 
-  const drawChart = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || stats.length === 0) return;
+  const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    if (stats.length === 0) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-
-    const width = rect.width;
-    const height = rect.height;
     const padding = { top: 20, right: 20, bottom: 30, left: 40 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
 
     // Get data
     const realPlayers = stats.map(s => s.real_players ?? s.players ?? 0);
@@ -118,7 +97,7 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
       ctx.fillText(label, x, height - 8);
     }
 
-    // Draw real players line
+    // Draw line helper
     const drawLine = (data: number[], color: string, fillColor: string) => {
       if (data.length < 2) return;
 
@@ -155,7 +134,10 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
     }
     // Draw real players
     drawLine(realPlayers, '#3b82f6', 'rgba(59, 130, 246, 0.2)');
-  };
+  }, [stats, period]);
+
+  // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
+  useCanvasChart(canvasRef, drawChart, [stats, period]);
 
   return (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">

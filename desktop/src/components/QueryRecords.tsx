@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { getA2SDebug, type A2SQueryDebugRecord, type A2SLatencyStatPoint } from '@/api';
 import { useI18n } from '@/store/i18n';
+import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 const LATENCY_WARNING_MS = 500;
 const SUCCESS_RATE_WARNING = 90;
@@ -40,26 +41,12 @@ function calculateStats(stats: A2SLatencyStatPoint[]) {
 function LatencyChart({ stats }: { stats: A2SLatencyStatPoint[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || stats.length === 0) return;
+  const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    if (stats.length === 0) return;
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-
-    const width = rect.width;
-    const height = rect.height;
     const padding = { top: 20, right: 20, bottom: 30, left: 50 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
-
-    ctx.clearRect(0, 0, width, height);
 
     const avgData = stats.map(s => s.avg_latency);
     const maxData = stats.map(s => s.max_latency);
@@ -122,6 +109,9 @@ function LatencyChart({ stats }: { stats: A2SLatencyStatPoint[] }) {
     // Draw avg latency (front)
     drawLine(avgData, '#3b82f6', 'rgba(59, 130, 246, 0.15)');
   }, [stats]);
+
+  // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
+  useCanvasChart(canvasRef, drawChart, [stats]);
 
   return (
     <div className="h-40">

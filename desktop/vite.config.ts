@@ -30,12 +30,13 @@ export default defineConfig({
     '__XPROJ_APP_VERSION__': JSON.stringify(version),
   },
   server: {
+    host: '0.0.0.0',
     port: 5173,
     strictPort: true,
   },
   build: {
     outDir: 'dist',
     target: 'esnext',
-    minify: 'esbuild',
+    minify: true,
   },
 })

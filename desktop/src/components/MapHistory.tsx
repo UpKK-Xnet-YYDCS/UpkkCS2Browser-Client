@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServerMapHistory, type MapHistoryItem, type MapSessionRecord } from '@/api';
 import { useI18n, type Translations } from '@/store/i18n';
+import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 interface MapHistoryProps {
   serverAddress: string; // e.g. "cs2ze.upkk.com:27015"
@@ -99,41 +100,12 @@ function MapSessionModal({
   const { t, language } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  useEffect(() => {
-    drawChart();
-  }, [session]);
+  const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
+    if (!session.player_history || session.player_history.length === 0) return;
 
-  // Close on escape key
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose]);
-
-  const drawChart = () => {
-    const canvas = canvasRef.current;
-    if (!canvas || !session.player_history || session.player_history.length === 0) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Set canvas size
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
-
-    const width = rect.width;
-    const height = rect.height;
     const padding = { top: 20, right: 20, bottom: 30, left: 40 };
     const chartWidth = width - padding.left - padding.right;
     const chartHeight = height - padding.top - padding.bottom;
-
-    // Clear canvas
-    ctx.clearRect(0, 0, width, height);
 
     // Get data
     const realPlayers = session.player_history;
@@ -214,7 +186,19 @@ function MapSessionModal({
     }
     // Draw real players
     drawLine(realPlayers, '#3b82f6', 'rgba(59, 130, 246, 0.2)');
-  };
+  }, [session]);
+
+  // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
+  useCanvasChart(canvasRef, drawChart, [session]);
+
+  // Close on escape key
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onClose]);
 
   // Map language to locale
   const localeMap: Record<string, string> = {
