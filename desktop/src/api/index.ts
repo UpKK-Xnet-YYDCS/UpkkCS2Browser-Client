@@ -7,7 +7,7 @@ import type {
   ServerRegion,
   GameType
 } from '@/types';
-import { logInfo, logWarn, logError } from '@/store/log';
+import { logInfo, logWarn, logError, logDebug } from '@/store/log';
 
 // Compile-time User-Agent for HTTP POST requests (configurable via XPROJ_HTTP_USER_AGENT env var)
 // Default: 'XProj-Desktop-HTTP/<version> (+https://servers.upkk.com)' where <version> is read from version.txt
@@ -69,15 +69,80 @@ class ApiError extends Error {
   }
 }
 
-// Generic fetch wrapper with detailed error handling
-// Uses Tauri HTTP plugin for better CORS support, falls back to regular fetch
-// Automatically includes API token in Authorization header if available
+// --- In-flight request deduplication ---
+// Prevents duplicate concurrent requests to the same endpoint
+const inflightRequests = new Map<string, Promise<unknown>>();
+
+// --- Short-TTL response cache for GET requests ---
+// Reduces redundant network calls for slowly-changing data (stats, categories, metadata).
+// TTL is derived from the user-configured auto-refresh interval so that cached data
+// never outlives a single refresh cycle. Falls back to 60 s when no interval is saved.
+const DEFAULT_CACHE_TTL_MS = 60_000; // 60 seconds
+
+function getCacheTtlMs(): number {
+  try {
+    const saved = localStorage.getItem('autoRefreshInterval');
+    if (saved) {
+      const seconds = parseInt(saved, 10);
+      if (seconds > 0) return seconds * 1000;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_CACHE_TTL_MS;
+}
+
+interface CacheEntry { data: unknown; ts: number }
+const responseCache = new Map<string, CacheEntry>();
+
+function getCached<T>(key: string): T | undefined {
+  const entry = responseCache.get(key);
+  if (entry && Date.now() - entry.ts < getCacheTtlMs()) {
+    return entry.data as T;
+  }
+  if (entry) responseCache.delete(key);
+  return undefined;
+}
+
+function setCache(key: string, data: unknown): void {
+  responseCache.set(key, { data, ts: Date.now() });
+}
+
+/** Clear all cached API responses so the next request fetches fresh data. */
+export function clearResponseCache(): void {
+  responseCache.clear();
+}
+
+// Generic fetch wrapper with detailed error handling and in-flight deduplication.
+// Uses Tauri HTTP plugin for better CORS support, falls back to regular fetch.
+// Automatically includes API token in Authorization header if available.
+// GET requests are deduplicated: concurrent identical requests share a single Promise.
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
+  const method = options?.method || 'GET';
+  
+  // Only deduplicate GET requests (safe to share)
+  if (method === 'GET') {
+    const dedupeKey = endpoint;
+    const inflight = inflightRequests.get(dedupeKey) as Promise<T> | undefined;
+    if (inflight) return inflight;
+    
+    const promise = fetchApiImpl<T>(endpoint, options);
+    inflightRequests.set(dedupeKey, promise);
+    try {
+      return await promise;
+    } finally {
+      inflightRequests.delete(dedupeKey);
+    }
+  }
+  
+  return fetchApiImpl<T>(endpoint, options);
+}
+
+// Internal fetch implementation (separated from deduplication wrapper)
+async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise<T> {
   const baseUrl = getBaseUrl();
   const url = `${baseUrl}${endpoint}`;
   const method = options?.method || 'GET';
   logInfo('API', `${method} ${endpoint}`);
-  console.log(`[API] ${method} ${url}`);
+  logDebug('API', `${method} ${url}`);
   
   // Build headers with optional API token
   const token = getApiToken();
@@ -107,7 +172,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
       }
       
       const data = await response.json();
-      console.log(`[API] 响应成功:`, data);
+      logDebug('API', '响应成功');
       return data;
     } catch (tauriErr) {
       // Only fall back to regular fetch if Tauri module is not available
@@ -121,7 +186,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
         // This is an actual request error, not a module loading error - throw it
         throw tauriErr;
       }
-      console.log('[API] Tauri HTTP 不可用, 回退到 fetch...');
+      logDebug('API', 'Tauri HTTP 不可用, 回退到 fetch...');
     }
     
     // Fallback to regular fetch (may fail due to CORS in browser environments)
@@ -142,7 +207,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
     }
     
     const data = await response.json();
-    console.log(`[API] 响应成功:`, data);
+    logDebug('API', '响应成功');
     return data;
   } catch (error) {
     if (error instanceof TypeError && error.message.includes('fetch')) {
@@ -169,17 +234,29 @@ function isRetryableError(error: unknown): boolean {
 
 // Fetch with exponential backoff retry (up to 3 attempts)
 // Only retries on network errors and server errors (5xx), not client errors (4xx)
+// GET requests are cached with a short TTL to reduce redundant network calls
 async function fetchWithRetry<T>(endpoint: string, options?: RequestInit, maxRetries = 3): Promise<T> {
+  const method = options?.method || 'GET';
+  
+  // Check TTL cache for GET requests
+  if (method === 'GET') {
+    const cached = getCached<T>(endpoint);
+    if (cached !== undefined) return cached;
+  }
+  
   let lastError: unknown;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      return await fetchApi<T>(endpoint, options);
+      const result = await fetchApi<T>(endpoint, options);
+      // Cache successful GET responses
+      if (method === 'GET') setCache(endpoint, result);
+      return result;
     } catch (error) {
       lastError = error;
       if (attempt < maxRetries - 1 && isRetryableError(error)) {
         const delay = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
         logWarn('API', `Retry ${attempt + 1}/${maxRetries} ${endpoint}`);
-        console.warn(`[API] Attempt ${attempt + 1}/${maxRetries} failed, retrying in ${delay}ms...`, error);
+        logWarn('API', `Attempt ${attempt + 1}/${maxRetries} failed, retrying in ${delay}ms: ${error instanceof Error ? error.message : String(error)}`);
         await new Promise(resolve => setTimeout(resolve, delay));
       } else {
         throw error;

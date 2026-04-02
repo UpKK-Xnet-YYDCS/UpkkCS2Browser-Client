@@ -1,13 +1,20 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo, lazy, Suspense } from 'react';
 import { AppProvider } from './store';
 import { UserProvider } from './store/user';
 import { ThemeProvider, useTheme, rgbaToCss } from './store/theme';
 import { I18nProvider, useI18n } from './store/i18n';
-import { HomePage, FavoritesPage, ForumPage, CheckInPage, SettingsPage, MonitorPage } from './pages';
+import { HomePage } from './pages/HomePage';
+import { MonitorPage } from './pages/MonitorPage';
 import { TabNavigation, useTabNavigation, SteamClientSwitch, LoginModal, UpdateProvider, UserStatusButton } from './components';
 import { ToastContainer } from './components/ToastNotification';
 import type { TabId } from './components';
 import './index.css';
+
+// Lazy-loaded pages: split into separate chunks for faster initial load
+const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then(m => ({ default: m.FavoritesPage })));
+const ForumPage = lazy(() => import('./pages/ForumPage').then(m => ({ default: m.ForumPage })));
+const CheckInPage = lazy(() => import('./pages/CheckInPage').then(m => ({ default: m.CheckInPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 function AppContent() {
   const { activeTab, setActiveTab } = useTabNavigation('servers');
@@ -33,8 +40,8 @@ function AppContent() {
     }
   };
 
-  // Background style based on theme settings
-  const backgroundStyle = theme.backgroundImage
+  // Memoize style objects to avoid re-creating on every render
+  const backgroundStyle = useMemo(() => theme.backgroundImage
     ? {
         backgroundImage: `url(${theme.backgroundImage})`,
         backgroundSize: 'cover',
@@ -43,14 +50,33 @@ function AppContent() {
       }
     : {
         backgroundColor: rgbaToCss(theme.colorRegions.background),
-      };
+      }, [theme.backgroundImage, theme.colorRegions.background]);
 
-  const overlayOpacity = theme.backgroundImage ? (100 - theme.backgroundOpacity) / 100 : 0;
+  const overlayOpacity = useMemo(
+    () => theme.backgroundImage ? (100 - theme.backgroundOpacity) / 100 : 0,
+    [theme.backgroundImage, theme.backgroundOpacity],
+  );
 
-  // Get colors from theme
-  const primaryColor = rgbaToCss(theme.colorRegions.primary);
-  const secondaryColor = rgbaToCss(theme.colorRegions.secondary);
-  const headerColor = rgbaToCss(theme.colorRegions.header);
+  // Memoize derived color strings
+  const primaryColor = useMemo(() => rgbaToCss(theme.colorRegions.primary), [theme.colorRegions.primary]);
+  const secondaryColor = useMemo(() => rgbaToCss(theme.colorRegions.secondary), [theme.colorRegions.secondary]);
+  const headerColor = useMemo(() => rgbaToCss(theme.colorRegions.header), [theme.colorRegions.header]);
+
+  // Memoize inline style objects to prevent re-creation
+  const overlayStyle = useMemo(() => ({
+    backgroundColor: rgbaToCss(theme.colorRegions.background),
+    opacity: overlayOpacity,
+  }), [theme.colorRegions.background, overlayOpacity]);
+
+  const logoGradient = useMemo(
+    () => ({ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }),
+    [primaryColor, secondaryColor],
+  );
+
+  const titleColor = useMemo(
+    () => ({ color: rgbaToCss(theme.colorRegions.text) }),
+    [theme.colorRegions.text],
+  );
 
   return (
     <div 
@@ -61,10 +87,7 @@ function AppContent() {
       {theme.backgroundImage && (
         <div 
           className="fixed inset-0 pointer-events-none z-0"
-          style={{ 
-            backgroundColor: rgbaToCss(theme.colorRegions.background),
-            opacity: overlayOpacity 
-          }}
+          style={overlayStyle}
         />
       )}
       
@@ -83,14 +106,14 @@ function AppContent() {
               <div className="flex items-center gap-3">
                 <div 
                   className="w-10 h-10 rounded-xl flex items-center justify-center shadow-lg"
-                  style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%)` }}
+                  style={logoGradient}
                 >
                   <span className="text-white font-bold text-lg">U</span>
                 </div>
                 <div className="hidden sm:block">
                   <h1 
                     className="text-lg font-bold"
-                    style={{ color: rgbaToCss(theme.colorRegions.text) }}
+                    style={titleColor}
                   >
                     {t.appName}
                   </h1>
@@ -116,7 +139,11 @@ function AppContent() {
           <div className={activeTab === 'monitor' ? 'flex-1 flex flex-col' : 'hidden'}>
             <MonitorPage />
           </div>
-          {activeTab !== 'monitor' && renderPage()}
+          {activeTab !== 'monitor' && (
+            <Suspense fallback={<div className="flex-1" />}>
+              {renderPage()}
+            </Suspense>
+          )}
         </main>
 
         {/* Login Modal */}

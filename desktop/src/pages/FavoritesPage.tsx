@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import * as api from '@/api';
-import { getApiToken, setApiToken, clearApiToken } from '@/api';
+import { getApiToken, setApiToken, clearApiToken, clearResponseCache } from '@/api';
 import type { FavoriteServer, AuthStatus } from '@/api';
 import type { ServerStatus } from '@/types';
 import { useTheme, rgbaToCss } from '@/store/theme';
 import { useI18n } from '@/store/i18n';
+import { logInfo, logDebug } from '@/store/log';
 import { ServerCard } from '@/components/ServerCard';
 import { ServerListItem } from '@/components/ServerListItem';
 import { ViewModeSwitch } from '@/components/ViewModeSwitch';
@@ -364,7 +365,7 @@ export function FavoritesPage() {
       try {
         const { listen } = await import('@tauri-apps/api/event');
         const unlistenFn = await listen<string>('login-token-ready', async (event) => {
-          console.log('[Favorites] Token received from login WebView');
+          logInfo('Favorites', 'Token received from login WebView');
           loginDetectedRef.current = true;
           setLoginPending(false);
           
@@ -377,7 +378,7 @@ export function FavoritesPage() {
             }
             
             if (data.token) {
-              console.log('[Favorites] API token stored successfully');
+              logInfo('Favorites', 'API token stored successfully');
               setApiToken(data.token);
               
               const newAuth: AuthStatus = {
@@ -408,8 +409,8 @@ export function FavoritesPage() {
           }
         });
         unlisten = unlistenFn;
-      } catch (err) {
-        console.log('[Favorites] Could not set up Tauri event listener:', err);
+      } catch {
+        logDebug('Favorites', 'Could not set up Tauri event listener');
       }
     };
     
@@ -475,6 +476,7 @@ export function FavoritesPage() {
 
       setCountdown(prev => {
         if (prev <= 1) {
+          clearResponseCache(); // Bust cache so auto-refresh fetches fresh data
           loadFavorites();
           return refreshInterval;
         }
@@ -496,6 +498,7 @@ export function FavoritesPage() {
 
   // Manual refresh
   const handleRefresh = () => {
+    clearResponseCache(); // Bust cache so manual refresh always fetches fresh data
     loadFavorites(true);
     resetSignalRef.current += 1;
   };
@@ -559,13 +562,13 @@ export function FavoritesPage() {
         loginUrl = api.getSteamLoginUrl();
     }
     
-    console.log(`[Favorites] Opening ${provider} login:`, loginUrl);
+    logInfo('Favorites', `Opening ${provider} login: ${loginUrl}`);
     setLoginPending(true);
     loginDetectedRef.current = false;
     
     try {
       await invoke('open_steam_login', { loginUrl });
-      console.log(`[Favorites] ${provider} login window opened`);
+      logInfo('Favorites', `${provider} login window opened`);
       
       setTimeout(() => {
         if (!loginDetectedRef.current) {

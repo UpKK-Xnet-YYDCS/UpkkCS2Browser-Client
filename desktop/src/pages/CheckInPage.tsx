@@ -3,6 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { XPROJ_USER_AGENT } from '@/api';
 import { useUserStore } from '@/store/user';
 import { useI18n } from '@/store/i18n';
+import { logInfo, logDebug } from '@/store/log';
 
 const FORUM_URL = 'https://bbs.upkk.com';
 const CHECK_IN_ENDPOINT = '/plugin.php?id=xnet_core_api:xproj_sign';
@@ -78,8 +79,8 @@ export function CheckInPage() {
           message: data.message ?? '签到完成',
         });
         return;
-      } catch (tauriErr) {
-        console.log('[CheckIn] Tauri HTTP not available, falling back to fetch:', tauriErr);
+      } catch {
+        logDebug('CheckIn', 'Tauri HTTP not available, falling back to fetch');
       }
 
       // Fallback to regular fetch
@@ -118,7 +119,7 @@ export function CheckInPage() {
     try {
       // Use Tauri to open forum in WebView2 window
       await invoke('open_forum_window');
-      console.log('[CheckIn] Forum opened in WebView2 window');
+      logInfo('CheckIn', 'Forum opened in WebView2 window');
     } catch (error) {
       console.error('[CheckIn] Failed to open forum via Tauri:', error);
       // Fallback to shell:open

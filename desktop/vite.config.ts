@@ -38,5 +38,24 @@ export default defineConfig({
     outDir: 'dist',
     target: 'esnext',
     minify: true,
+    rolldownOptions: {
+      output: {
+        manualChunks(id: string) {
+          // Separate vendor chunk for React (cached independently by the browser/WebView)
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+            return 'vendor';
+          }
+          // Separate chunk for Tauri plugins
+          if (id.includes('@tauri-apps/plugin-')) {
+            return 'tauri';
+          }
+          // Separate chunk for Tauri core API (used by many pages)
+          if (id.includes('@tauri-apps/api')) {
+            return 'tauri';
+          }
+        },
+      },
+    },
+    reportCompressedSize: false,
   },
 })

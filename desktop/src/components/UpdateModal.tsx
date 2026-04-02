@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, createContext, useContext, type ReactNode } from 'react';
 import { useI18n } from '@/store/i18n';
+import { logInfo, logWarn } from '@/store/log';
 import { 
   checkForUpdates, 
   openDownloadUrl, 
@@ -83,7 +84,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
         if (result.hasUpdate && result.updateInfo) {
           // Check if user has dismissed this version (unless mandatory)
           if (!result.updateInfo.mandatory && isUpdateDismissed(result.updateInfo.version)) {
-            console.log('[Update] User has dismissed version', result.updateInfo.version);
+            logInfo('Update', `User has dismissed version ${result.updateInfo.version}`);
             return;
           }
           
@@ -91,7 +92,7 @@ export function UpdateProvider({ children }: { children: ReactNode }) {
           setIsOpen(true);
         } else if (result.error) {
           // Silent fail for auto update check - just log it
-          console.warn('[Update] Auto check failed:', result.error);
+          logWarn('Update', `Auto check failed: ${result.error}`);
         }
       } catch (err) {
         console.error('[Update] Unexpected error during auto check:', err);

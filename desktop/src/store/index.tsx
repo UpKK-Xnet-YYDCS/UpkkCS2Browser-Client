@@ -211,20 +211,30 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // When a response comes back, only apply it if the version matches
   const requestVersionRef = useRef(0);
 
-  // Persist state changes
+  // Persist state changes with debounce to avoid excessive localStorage writes during rapid filter changes
+  const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    const toPersist = {
-      favorites: state.favorites,
-      apiBaseUrl: state.apiBaseUrl,
-      selectedRegion: state.selectedRegion,
-      selectedGameType: state.selectedGameType,
-      selectedContinent: state.selectedContinent,
-      selectedGeoRegion: state.selectedGeoRegion,
-      selectedCountry: state.selectedCountry,
-      viewMode: state.viewMode,
-      perPage: state.perPage,
+    if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
+    persistTimerRef.current = setTimeout(() => {
+      const toPersist = {
+        favorites: state.favorites,
+        apiBaseUrl: state.apiBaseUrl,
+        selectedRegion: state.selectedRegion,
+        selectedGameType: state.selectedGameType,
+        selectedContinent: state.selectedContinent,
+        selectedGeoRegion: state.selectedGeoRegion,
+        selectedCountry: state.selectedCountry,
+        viewMode: state.viewMode,
+        perPage: state.perPage,
+      };
+      localStorage.setItem('xproj-desktop-state', JSON.stringify(toPersist));
+    }, 500);
+    return () => {
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
     };
-    localStorage.setItem('xproj-desktop-state', JSON.stringify(toPersist));
   }, [state.favorites, state.apiBaseUrl, state.selectedRegion, state.selectedGameType, state.selectedContinent, state.selectedGeoRegion, state.selectedCountry, state.viewMode, state.perPage]);
 
   // fetchServers accepts optional filter overrides to avoid race conditions with stale state

@@ -6,6 +6,7 @@ import {
   clearCredentials,
   hasStoredCredentials 
 } from '@/services/secureStorage';
+import { logInfo, logDebug, logWarn } from '@/store/log';
 
 const FORUM_URL = 'https://bbs.upkk.com';
 const LOGIN_ENDPOINT = '/plugin.php?id=xnet_core_api:xproj_login';
@@ -133,18 +134,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
       securecode,
     }).toString();
 
-    console.log('[Login] 开始登录请求...');
-    console.log('[Login] URL:', `${FORUM_URL}${LOGIN_ENDPOINT}`);
-    console.log('[Login] SteamID64:', steamid64);
+    logInfo('Login', '开始登录请求...');
+    logDebug('Login', `URL: ${FORUM_URL}${LOGIN_ENDPOINT}`);
+    logDebug('Login', `SteamID64: ${steamid64}`);
 
     // Helper function to process login response
-    const processLoginResponse = async (data: LoginResponse, responseText: string): Promise<boolean> => {
-      console.log('[Login] 响应JSON:', responseText);
-      console.log('[Login] 解析后数据:', JSON.stringify(data, null, 2));
+    const processLoginResponse = async (data: LoginResponse): Promise<boolean> => {
+      logDebug('Login', `响应: success=${data.success}, hasData=${!!data.data}`);
       
       if (data.success && data.data) {
-        console.log('[Login] 登录成功!');
-        console.log('[Login] 用户信息:', JSON.stringify(data.data, null, 2));
+        logInfo('Login', '登录成功!');
+        logDebug('Login', `用户: ${data.data.username} (uid: ${data.data.uid})`);
         const userSession: UserSession = {
           uid: data.data.uid,
           username: data.data.username,
@@ -157,14 +157,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
         
         // Save credentials if remember me is enabled
         if (shouldRemember) {
-          console.log('[Login] 保存加密凭据...');
+          logDebug('Login', '保存加密凭据...');
           try {
             const saveResult = await saveCredentials(steamid64, securecode);
             if (saveResult.success) {
-              console.log('[Login] 凭据已安全保存');
+              logInfo('Login', '凭据已安全保存');
               dispatch({ type: 'SET_HAS_STORED_CREDENTIALS', payload: true });
             } else {
-              console.warn('[Login] 保存凭据失败:', saveResult.message);
+              logWarn('Login', `保存凭据失败: ${saveResult.message}`);
             }
           } catch (saveError) {
             console.error('[Login] 保存凭据异常:', saveError);
@@ -185,7 +185,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     try {
       // Try using Tauri HTTP plugin first (bypasses CORS restrictions)
       try {
-        console.log('[Login] 尝试使用 Tauri HTTP 插件...');
+        logDebug('Login', '尝试使用 Tauri HTTP 插件...');
         const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
         const response = await tauriFetch(`${FORUM_URL}${LOGIN_ENDPOINT}`, {
           method: 'POST',
@@ -195,7 +195,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           body: postBody,
         });
 
-        console.log('[Login] Tauri HTTP 响应状态:', response.status, response.statusText);
+        logDebug('Login', `Tauri HTTP 响应状态: ${response.status} ${response.statusText}`);
 
         if (!response.ok) {
           const errorText = await response.text();
@@ -213,7 +213,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           console.error('[Login] 解析错误:', parseErr);
           throw new Error(`响应解析失败: ${responseText.substring(0, 100)}`);
         }
-        return await processLoginResponse(data, responseText);
+        return await processLoginResponse(data);
       } catch (tauriErr) {
         // Only fall back to regular fetch if Tauri module is not available
         // Check if it's a module import error vs an actual request error
@@ -228,11 +228,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
           console.error('[Login] Tauri HTTP 请求错误:', tauriErr);
           throw tauriErr;
         }
-        console.log('[Login] Tauri HTTP 不可用, 回退到 fetch...');
+        logDebug('Login', 'Tauri HTTP 不可用, 回退到 fetch...');
       }
 
       // Fallback to regular fetch (may fail due to CORS in browser environments)
-      console.log('[Login] 使用标准 fetch...');
+      logDebug('Login', '使用标准 fetch...');
       const response = await fetch(`${FORUM_URL}${LOGIN_ENDPOINT}`, {
         method: 'POST',
         headers: {
@@ -241,7 +241,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         body: postBody,
       });
 
-      console.log('[Login] Fetch 响应状态:', response.status, response.statusText);
+      logDebug('Login', `Fetch 响应状态: ${response.status} ${response.statusText}`);
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -259,7 +259,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         console.error('[Login] 解析错误:', parseErr);
         throw new Error(`响应解析失败: ${responseText.substring(0, 100)}`);
       }
-      return await processLoginResponse(data, responseText);
+      return await processLoginResponse(data);
     } catch (error) {
       console.error('[Login] 登录请求异常!');
       console.error('[Login] 错误类型:', error instanceof Error ? error.constructor.name : typeof error);
@@ -293,7 +293,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     clearCredentials()
       .then(() => {
         dispatch({ type: 'SET_HAS_STORED_CREDENTIALS', payload: false });
-        console.log('[Logout] 已清除保存的凭据');
+        logInfo('Logout', '已清除保存的凭据');
       })
       .catch((error) => {
         console.error('[Logout] 清除凭据失败:', error);
@@ -320,19 +320,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // Auto login using stored credentials
   const attemptAutoLogin = useCallback(async (): Promise<boolean> => {
     if (autoLoginAttempted.current) {
-      console.log('[AutoLogin] 已尝试过自动登录，跳过');
+      logDebug('AutoLogin', '已尝试过自动登录，跳过');
       return false;
     }
     autoLoginAttempted.current = true;
 
-    console.log('[AutoLogin] 尝试自动登录...');
+    logInfo('AutoLogin', '尝试自动登录...');
     dispatch({ type: 'SET_AUTO_LOGGING_IN', payload: true });
 
     try {
       // Check if we have stored credentials
       const hasCredentials = await hasStoredCredentials();
       if (!hasCredentials) {
-        console.log('[AutoLogin] 没有保存的凭据');
+        logDebug('AutoLogin', '没有保存的凭据');
         dispatch({ type: 'SET_AUTO_LOGGING_IN', payload: false });
         return false;
       }
@@ -340,12 +340,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       // Load credentials
       const result = await loadCredentials();
       if (!result.success || !result.steamid64 || !result.securecode) {
-        console.log('[AutoLogin] 加载凭据失败:', result.message);
+        logDebug('AutoLogin', `加载凭据失败: ${result.message}`);
         dispatch({ type: 'SET_AUTO_LOGGING_IN', payload: false });
         return false;
       }
 
-      console.log('[AutoLogin] 凭据加载成功，尝试登录...');
+      logDebug('AutoLogin', '凭据加载成功，尝试登录...');
       
       // Attempt login (don't re-save credentials)
       const loginSuccess = await login(result.steamid64, result.securecode, false);
@@ -353,9 +353,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       dispatch({ type: 'SET_AUTO_LOGGING_IN', payload: false });
       
       if (loginSuccess) {
-        console.log('[AutoLogin] 自动登录成功!');
+        logInfo('AutoLogin', '自动登录成功!');
       } else {
-        console.log('[AutoLogin] 自动登录失败，可能需要重新登录');
+        logWarn('AutoLogin', '自动登录失败，可能需要重新登录');
       }
       
       return loginSuccess;

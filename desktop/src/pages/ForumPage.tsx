@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useUserStore } from '@/store/user';
 import { useI18n } from '@/store/i18n';
+import { logInfo, logDebug } from '@/store/log';
 
 const FORUM_URL = 'https://bbs.upkk.com';
 
@@ -37,25 +38,25 @@ export function ForumPage() {
     setStatus('loading');
     setErrorMessage('');
     
-    console.log('[Forum] Attempting to open forum...');
+    logInfo('Forum', 'Attempting to open forum...');
     
     try {
       // Try to import Tauri API - this will fail in non-Tauri environments
-      console.log('[Forum] Importing Tauri API...');
+      logDebug('Forum', 'Importing Tauri API...');
       if (isLoggedIn && user) {
         // Use POST login with uid and auth
-        console.log('[Forum] Opening forum with POST login for user:', user.username);
+        logInfo('Forum', `Opening forum with POST login for user: ${user.username}`);
         await invoke('open_forum_with_login', { 
           uid: String(user.uid), 
           auth: user.user_auth 
         });
       } else {
         // Open forum without login
-        console.log('[Forum] Opening forum without login');
+        logInfo('Forum', 'Opening forum without login');
         await invoke('open_forum_window');
       }
       
-      console.log('[Forum] Forum window opened successfully');
+      logInfo('Forum', 'Forum window opened successfully');
       setStatus('opened');
     } catch (error) {
       console.error('[Forum] Failed to open forum window:', error);
@@ -108,7 +109,7 @@ export function ForumPage() {
       // Note: External browser can't do POST, so we just open the base forum URL
       const { open } = await import('@tauri-apps/plugin-shell');
       await open(FORUM_URL);
-      console.log('[Forum] Opened in system browser via Tauri shell:', FORUM_URL);
+      logInfo('Forum', `Opened in system browser via Tauri shell: ${FORUM_URL}`);
     } catch (error) {
       console.error('[Forum] Failed to open via Tauri shell, falling back:', error);
       // Fallback to window.location for Tauri environment

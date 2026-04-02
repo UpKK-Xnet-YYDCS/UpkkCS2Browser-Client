@@ -7,7 +7,12 @@ use rand::RngCore;
 use sha2::{Digest, Sha256};
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 use tauri::Manager;
+
+// Cached device ID and derived encryption key (computed once, reused for all operations)
+static CACHED_DEVICE_ID: OnceLock<String> = OnceLock::new();
+static CACHED_DERIVED_KEY: OnceLock<[u8; 32]> = OnceLock::new();
 
 /// Stored credentials structure
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -58,34 +63,39 @@ fn get_or_create_fallback_device_id() -> String {
     hex::encode(random_bytes)
 }
 
-/// Get machine unique identifier for device binding
-fn get_device_id() -> String {
-    match machine_uid::get() {
-        Ok(id) => {
-            // Hash the machine ID for privacy
-            let mut hasher = Sha256::new();
-            hasher.update(id.as_bytes());
-            let result = hasher.finalize();
-            hex::encode(&result[..16]) // Use first 16 bytes
+/// Get machine unique identifier for device binding (cached after first call)
+fn get_device_id() -> &'static str {
+    CACHED_DEVICE_ID.get_or_init(|| {
+        match machine_uid::get() {
+            Ok(id) => {
+                // Hash the machine ID for privacy
+                let mut hasher = Sha256::new();
+                hasher.update(id.as_bytes());
+                let result = hasher.finalize();
+                hex::encode(&result[..16]) // Use first 16 bytes
+            }
+            Err(_) => {
+                // Fallback: generate and persist a unique device ID
+                get_or_create_fallback_device_id()
+            }
         }
-        Err(_) => {
-            // Fallback: generate and persist a unique device ID
-            get_or_create_fallback_device_id()
-        }
-    }
+    })
 }
 
-/// Derive encryption key from device ID and app secret
-fn derive_key(device_id: &str) -> [u8; 32] {
-    let mut hasher = Sha256::new();
-    // Combine device ID with app-specific secret
-    hasher.update(device_id.as_bytes());
-    hasher.update(b"xproj-desktop-secure-v1");
-    hasher.update(b"upkk-credential-protection");
-    let result = hasher.finalize();
-    let mut key = [0u8; 32];
-    key.copy_from_slice(&result);
-    key
+/// Derive encryption key from device ID and app secret (cached after first call)
+fn derive_key() -> &'static [u8; 32] {
+    CACHED_DERIVED_KEY.get_or_init(|| {
+        let device_id = get_device_id();
+        let mut hasher = Sha256::new();
+        // Combine device ID with app-specific secret
+        hasher.update(device_id.as_bytes());
+        hasher.update(b"xproj-desktop-secure-v1");
+        hasher.update(b"upkk-credential-protection");
+        let result = hasher.finalize();
+        let mut key = [0u8; 32];
+        key.copy_from_slice(&result);
+        key
+    })
 }
 
 /// Encrypt data using AES-256-GCM
@@ -103,8 +113,9 @@ fn encrypt_data(data: &str, key: &[u8; 32]) -> Result<String, String> {
         .encrypt(nonce, data.as_bytes())
         .map_err(|e| format!("Encryption failed: {}", e))?;
     
-    // Combine nonce + ciphertext and encode as base64
-    let mut combined = nonce_bytes.to_vec();
+    // Combine nonce + ciphertext and encode as base64 (pre-allocate to avoid realloc)
+    let mut combined = Vec::with_capacity(12 + ciphertext.len());
+    combined.extend_from_slice(&nonce_bytes);
     combined.extend(ciphertext);
     Ok(BASE64_STANDARD.encode(&combined))
 }
@@ -157,13 +168,13 @@ pub async fn save_credentials(
     securecode: String,
 ) -> Result<CredentialResponse, String> {
     let device_id = get_device_id();
-    let key = derive_key(&device_id);
+    let key = derive_key();
     
     // Create credentials object
     let credentials = StoredCredentials {
         steamid64: steamid64.clone(),
         securecode: securecode.clone(),
-        device_id: device_id.clone(),
+        device_id: device_id.to_string(),
         created_at: std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -175,7 +186,7 @@ pub async fn save_credentials(
         .map_err(|e| format!("Serialization failed: {}", e))?;
     
     // Encrypt
-    let encrypted = encrypt_data(&json, &key)?;
+    let encrypted = encrypt_data(&json, key)?;
     
     // Save to file
     let path = get_credentials_path(&app)?;
@@ -196,7 +207,7 @@ pub async fn save_credentials(
 #[tauri::command]
 pub async fn load_credentials(app: tauri::AppHandle) -> Result<CredentialResponse, String> {
     let device_id = get_device_id();
-    let key = derive_key(&device_id);
+    let key = derive_key();
     
     let path = get_credentials_path(&app)?;
     
@@ -215,7 +226,7 @@ pub async fn load_credentials(app: tauri::AppHandle) -> Result<CredentialRespons
         .map_err(|e| format!("Failed to read credentials: {}", e))?;
     
     // Decrypt
-    let json = decrypt_data(&encrypted, &key)?;
+    let json = decrypt_data(&encrypted, key)?;
     
     // Deserialize
     let credentials: StoredCredentials = serde_json::from_str(&json)
@@ -259,7 +270,7 @@ pub async fn clear_credentials(app: tauri::AppHandle) -> Result<CredentialRespon
 /// Get current device ID (for display/debugging)
 #[tauri::command]
 pub async fn get_device_fingerprint() -> Result<String, String> {
-    Ok(get_device_id())
+    Ok(get_device_id().to_string())
 }
 
 /// Check if credentials exist

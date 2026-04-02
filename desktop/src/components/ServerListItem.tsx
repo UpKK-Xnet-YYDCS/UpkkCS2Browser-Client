@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import type { ServerStatus } from '@/types';
 import { useAppStore } from '@/store';
@@ -47,7 +47,7 @@ interface ServerListItemProps {
   onClick?: () => void;
 }
 
-export function ServerListItem({ server, onClick }: ServerListItemProps) {
+function ServerListItemInner({ server, onClick }: ServerListItemProps) {
   const { isFavorite, addFavorite, removeFavorite } = useAppStore();
   const { t } = useI18n();
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
@@ -341,3 +341,21 @@ export function ServerListItem({ server, onClick }: ServerListItemProps) {
     </div>
   );
 }
+
+// Memoize ServerListItem to prevent unnecessary re-renders when parent updates.
+export const ServerListItem = memo(ServerListItemInner, (prev, next) => {
+  const ps = prev.server;
+  const ns = next.server;
+  return (
+    ps.ip === ns.ip &&
+    ps.port === ns.port &&
+    ps.players === ns.players &&
+    ps.max_players === ns.max_players &&
+    ps.bots === ns.bots &&
+    ps.map_name === ns.map_name &&
+    ps.name === ns.name &&
+    ps.Online === ns.Online &&
+    ps.game === ns.game &&
+    prev.onClick === next.onClick
+  );
+});

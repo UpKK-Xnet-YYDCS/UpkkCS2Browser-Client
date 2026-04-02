@@ -5,7 +5,7 @@ import { refreshServer } from '@/api';
 import { buildJoinUrl } from './SteamClientSwitch';
 import { useI18n } from '@/store/i18n';
 import { isTauriAvailable, queryServerA2S } from '@/services/a2s';
-import { logInfo, logWarn, logError } from '@/store/log';
+import { logInfo, logWarn, logError, logDebug } from '@/store/log';
 
 interface AutoJoinModalProps {
   server: ServerStatus;
@@ -139,7 +139,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
           querySuccess = true;
           setUseLocalA2S(true);
           logInfo('AutoJoin', `A2S ${serverIp}:${serverPort} → ${realPlayers}/${maxPlayers}`);
-          console.log('[AutoJoin] Using local A2S query:', { realPlayers, maxPlayers });
+          logDebug('AutoJoin', `Using local A2S query: ${realPlayers}/${maxPlayers}`);
         }
       }
       
@@ -154,7 +154,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
           querySuccess = true;
           setUseLocalA2S(false);
           logInfo('AutoJoin', `API ${serverIp}:${serverPort} → ${realPlayers}/${maxPlayers}`);
-          console.log('[AutoJoin] Using API query:', { realPlayers, maxPlayers });
+          logDebug('AutoJoin', `Using API query: ${realPlayers}/${maxPlayers}`);
         }
       }
       

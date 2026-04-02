@@ -21,6 +21,7 @@ import {
 } from '@/components';
 import type { ServerStatus } from '@/types';
 import { parseServerAddress, queryServerA2S, isTauriAvailable } from '@/services/a2s';
+import { clearResponseCache } from '@/api';
 import { showToast } from '@/components/ToastNotification';
 
 /** Check if a server is considered online (has game, players capacity, or Online flag) */
@@ -370,27 +371,32 @@ export function HomePage() {
   }, [favServers]);
 
   // Compute displayed servers and pagination for favorites-only mode
-  // Apply local search filtering on favServers and offline filtering
+  // Layered useMemo chain: each filter stage only re-runs when its specific dependency changes
+  
+  // Stage 1: Online/offline filter
+  const onlineFavServers = useMemo(() => {
+    if (showOfflineServers) return favServers;
+    return favServers.filter(s => isServerOnline(s));
+  }, [favServers, showOfflineServers]);
+
+  // Stage 2: Game filter (depends on stage 1)
+  const gameFavServers = useMemo(() => {
+    if (!favGameFilter) return onlineFavServers;
+    return onlineFavServers.filter(s => (s.game?.trim() || '') === favGameFilter);
+  }, [onlineFavServers, favGameFilter]);
+
+  // Stage 3: Search filter (depends on stage 2)
   const filteredFavServers = useMemo(() => {
-    let result = favServers;
-    // Filter out offline servers unless showOfflineServers is enabled
-    if (!showOfflineServers) {
-      result = result.filter(s => isServerOnline(s));
-    }
-    // Game filter
-    if (favGameFilter) {
-      result = result.filter(s => (s.game?.trim() || '') === favGameFilter);
-    }
-    if (!favSearchQuery.trim()) return result;
+    if (!favSearchQuery.trim()) return gameFavServers;
     const q = favSearchQuery.toLowerCase();
-    return result.filter(s => {
+    return gameFavServers.filter(s => {
       const name = (s.name || '').toLowerCase();
       const addr = `${s.ip}:${s.port}`.toLowerCase();
       const map = (s.map_name || '').toLowerCase();
       const game = (s.game || '').toLowerCase();
       return name.includes(q) || addr.includes(q) || map.includes(q) || game.includes(q);
     });
-  }, [favServers, favSearchQuery, showOfflineServers, favGameFilter]);
+  }, [gameFavServers, favSearchQuery]);
 
   const favTotalPages = Math.max(1, Math.ceil(filteredFavServers.length / perPage));
 
@@ -409,7 +415,7 @@ export function HomePage() {
   const displayedServers = useMemo(() => {
     // Geo filters (continent/geo_region/country) are applied server-side via API params,
     // so no client-side filtering is needed here. Just paginate local favorites.
-    let result = showFavoritesOnly 
+    const result = showFavoritesOnly 
       ? filteredFavServers.slice((favPage - 1) * perPage, (favPage - 1) * perPage + perPage)
       : servers;
     return result;
@@ -452,7 +458,8 @@ export function HomePage() {
       
       setCountdown(prev => {
         if (prev <= 1) {
-          // Time to refresh - use refs to get latest values to avoid race conditions
+          // Time to refresh — clear cache so auto-refresh always fetches fresh data
+          clearResponseCache();
           const currentFilters = filtersRef.current;
           fetchServers(currentPageRef.current, {
             searchQuery: currentFilters.searchQuery,
@@ -532,6 +539,7 @@ export function HomePage() {
   }, [searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage, fetchServers, fetchMetadata]);
 
   const handleRefresh = () => {
+    clearResponseCache(); // Bust cache so manual refresh always fetches fresh data
     setIsManualRefresh(true);
     if (showFavoritesOnly) {
       fetchFavServers();

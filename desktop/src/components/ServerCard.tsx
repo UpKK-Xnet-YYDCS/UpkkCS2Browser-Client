@@ -1,6 +1,6 @@
 import type { ServerStatus } from '@/types';
 import { useAppStore } from '@/store';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '@/api';
 import { buildJoinUrl } from './SteamClientSwitch';
@@ -78,7 +78,7 @@ interface ServerCardProps {
   hideCloudFavorite?: boolean;
 }
 
-export function ServerCard({ server, onClick, onFavoriteChange, hideCloudFavorite }: ServerCardProps) {
+function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite }: ServerCardProps) {
   const { isFavorite: isLocalFavorite, addFavorite: addLocalFavorite, removeFavorite: removeLocalFavorite } = useAppStore();
   const { t } = useI18n();
   const [imageError, setImageError] = useState(false);
@@ -521,3 +521,24 @@ export function ServerCard({ server, onClick, onFavoriteChange, hideCloudFavorit
     </div>
   );
 }
+
+// Memoize ServerCard to prevent unnecessary re-renders when parent updates.
+// Only re-render when server identity or dynamic data changes.
+export const ServerCard = memo(ServerCardInner, (prev, next) => {
+  const ps = prev.server;
+  const ns = next.server;
+  return (
+    ps.ip === ns.ip &&
+    ps.port === ns.port &&
+    ps.players === ns.players &&
+    ps.max_players === ns.max_players &&
+    ps.bots === ns.bots &&
+    ps.map_name === ns.map_name &&
+    ps.name === ns.name &&
+    ps.Online === ns.Online &&
+    ps.game === ns.game &&
+    prev.onClick === next.onClick &&
+    prev.onFavoriteChange === next.onFavoriteChange &&
+    prev.hideCloudFavorite === next.hideCloudFavorite
+  );
+});
