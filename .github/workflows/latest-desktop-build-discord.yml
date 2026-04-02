@@ -175,7 +175,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: release-assets
           merge-multiple: true
@@ -198,9 +198,9 @@ jobs:
           git push origin "v${{ inputs.version }}"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: "v${{ inputs.version }}"
+          tag: "v${{ inputs.version }}"
           name: "🚀 ${{ env.APP_NAME }} v${{ inputs.version }}"
           draft: ${{ inputs.draft }}
           prerelease: ${{ inputs.prerelease }}
@@ -214,14 +214,8 @@ jobs:
             | 🍎 Mac-intel | `${{ env.APP_NAME }}-v${{ inputs.version }}-Mac-intel.dmg` | Intel 芯片 |
             | 🐧 Linux | `${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.AppImage` | 通用版 / Universal |
             | 🐧 Linux | `${{ env.APP_NAME }}-v${{ inputs.version }}-Linux.deb` | Debian / Ubuntu |
-          files: |
-            release-assets/**/*.exe
-            release-assets/**/*.AppImage
-            release-assets/**/*.deb
-            release-assets/**/*.dmg
-          fail_on_unmatched_files: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          artifacts: "release-assets/**/*.exe,release-assets/**/*.AppImage,release-assets/**/*.deb,release-assets/**/*.dmg"
+          artifactErrorsFailBuild: false
 
       - name: Notify Discord - Release Published
         if: success()
