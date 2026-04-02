@@ -72,7 +72,7 @@ jobs:
              "desktop/src-tauri/target/release/${{ env.APP_NAME }}-Windows.exe"
 
       - name: Upload Windows portable exe
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xproj-desktop-Windows
           path: desktop/src-tauri/target/release/${{ env.APP_NAME }}-Windows.exe
@@ -133,7 +133,7 @@ jobs:
           done
 
       - name: Upload Linux AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xproj-desktop-Linux-AppImage
           path: desktop/src-tauri/target/release/bundle/appimage/${{ env.APP_NAME }}-Linux.AppImage
@@ -147,7 +147,7 @@ jobs:
           done
 
       - name: Upload Linux deb
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xproj-desktop-Linux-deb
           path: desktop/src-tauri/target/release/bundle/deb/${{ env.APP_NAME }}-Linux.deb
@@ -211,7 +211,7 @@ jobs:
           done
 
       - name: Upload Mac-intel DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xproj-desktop-Mac-intel
           path: desktop/src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/${{ env.APP_NAME }}-Mac-intel.dmg
@@ -275,7 +275,7 @@ jobs:
           done
 
       - name: Upload Mac-arm DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: xproj-desktop-Mac-arm
           path: desktop/src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/${{ env.APP_NAME }}-Mac-arm.dmg

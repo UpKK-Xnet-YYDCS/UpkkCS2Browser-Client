@@ -126,7 +126,7 @@ jobs:
 
       - name: Upload Windows artifacts
         if: matrix.label == 'Windows'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-Windows
           path: desktop/src-tauri/target/${{ matrix.rust_target }}/release/${{ env.APP_NAME }}-v${{ inputs.version }}-Windows.exe
@@ -146,7 +146,7 @@ jobs:
 
       - name: Upload Linux artifacts
         if: matrix.label == 'Linux'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-Linux
           path: |
@@ -165,7 +165,7 @@ jobs:
 
       - name: Upload macOS artifacts
         if: matrix.label == 'Mac-intel' || matrix.label == 'Mac-arm'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: artifacts-${{ matrix.label }}
           path: desktop/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/${{ env.APP_NAME }}-v${{ inputs.version }}-${{ matrix.label }}.dmg
