@@ -240,6 +240,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // fetchServers accepts optional filter overrides to avoid race conditions with stale state
   // When filters parameter is provided, use those values instead of current state
   const fetchServers = useCallback(async (page = 1, filters?: FetchFilters) => {
+    // Cancel any in-progress prefetch since we're fetching a new page
+    api.cancelPrefetch();
+
     // Increment request version to invalidate any in-flight requests
     requestVersionRef.current += 1;
     const currentVersion = requestVersionRef.current;
@@ -266,6 +269,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     
     try {
       let result;
+      let resultPage = page;
+      let resultTotalPages = 0;
       if (searchQuery) {
         result = await api.searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter);
         
@@ -274,13 +279,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         
+        resultPage = result.page || 1;
+        resultTotalPages = result.total_pages || 0;
         dispatch({
           type: 'SET_SERVERS',
           payload: {
             servers: result.servers || [],
             total: result.count || 0,
-            page: result.page || 1,
-            totalPages: result.total_pages || 0,
+            page: resultPage,
+            totalPages: resultTotalPages,
           },
         });
       } else if (selectedCategory) {
@@ -291,13 +298,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
           return;
         }
         
+        resultPage = result.page || 1;
+        resultTotalPages = result.total_pages || 0;
         dispatch({
           type: 'SET_SERVERS',
           payload: {
             servers: result.servers || [],
             total: result.total || 0,
-            page: result.page || 1,
-            totalPages: result.total_pages || 0,
+            page: resultPage,
+            totalPages: resultTotalPages,
           },
         });
       } else {
@@ -311,6 +320,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         
         // Handle both array response and paginated response
         if (Array.isArray(servers)) {
+          resultPage = 1;
+          resultTotalPages = 1;
           dispatch({
             type: 'SET_SERVERS',
             payload: {
@@ -321,17 +332,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
             },
           });
         } else {
+          resultPage = servers.page || 1;
+          resultTotalPages = servers.total_pages || 0;
           dispatch({
             type: 'SET_SERVERS',
             payload: {
               servers: servers.servers || [],
               total: servers.total || 0,
-              page: servers.page || 1,
-              totalPages: servers.total_pages || 0,
+              page: resultPage,
+              totalPages: resultTotalPages,
             },
           });
         }
       }
+
+      // Trigger background prefetch of upcoming pages
+      api.prefetchServerPages({
+        currentPage: resultPage,
+        totalPages: resultTotalPages,
+        searchQuery: searchQuery || undefined,
+        selectedCategory,
+        selectedRegion,
+        selectedGameType,
+        perPage,
+        geoFilter,
+      });
     } catch (error) {
       // Only dispatch error if this is still the latest request
       if (requestVersionRef.current !== currentVersion) {

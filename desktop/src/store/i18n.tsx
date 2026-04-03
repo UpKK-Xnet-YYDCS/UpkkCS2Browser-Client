@@ -93,6 +93,14 @@ export interface Translations {
   refreshCustom: string;
   refreshCustomSeconds: string;
   refreshCustomHint: string;
+
+  // Page prefetch
+  prefetchPages: string;
+  prefetchPagesDesc: string;
+  prefetchPagesHint: string;
+  prefetchOff: string;
+  prefetchPagesOption: string;
+  prefetchEnabled: string;
   
   // Clear data modal
   confirmClearData: string;
@@ -644,6 +652,14 @@ const en: Translations = {
   refreshCustom: 'Custom',
   refreshCustomSeconds: 'seconds',
   refreshCustomHint: 'Enter an integer, minimum 10 seconds',
+
+  // Page prefetch
+  prefetchPages: 'Page Prefetch',
+  prefetchPagesDesc: 'Silently preload upcoming pages for faster navigation',
+  prefetchPagesHint: 'When browsing the server list, preload the next pages in the background so flipping is instant',
+  prefetchOff: 'Off',
+  prefetchPagesOption: ' pages',
+  prefetchEnabled: 'Prefetch enabled, preloading next',
   
   confirmClearData: 'Confirm Clear Data',
   clearDataWarning: 'Are you sure you want to clear all app data? This will:',
@@ -1177,6 +1193,14 @@ const ja: Translations = {
   refreshCustom: 'カスタム',
   refreshCustomSeconds: '秒',
   refreshCustomHint: '整数を入力してください、最小10秒',
+
+  // Page prefetch
+  prefetchPages: 'ページプリフェッチ',
+  prefetchPagesDesc: '次のページを事前に読み込んでページ切り替えを高速化',
+  prefetchPagesHint: 'サーバーリスト閲覧時に、次のページをバックグラウンドで先読みし、ページ移動を瞬時に',
+  prefetchOff: 'オフ',
+  prefetchPagesOption: ' ページ',
+  prefetchEnabled: 'プリフェッチ有効、次を先読み中:',
   
   confirmClearData: 'データ消去の確認',
   clearDataWarning: '本当に全てのアプリデータを消去しますか？以下が消去されます:',
@@ -1710,6 +1734,14 @@ const zhCN: Translations = {
   refreshCustom: '自定义',
   refreshCustomSeconds: '秒',
   refreshCustomHint: '请输入整数，最低10秒',
+
+  // Page prefetch
+  prefetchPages: '页面预加载',
+  prefetchPagesDesc: '静默预加载后续页面，加快翻页速度',
+  prefetchPagesHint: '浏览服务器列表时，后台预加载接下来的页面，让翻页操作即时响应',
+  prefetchOff: '关闭',
+  prefetchPagesOption: ' 页',
+  prefetchEnabled: '预加载已启用，预加载接下来',
   
   confirmClearData: '确认清空数据',
   clearDataWarning: '您确定要清空所有程序数据吗？此操作将：',
@@ -2243,6 +2275,14 @@ const zhTW: Translations = {
   refreshCustom: '自訂',
   refreshCustomSeconds: '秒',
   refreshCustomHint: '請輸入整數，最低10秒',
+
+  // Page prefetch
+  prefetchPages: '頁面預載入',
+  prefetchPagesDesc: '靜默預載入後續頁面，加快翻頁速度',
+  prefetchPagesHint: '瀏覽伺服器列表時，背景預載入接下來的頁面，讓翻頁操作即時回應',
+  prefetchOff: '關閉',
+  prefetchPagesOption: ' 頁',
+  prefetchEnabled: '預載入已啟用，預載入接下來',
   
   confirmClearData: '確認清除資料',
   clearDataWarning: '您確定要清除所有程式資料嗎？此操作將：',
@@ -2776,6 +2816,14 @@ const ko: Translations = {
   refreshCustom: '사용자 지정',
   refreshCustomSeconds: '초',
   refreshCustomHint: '정수를 입력하세요, 최소 10초',
+
+  // Page prefetch
+  prefetchPages: '페이지 사전 로드',
+  prefetchPagesDesc: '다음 페이지를 미리 로드하여 빠른 탐색',
+  prefetchPagesHint: '서버 목록 탐색 시 다음 페이지를 백그라운드에서 미리 로드하여 페이지 전환을 즉시 수행',
+  prefetchOff: '끄기',
+  prefetchPagesOption: ' 페이지',
+  prefetchEnabled: '사전 로드 활성화, 다음 미리 로드:',
   
   confirmClearData: '데이터 삭제 확인',
   clearDataWarning: '모든 앱 데이터를 삭제하시겠습니까? 다음이 삭제됩니다:',

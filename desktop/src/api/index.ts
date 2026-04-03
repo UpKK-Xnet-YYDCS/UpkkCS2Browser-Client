@@ -111,6 +111,106 @@ export function clearResponseCache(): void {
   responseCache.clear();
 }
 
+// --- Page prefetch support ---
+// Silently fetches upcoming server list pages into the response cache
+// so that page navigation feels instant.
+
+const PREFETCH_DELAY_MS = 300; // Delay between sequential prefetch requests
+const PREFETCH_PAGES_KEY = 'prefetchPages';
+const DEFAULT_PREFETCH_PAGES = 5;
+
+let prefetchVersion = 0;
+
+/** Get the configured number of pages to prefetch (0 = disabled, default = 5). */
+export function getPrefetchPages(): number {
+  try {
+    const saved = localStorage.getItem(PREFETCH_PAGES_KEY);
+    if (saved !== null) {
+      const n = parseInt(saved, 10);
+      return isNaN(n) || n < 0 ? DEFAULT_PREFETCH_PAGES : n;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_PREFETCH_PAGES;
+}
+
+/** Set the number of pages to prefetch (0 = disabled). */
+export function setPrefetchPages(n: number): void {
+  localStorage.setItem(PREFETCH_PAGES_KEY, String(Math.max(0, Math.floor(n))));
+}
+
+/** Cancel any in-progress prefetch sequence. */
+export function cancelPrefetch(): void {
+  prefetchVersion++;
+}
+
+/** Parameters for prefetching server list pages. */
+export interface PrefetchParams {
+  currentPage: number;
+  totalPages: number;
+  searchQuery?: string;
+  selectedCategory?: string | null;
+  selectedRegion?: ServerRegion;
+  selectedGameType?: GameType;
+  perPage?: number;
+  geoFilter?: GeoFilterParams;
+}
+
+/**
+ * Prefetch upcoming server list pages into the response cache.
+ * Fetches pages sequentially with a short delay to avoid overloading the server.
+ * Automatically cancelled when a new prefetch or cancelPrefetch() is called.
+ */
+export function prefetchServerPages(params: PrefetchParams): void {
+  const count = getPrefetchPages();
+  if (count <= 0) return;
+
+  const version = ++prefetchVersion;
+  const { currentPage, totalPages, searchQuery, selectedCategory, selectedRegion, selectedGameType, perPage, geoFilter } = params;
+
+  // Calculate pages to prefetch (next N pages after current)
+  const pagesToFetch: number[] = [];
+  for (let i = 1; i <= count && currentPage + i <= totalPages; i++) {
+    pagesToFetch.push(currentPage + i);
+  }
+
+  if (pagesToFetch.length === 0) return;
+
+  logDebug('Prefetch', `Queued pages ${pagesToFetch.join(', ')} (from page ${currentPage})`);
+
+  // Sequentially prefetch with delay between requests
+  (async () => {
+    for (const page of pagesToFetch) {
+      // Check if this prefetch sequence is still valid
+      if (prefetchVersion !== version) {
+        logDebug('Prefetch', 'Cancelled (superseded)');
+        return;
+      }
+
+      try {
+        if (searchQuery) {
+          await searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter);
+        } else if (selectedCategory) {
+          await getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType, geoFilter);
+        } else {
+          await getServers(selectedRegion, page, perPage, selectedGameType, geoFilter);
+        }
+        logDebug('Prefetch', `Page ${page} cached`);
+      } catch {
+        // Silently ignore prefetch errors — they are non-critical
+        logDebug('Prefetch', `Page ${page} failed (ignored)`);
+      }
+
+      // Delay before next prefetch to keep rate gentle
+      if (prefetchVersion !== version) return;
+      await new Promise(r => setTimeout(r, PREFETCH_DELAY_MS));
+      if (prefetchVersion !== version) {
+        logDebug('Prefetch', 'Cancelled after delay (superseded)');
+        return;
+      }
+    }
+  })();
+}
+
 // Generic fetch wrapper with detailed error handling and in-flight deduplication.
 // Uses Tauri HTTP plugin for better CORS support, falls back to regular fetch.
 // Automatically includes API token in Authorization header if available.
