@@ -45,6 +45,6 @@ A modern game server browser desktop client built with **Tauri + React + TypeScr
 - **桌面框架**: [Tauri 2.x](https://tauri.app/) (Rust)
 - **前端框架**: React 19 + TypeScript
 - **样式**: Tailwind CSS 4
-- **构建工具**: Vite 7
+- **构建工具**: Vite 8
 - **状态管理**: React Context + useReducer (无外部依赖)
 - **HTTP请求**: 原生 Fetch API (无外部依赖)
