@@ -6,7 +6,7 @@ A modern game server browser desktop client built with **Tauri + React + TypeScr
 
 - 🚀 **High Performance** — Built with Tauri (Rust backend), low memory usage, fast startup
 - 🎨 **Modern UI** — Powered by React 19 + Tailwind CSS 4, with full dark mode support
-- 🔌 **API Integration** — Complete对接 with the XProj backend API
+- 🔌 **API Integration** — Complete with the UpkkServers(https://servers.upkk.com/)  backend API
 - ⭐ **Favorites** — Locally save and manage your favorite servers
 - 🔍 **Search** — Filter servers by name, map, IP address, and more
 - 🌍 **Region Filtering** — Browse servers by geographic region
@@ -33,7 +33,7 @@ A modern game server browser desktop client built with **Tauri + React + TypeScr
 
 - 🚀 **高性能**: 基于 Tauri (Rust) 构建，内存占用低，启动速度快
 - 🎨 **现代化UI**: 使用 React 19 + Tailwind CSS 4，支持暗色模式
-- 🔌 **API对接**: 与 XProj 后端 API 完全对接
+- 🔌 **API对接**: 与 XProj 后端 API  UpkkServers(https://servers.upkk.com/) 完全对接
 - ⭐ **收藏功能**: 本地收藏喜爱的服务器
 - 🔍 **搜索功能**: 支持服务器名称、地图、IP搜索
 - 🌍 **区域筛选**: 按地区筛选服务器
