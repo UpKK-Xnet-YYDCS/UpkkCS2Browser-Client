@@ -1,31 +1,10 @@
 # XProj Desktop
 
-现代化的游戏服务器浏览器桌面客户端，基于 Tauri + React + TypeScript 构建。
-
-## 特性
-
-- 🚀 **高性能**: 基于 Tauri (Rust) 构建，内存占用低，启动速度快
-- 🎨 **现代化UI**: 使用 React 19 + Tailwind CSS 4，支持暗色模式
-- 🔌 **API对接**: 与 XProj 后端 API 完全对接
-- ⭐ **收藏功能**: 本地收藏喜爱的服务器
-- 🔍 **搜索功能**: 支持服务器名称、地图、IP搜索
-- 🌍 **区域筛选**: 按地区筛选服务器
-- 📦 **轻量安装包**: 约 10MB (vs Electron 150MB+)
-
-## 技术栈
-
-- **桌面框架**: [Tauri 2.x](https://tauri.app/) (Rust)
-- **前端框架**: React 19 + TypeScript
-- **样式**: Tailwind CSS 4
-- **构建工具**: Vite 7
-- **状态管理**: React Context + useReducer (无外部依赖)
-- **HTTP请求**: 原生 Fetch API (无外部依赖)
-
 ## 开发
 
 ### 环境要求
 
-- Node.js 20+
+- Node.js 25+
 - Rust (通过 [rustup](https://rustup.rs/) 安装)
 - Windows: Microsoft Visual Studio C++ Build Tools
 - Linux: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev`
