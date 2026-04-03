@@ -42,6 +42,12 @@ export interface FetchFilters {
   perPage?: number;
 }
 
+/** Options that control how fetchServers behaves. */
+export interface FetchOptions {
+  /** When true the fetch runs silently: no loading spinner, no prefetch cancellation, and errors are swallowed. */
+  silent?: boolean;
+}
+
 // Action types
 type Action =
   | { type: 'SET_LOADING'; payload: boolean }
@@ -178,7 +184,7 @@ function appReducer(state: AppState, action: Action): AppState {
 
 // Context
 interface AppContextType extends AppState {
-  fetchServers: (page?: number, filters?: FetchFilters) => Promise<void>;
+  fetchServers: (page?: number, filters?: FetchFilters, options?: FetchOptions) => Promise<void>;
   fetchCategories: () => Promise<void>;
   fetchStats: () => Promise<void>;
   fetchMetadata: () => Promise<void>;
@@ -239,16 +245,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // fetchServers accepts optional filter overrides to avoid race conditions with stale state
   // When filters parameter is provided, use those values instead of current state
-  const fetchServers = useCallback(async (page = 1, filters?: FetchFilters) => {
-    // Cancel any in-progress prefetch since we're fetching a new page
-    api.cancelPrefetch();
+  // options.silent: when true, fetches fresh data in the background without loading spinner or prefetch cancellation
+  const fetchServers = useCallback(async (page = 1, filters?: FetchFilters, options?: FetchOptions) => {
+    const silent = options?.silent ?? false;
+
+    // Cancel any in-progress prefetch only for non-silent fetches (user-driven navigation)
+    if (!silent) {
+      api.cancelPrefetch();
+    }
 
     // Increment request version to invalidate any in-flight requests
     requestVersionRef.current += 1;
     const currentVersion = requestVersionRef.current;
-    
-    dispatch({ type: 'SET_LOADING', payload: true });
-    dispatch({ type: 'SET_ERROR', payload: null });
     
     // Use provided filters or fall back to current state
     const searchQuery = filters?.searchQuery ?? state.searchQuery;
@@ -266,98 +274,139 @@ export function AppProvider({ children }: { children: ReactNode }) {
       geo_region: selectedGeoRegion,
       country: selectedCountry,
     };
+
+    // --- Cache-aware loading: skip spinner when the target page is already cached ---
+    const endpoint = api.buildServerListEndpoint({
+      searchQuery: searchQuery || undefined,
+      selectedCategory,
+      selectedRegion,
+      selectedGameType,
+      page,
+      perPage,
+      geoFilter,
+    });
+    const isCacheHit = api.hasCachedResponse(endpoint);
+
+    // Only show loading spinner for non-silent, non-cached fetches
+    if (!silent && !isCacheHit) {
+      dispatch({ type: 'SET_LOADING', payload: true });
+    }
+    if (!silent) {
+      dispatch({ type: 'SET_ERROR', payload: null });
+    }
     
-    try {
-      let result;
-      let resultPage = page;
-      let resultTotalPages = 0;
-      if (searchQuery) {
-        result = await api.searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter);
-        
-        // Check if this request is still the latest one - discard stale responses
-        if (requestVersionRef.current !== currentVersion) {
-          return;
-        }
-        
-        resultPage = result.page || 1;
-        resultTotalPages = result.total_pages || 0;
-        dispatch({
-          type: 'SET_SERVERS',
-          payload: {
-            servers: result.servers || [],
-            total: result.count || 0,
-            page: resultPage,
-            totalPages: resultTotalPages,
-          },
-        });
-      } else if (selectedCategory) {
-        result = await api.getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType, geoFilter);
-        
-        // Check if this request is still the latest one - discard stale responses
-        if (requestVersionRef.current !== currentVersion) {
-          return;
-        }
-        
-        resultPage = result.page || 1;
-        resultTotalPages = result.total_pages || 0;
-        dispatch({
-          type: 'SET_SERVERS',
-          payload: {
-            servers: result.servers || [],
-            total: result.total || 0,
-            page: resultPage,
-            totalPages: resultTotalPages,
-          },
-        });
-      } else {
-        // The API returns an array directly, not a paginated object
-        const servers = await api.getServers(selectedRegion, page, perPage, selectedGameType, geoFilter);
-        
-        // Check if this request is still the latest one - discard stale responses
-        if (requestVersionRef.current !== currentVersion) {
-          return;
-        }
-        
-        // Handle both array response and paginated response
-        if (Array.isArray(servers)) {
-          resultPage = 1;
-          resultTotalPages = 1;
-          dispatch({
-            type: 'SET_SERVERS',
-            payload: {
-              servers: servers,
-              total: servers.length,
-              page: 1,
-              totalPages: 1,
-            },
-          });
+    // Helper: call the right API function.
+    // When bypassCache is true, use refreshEndpoint to bypass the cache read and get fresh data.
+    const fetchEndpoint = async (bypassCache: boolean) => {
+      if (bypassCache) {
+        if (searchQuery) {
+          return { type: 'search' as const, data: await api.refreshEndpoint<import('@/types').SearchResponse>(endpoint) };
+        } else if (selectedCategory) {
+          return { type: 'category' as const, data: await api.refreshEndpoint<import('@/types').PaginatedResponse<import('@/types').ServerStatus>>(endpoint) };
         } else {
-          resultPage = servers.page || 1;
-          resultTotalPages = servers.total_pages || 0;
-          dispatch({
-            type: 'SET_SERVERS',
-            payload: {
-              servers: servers.servers || [],
-              total: servers.total || 0,
-              page: resultPage,
-              totalPages: resultTotalPages,
-            },
-          });
+          return { type: 'default' as const, data: await api.refreshEndpoint<import('@/types').ServerStatus[] | import('@/types').PaginatedResponse<import('@/types').ServerStatus>>(endpoint) };
         }
       }
+      // Normal mode: uses cache-aware fetchWithRetry via the public API functions
+      if (searchQuery) {
+        return { type: 'search' as const, data: await api.searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter) };
+      } else if (selectedCategory) {
+        return { type: 'category' as const, data: await api.getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType, geoFilter) };
+      } else {
+        return { type: 'default' as const, data: await api.getServers(selectedRegion, page, perPage, selectedGameType, geoFilter) };
+      }
+    };
 
-      // Trigger background prefetch of upcoming pages
-      api.prefetchServerPages({
-        currentPage: resultPage,
-        totalPages: resultTotalPages,
-        searchQuery: searchQuery || undefined,
-        selectedCategory,
-        selectedRegion,
-        selectedGameType,
-        perPage,
-        geoFilter,
-      });
+    // Helper: extract page info from a fetch result.
+    type FetchResult = Awaited<ReturnType<typeof fetchEndpoint>>;
+    const getPageInfo = (result: FetchResult, fallbackPage: number): { resultPage: number; resultTotalPages: number } => {
+      if (result.type === 'search') {
+        const data = result.data;
+        return {
+          resultPage: data.page || fallbackPage,
+          resultTotalPages: data.total_pages || 0,
+        };
+      } else if (result.type === 'category') {
+        const data = result.data;
+        return {
+          resultPage: data.page || fallbackPage,
+          resultTotalPages: data.total_pages || 0,
+        };
+      } else {
+        const servers = result.data;
+        if (Array.isArray(servers)) {
+          return { resultPage: 1, resultTotalPages: 1 };
+        } else {
+          return {
+            resultPage: servers.page || fallbackPage,
+            resultTotalPages: servers.total_pages || 0,
+          };
+        }
+      }
+    };
+
+    // Helper: dispatch server data from a fetch result into the store.
+    const dispatchServers = (result: FetchResult, fallbackPage: number): void => {
+      if (result.type === 'search') {
+        const data = result.data;
+        dispatch({ type: 'SET_SERVERS', payload: { servers: data.servers || [], total: data.count || 0, page: data.page || fallbackPage, totalPages: data.total_pages || 0 } });
+      } else if (result.type === 'category') {
+        const data = result.data;
+        dispatch({ type: 'SET_SERVERS', payload: { servers: data.servers || [], total: data.total || 0, page: data.page || fallbackPage, totalPages: data.total_pages || 0 } });
+      } else {
+        const servers = result.data;
+        if (Array.isArray(servers)) {
+          dispatch({ type: 'SET_SERVERS', payload: { servers, total: servers.length, page: 1, totalPages: 1 } });
+        } else {
+          dispatch({ type: 'SET_SERVERS', payload: { servers: servers.servers || [], total: servers.total || 0, page: servers.page || fallbackPage, totalPages: servers.total_pages || 0 } });
+        }
+      }
+    };
+
+    try {
+      const result = await fetchEndpoint(/* bypassCache */ silent);
+
+      // Check if this request is still the latest one - discard stale responses
+      if (requestVersionRef.current !== currentVersion) {
+        return;
+      }
+
+      const { resultPage, resultTotalPages } = getPageInfo(result, page);
+      dispatchServers(result, page);
+
+      // Trigger background prefetch of upcoming pages (skip for silent refreshes
+      // since prefetched data is still valid from the previous non-silent fetch).
+      if (!silent) {
+        api.prefetchServerPages({
+          currentPage: resultPage,
+          totalPages: resultTotalPages,
+          searchQuery: searchQuery || undefined,
+          selectedCategory,
+          selectedRegion,
+          selectedGameType,
+          perPage,
+          geoFilter,
+        });
+      }
+
+      // Stale-while-revalidate: when a non-silent fetch was served from cache,
+      // schedule a deferred silent refresh so the user sees up-to-date data.
+      if (!silent && isCacheHit) {
+        setTimeout(async () => {
+          if (requestVersionRef.current !== currentVersion) return;
+          try {
+            const freshResult = await fetchEndpoint(/* bypassCache */ true);
+            if (requestVersionRef.current !== currentVersion) return;
+            dispatchServers(freshResult, page);
+          } catch {
+            // Silently ignore background refresh errors
+          }
+        }, 500);
+      }
     } catch (error) {
+      // Silent mode: swallow errors — background refresh failures should not disrupt UX
+      if (silent) return;
+
       // Only dispatch error if this is still the latest request
       if (requestVersionRef.current !== currentVersion) {
         return;

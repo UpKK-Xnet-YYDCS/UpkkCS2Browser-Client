@@ -458,8 +458,8 @@ export function HomePage() {
       
       setCountdown(prev => {
         if (prev <= 1) {
-          // Time to refresh — clear cache so auto-refresh always fetches fresh data
-          clearResponseCache();
+          // Silent auto-refresh: fetch fresh data without disrupting UX
+          // No cache clearing needed — silent mode bypasses cache read and writes fresh data
           const currentFilters = filtersRef.current;
           fetchServers(currentPageRef.current, {
             searchQuery: currentFilters.searchQuery,
@@ -470,7 +470,7 @@ export function HomePage() {
             selectedGeoRegion: currentFilters.selectedGeoRegion,
             selectedCountry: currentFilters.selectedCountry,
             perPage: currentFilters.perPage,
-          });
+          }, { silent: true });
           fetchStats();
           return refreshInterval; // Reset countdown
         }

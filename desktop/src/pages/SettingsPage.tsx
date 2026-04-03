@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { useAppStore } from '@/store';
 import { useTheme, type ColorRegion } from '@/store/theme';
 import { useI18n, languageLabels, type Language } from '@/store/i18n';
-import { getApiBaseUrl, XPROJ_USER_AGENT, getPrefetchPages, setPrefetchPages } from '@/api';
+import { getApiBaseUrl, XPROJ_USER_AGENT, getPrefetchPages, setPrefetchPages, getPrefetchDelay, setPrefetchDelay } from '@/api';
 import { RGBAColorPicker } from '@/components/RGBAColorPicker';
 import { useUpdateCheck } from '@/components/UpdateModal';
 import { APP_VERSION } from '@/services/update';
@@ -116,6 +116,7 @@ export function SettingsPage() {
     return saved ? parseInt(saved, 10) : DEFAULT_AUTO_REFRESH_INTERVAL;
   });
   const [prefetchPagesCount, setPrefetchPagesCount] = useState(getPrefetchPages);
+  const [prefetchDelayMs, setPrefetchDelayMs] = useState(getPrefetchDelay);
   const [saved, setSaved] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
@@ -529,6 +530,31 @@ export function SettingsPage() {
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                         </svg>
                         {t.prefetchEnabled} {prefetchPagesCount}{t.prefetchPagesOption}
+                      </p>
+                    </div>
+                  )}
+                  {prefetchPagesCount > 0 && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                        {t.prefetchDelayDesc}
+                      </label>
+                      <select
+                        value={prefetchDelayMs}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          setPrefetchDelayMs(val);
+                          setPrefetchDelay(val);
+                        }}
+                        className="w-full px-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                      >
+                        <option value={50}>50ms</option>
+                        <option value={100}>100ms</option>
+                        <option value={150}>150ms</option>
+                        <option value={200}>200ms</option>
+                        <option value={300}>300ms</option>
+                      </select>
+                      <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                        {t.prefetchDelayHint}
                       </p>
                     </div>
                   )}

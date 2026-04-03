@@ -101,6 +101,8 @@ export interface Translations {
   prefetchOff: string;
   prefetchPagesOption: string;
   prefetchEnabled: string;
+  prefetchDelayDesc: string;
+  prefetchDelayHint: string;
   
   // Clear data modal
   confirmClearData: string;
@@ -660,6 +662,8 @@ const en: Translations = {
   prefetchOff: 'Off',
   prefetchPagesOption: ' pages',
   prefetchEnabled: 'Prefetch enabled, preloading next',
+  prefetchDelayDesc: 'Delay between prefetch requests',
+  prefetchDelayHint: 'Lower values load pages faster but may increase server load',
   
   confirmClearData: 'Confirm Clear Data',
   clearDataWarning: 'Are you sure you want to clear all app data? This will:',
@@ -1201,6 +1205,8 @@ const ja: Translations = {
   prefetchOff: 'オフ',
   prefetchPagesOption: ' ページ',
   prefetchEnabled: 'プリフェッチ有効、次を先読み中:',
+  prefetchDelayDesc: 'プリフェッチリクエスト間の遅延',
+  prefetchDelayHint: '値が低いほどページの読み込みが速くなりますが、サーバー負荷が増加する可能性があります',
   
   confirmClearData: 'データ消去の確認',
   clearDataWarning: '本当に全てのアプリデータを消去しますか？以下が消去されます:',
@@ -1742,6 +1748,8 @@ const zhCN: Translations = {
   prefetchOff: '关闭',
   prefetchPagesOption: ' 页',
   prefetchEnabled: '预加载已启用，预加载接下来',
+  prefetchDelayDesc: '预加载请求间隔',
+  prefetchDelayHint: '值越低加载越快，但可能增加服务器负载',
   
   confirmClearData: '确认清空数据',
   clearDataWarning: '您确定要清空所有程序数据吗？此操作将：',
@@ -2283,6 +2291,8 @@ const zhTW: Translations = {
   prefetchOff: '關閉',
   prefetchPagesOption: ' 頁',
   prefetchEnabled: '預載入已啟用，預載入接下來',
+  prefetchDelayDesc: '預載入請求間隔',
+  prefetchDelayHint: '值越低載入越快，但可能增加伺服器負載',
   
   confirmClearData: '確認清除資料',
   clearDataWarning: '您確定要清除所有程式資料嗎？此操作將：',
@@ -2824,6 +2834,8 @@ const ko: Translations = {
   prefetchOff: '끄기',
   prefetchPagesOption: ' 페이지',
   prefetchEnabled: '사전 로드 활성화, 다음 미리 로드:',
+  prefetchDelayDesc: '사전 로드 요청 간격',
+  prefetchDelayHint: '값이 낮을수록 로드가 빨라지지만 서버 부하가 증가할 수 있습니다',
   
   confirmClearData: '데이터 삭제 확인',
   clearDataWarning: '모든 앱 데이터를 삭제하시겠습니까? 다음이 삭제됩니다:',

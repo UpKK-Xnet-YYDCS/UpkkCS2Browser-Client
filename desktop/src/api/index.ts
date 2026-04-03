@@ -75,16 +75,17 @@ const inflightRequests = new Map<string, Promise<unknown>>();
 
 // --- Short-TTL response cache for GET requests ---
 // Reduces redundant network calls for slowly-changing data (stats, categories, metadata).
-// TTL is derived from the user-configured auto-refresh interval so that cached data
-// never outlives a single refresh cycle. Falls back to 60 s when no interval is saved.
-const DEFAULT_CACHE_TTL_MS = 60_000; // 60 seconds
+// TTL is set to 5× the auto-refresh interval (minimum 5 min) so that prefetched pages
+// survive multiple auto-refresh cycles.  Auto-refresh itself bypasses the cache read
+// (via refreshEndpoint) so the current page always gets fresh data.
+const DEFAULT_CACHE_TTL_MS = 300_000; // 5 minutes
 
 function getCacheTtlMs(): number {
   try {
     const saved = localStorage.getItem('autoRefreshInterval');
     if (saved) {
       const seconds = parseInt(saved, 10);
-      if (seconds > 0) return seconds * 1000;
+      if (seconds > 0) return Math.max(seconds * 5000, DEFAULT_CACHE_TTL_MS);
     }
   } catch { /* ignore */ }
   return DEFAULT_CACHE_TTL_MS;
@@ -111,15 +112,113 @@ export function clearResponseCache(): void {
   responseCache.clear();
 }
 
+/**
+ * Clear cached responses whose cache key contains the given endpoint substring.
+ * Useful for invalidating only the current page while preserving prefetched pages.
+ */
+export function clearCacheForEndpoint(endpointSubstring: string): void {
+  for (const key of responseCache.keys()) {
+    if (key.includes(endpointSubstring)) {
+      responseCache.delete(key);
+    }
+  }
+}
+
+/**
+ * Fetch fresh data for a GET endpoint, bypassing the cache read but writing the
+ * result back into the cache.  Used for silent / background refreshes where we
+ * want to update stale data without clearing existing cache entries.
+ */
+export async function refreshEndpoint<T>(endpoint: string, maxRetries = 3): Promise<T> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const result = await fetchApi<T>(endpoint);
+      // Write fresh data into cache so subsequent reads see it
+      setCache(endpoint, result);
+      return result;
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetries - 1 && isRetryableError(error)) {
+        const delay = 1000 * Math.pow(2, attempt);
+        logWarn('API', `refreshEndpoint retry ${attempt + 1}/${maxRetries} ${endpoint}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      } else {
+        throw error;
+      }
+    }
+  }
+  throw lastError;
+}
+
+/**
+ * Check synchronously whether a GET response for the given endpoint is in the cache.
+ * This does NOT fetch — it only peeks into the response cache.
+ */
+export function hasCachedResponse(endpoint: string): boolean {
+  const entry = responseCache.get(endpoint);
+  if (entry && Date.now() - entry.ts < getCacheTtlMs()) {
+    return true;
+  }
+  if (entry) responseCache.delete(endpoint); // expired
+  return false;
+}
+
+/**
+ * Build the API endpoint path for a server-list request (matches getServers / searchServers / getServersByCategory).
+ * Used by the store to synchronously check cache before setting loading state.
+ */
+export function buildServerListEndpoint(params: {
+  searchQuery?: string;
+  selectedCategory?: string | null;
+  selectedRegion?: ServerRegion;
+  selectedGameType?: GameType;
+  page?: number;
+  perPage?: number;
+  geoFilter?: GeoFilterParams;
+}): string {
+  const { searchQuery, selectedCategory, selectedRegion, selectedGameType, page, perPage, geoFilter } = params;
+  const game = selectedGameType === 'all' ? undefined : selectedGameType;
+  const continent = geoFilter?.continent && geoFilter.continent !== 'all' ? geoFilter.continent : undefined;
+  const geo_region = geoFilter?.geo_region && geoFilter.geo_region !== 'all' ? geoFilter.geo_region : undefined;
+  const country = geoFilter?.country && geoFilter.country !== 'all' ? geoFilter.country : undefined;
+
+  if (searchQuery) {
+    return `/api/servers/search${buildQuery({ q: searchQuery, region: selectedRegion, page, per_page: perPage, game, continent, geo_region, country })}`;
+  }
+  if (selectedCategory) {
+    return `/api/servers/by-category${buildQuery({ category: selectedCategory, region: selectedRegion, page, per_page: perPage, game, continent, geo_region, country })}`;
+  }
+  return `/api/servers${buildQuery({ region: selectedRegion, page, per_page: perPage, game, continent, geo_region, country })}`;
+}
+
 // --- Page prefetch support ---
 // Silently fetches upcoming server list pages into the response cache
 // so that page navigation feels instant.
 
-const PREFETCH_DELAY_MS = 300; // Delay between sequential prefetch requests
+const DEFAULT_PREFETCH_DELAY_MS = 150; // Default delay between sequential prefetch requests
+const PREFETCH_DELAY_KEY = 'prefetchDelay';
 const PREFETCH_PAGES_KEY = 'prefetchPages';
 const DEFAULT_PREFETCH_PAGES = 5;
 
 let prefetchVersion = 0;
+
+/** Get the configured delay (ms) between sequential prefetch requests (default 150). */
+export function getPrefetchDelay(): number {
+  try {
+    const saved = localStorage.getItem(PREFETCH_DELAY_KEY);
+    if (saved !== null) {
+      const n = parseInt(saved, 10);
+      if (!isNaN(n) && n >= 0) return n;
+    }
+  } catch { /* ignore */ }
+  return DEFAULT_PREFETCH_DELAY_MS;
+}
+
+/** Set the delay (ms) between sequential prefetch requests. */
+export function setPrefetchDelay(ms: number): void {
+  localStorage.setItem(PREFETCH_DELAY_KEY, String(Math.max(0, Math.floor(ms))));
+}
 
 /** Get the configured number of pages to prefetch (0 = disabled, default = 5). */
 export function getPrefetchPages(): number {
@@ -202,7 +301,7 @@ export function prefetchServerPages(params: PrefetchParams): void {
 
       // Delay before next prefetch to keep rate gentle
       if (prefetchVersion !== version) return;
-      await new Promise(r => setTimeout(r, PREFETCH_DELAY_MS));
+      await new Promise(r => setTimeout(r, getPrefetchDelay()));
       if (prefetchVersion !== version) {
         logDebug('Prefetch', 'Cancelled after delay (superseded)');
         return;
