@@ -18,7 +18,7 @@ A modern game server browser desktop client built with **Tauri + React + TypeScr
 - **Desktop Framework**: [Tauri 2.x](https://tauri.app/) (Rust)
 - **Frontend Framework**: React 19 + TypeScript
 - **Styling**: Tailwind CSS 4
-- **Build Tool**: Vite 7
+- **Build Tool**: Vite 8
 - **State Management**: React Context + useReducer (zero external dependencies)
 - **HTTP Client**: Native Fetch API (no external dependencies)
 
