@@ -297,7 +297,7 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
                 ? 'text-yellow-400 bg-black/40 scale-110' 
                 : 'text-white/70 bg-black/30 hover:text-yellow-400 hover:bg-black/50 hover:scale-110'
           }`}
-          title={isLoggedIn ? (favorite ? '取消云端收藏' : '添加到云端收藏') : (favorite ? '取消本地收藏' : '添加到本地收藏')}
+          title={isLoggedIn ? (favorite ? t.removeFromCloudFavorites : t.addToCloudFavorites) : (favorite ? t.removeFromLocalFavorites : t.addToLocalFavorites)}
         >
           {isFavoriteLoading ? <Icons.Loading /> : <Icons.Star filled={favorite} />}
         </button>

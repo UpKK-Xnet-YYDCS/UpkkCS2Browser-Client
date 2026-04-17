@@ -242,6 +242,11 @@ export interface Translations {
   searchPlaceholder: string;
   allCategories: string;
   showFavoritesOnly: string;
+  localFavorites: string;
+  addToLocalFavorites: string;
+  removeFromLocalFavorites: string;
+  addToCloudFavorites: string;
+  removeFromCloudFavorites: string;
   searchLocalFavorites: string;
   addLocalServer: string;
   addLocalServerDesc: string;
@@ -792,6 +797,11 @@ const en: Translations = {
   searchPlaceholder: 'Search servers...',
   allCategories: 'All Categories',
   showFavoritesOnly: 'Favorites Only',
+  localFavorites: 'Local Favorites',
+  addToLocalFavorites: 'Add to Local Favorites',
+  removeFromLocalFavorites: 'Remove from Local Favorites',
+  addToCloudFavorites: 'Add to Cloud Favorites',
+  removeFromCloudFavorites: 'Remove from Cloud Favorites',
   searchLocalFavorites: 'Search local favorites...',
   addLocalServer: 'Add Server',
   addLocalServerDesc: 'Enter server IP or domain with port to add to local favorites. Uses local A2S query.',
@@ -1335,6 +1345,11 @@ const ja: Translations = {
   searchPlaceholder: 'サーバーを検索...',
   allCategories: '全カテゴリ',
   showFavoritesOnly: 'お気に入りのみ',
+  localFavorites: 'ローカルお気に入り',
+  addToLocalFavorites: 'ローカルお気に入りに追加',
+  removeFromLocalFavorites: 'ローカルお気に入りから削除',
+  addToCloudFavorites: 'クラウドお気に入りに追加',
+  removeFromCloudFavorites: 'クラウドお気に入りから削除',
   searchLocalFavorites: 'ローカルお気に入りを検索...',
   addLocalServer: 'サーバー追加',
   addLocalServerDesc: 'サーバーのIPまたはドメインとポートを入力してローカルお気に入りに追加。ローカルA2Sクエリを使用。',
@@ -1878,6 +1893,11 @@ const zhCN: Translations = {
   searchPlaceholder: '搜索服务器...',
   allCategories: '全部分类',
   showFavoritesOnly: '只看收藏',
+  localFavorites: '本地收藏',
+  addToLocalFavorites: '添加到本地收藏',
+  removeFromLocalFavorites: '取消本地收藏',
+  addToCloudFavorites: '添加到云端收藏',
+  removeFromCloudFavorites: '取消云端收藏',
   searchLocalFavorites: '搜索本地收藏...',
   addLocalServer: '添加服务器',
   addLocalServerDesc: '输入服务器IP或域名及端口，添加到本地收藏。使用本地A2S查询。',
@@ -2421,6 +2441,11 @@ const zhTW: Translations = {
   searchPlaceholder: '搜尋伺服器...',
   allCategories: '全部分類',
   showFavoritesOnly: '只看收藏',
+  localFavorites: '本地收藏',
+  addToLocalFavorites: '新增到本地收藏',
+  removeFromLocalFavorites: '取消本地收藏',
+  addToCloudFavorites: '新增到雲端收藏',
+  removeFromCloudFavorites: '取消雲端收藏',
   searchLocalFavorites: '搜尋本地收藏...',
   addLocalServer: '新增伺服器',
   addLocalServerDesc: '輸入伺服器IP或域名及連接埠，新增到本地收藏。使用本地A2S查詢。',
@@ -2964,6 +2989,11 @@ const ko: Translations = {
   searchPlaceholder: '서버 검색...',
   allCategories: '모든 카테고리',
   showFavoritesOnly: '즐겨찾기만',
+  localFavorites: '로컬 즐겨찾기',
+  addToLocalFavorites: '로컬 즐겨찾기에 추가',
+  removeFromLocalFavorites: '로컬 즐겨찾기에서 삭제',
+  addToCloudFavorites: '클라우드 즐겨찾기에 추가',
+  removeFromCloudFavorites: '클라우드 즐겨찾기에서 삭제',
   searchLocalFavorites: '로컬 즐겨찾기 검색...',
   addLocalServer: '서버 추가',
   addLocalServerDesc: '서버 IP 또는 도메인과 포트를 입력하여 로컬 즐겨찾기에 추가. 로컬 A2S 쿼리 사용.',

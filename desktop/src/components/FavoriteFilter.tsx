@@ -1,4 +1,5 @@
 import { useAppStore } from '@/store';
+import { useI18n } from '@/store/i18n';
 
 // Star icon
 const StarIcon = ({ filled }: { filled?: boolean }) => (
@@ -15,6 +16,7 @@ interface FavoriteFilterProps {
 
 export function FavoriteFilter({ showFavoritesOnly, onToggle, favoriteCount }: FavoriteFilterProps) {
   const { favorites } = useAppStore();
+  const { t } = useI18n();
   
   return (
     <button
@@ -28,7 +30,7 @@ export function FavoriteFilter({ showFavoritesOnly, onToggle, favoriteCount }: F
       `}
     >
       <StarIcon filled={showFavoritesOnly || favoriteCount > 0} />
-      <span>本地收藏</span>
+      <span>{t.localFavorites}</span>
       {favorites.length > 0 && (
         <span className={`
           px-1.5 py-0.5 rounded text-xs
