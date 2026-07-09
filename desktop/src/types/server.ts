@@ -38,9 +38,12 @@ export interface ServerStatus {
   last_seen_relative?: string;
   updated_at?: string;
   updated_at_relative?: string;
-  online?: boolean;
-  server_offline?: boolean;
-  offline_threshold_minutes?: number;
+  online?: boolean | string | number;
+  is_online?: boolean | string | number;
+  success?: boolean | string | number;
+  server_offline?: boolean | string | number;
+  offline?: boolean | string | number;
+  offline_threshold_minutes?: number | string;
   
   // Legacy compatibility (PascalCase - may not be present in new API)
   ID?: number;
@@ -64,7 +67,7 @@ export interface ServerStatus {
   Ping?: number;
   Country?: string;
   CountryCode?: string;
-  Online?: boolean;
+  Online?: boolean | string | number;
   LastUpdate?: string;
   DatabaseID?: number;
   Source?: string;

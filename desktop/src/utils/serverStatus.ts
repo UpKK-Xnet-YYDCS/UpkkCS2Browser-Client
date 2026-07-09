@@ -10,18 +10,20 @@ export interface ServerTimeLabels {
 }
 
 export function isServerOffline(server: ServerStatus): boolean {
-  if (server.server_offline === true) return true;
-  if (server.online === false) return true;
-  if (server.Online === false) return true;
+  const explicitOffline = firstBoolean(server.server_offline, server.offline);
+  if (explicitOffline === true) return true;
 
-  const hasExplicitStatus =
-    server.server_offline !== undefined ||
-    server.online !== undefined ||
-    server.Online !== undefined;
-  if (hasExplicitStatus) return false;
+  const explicitOnline = firstBoolean(server.online, server.is_online, server.Online);
+  if (explicitOnline !== undefined) return !explicitOnline;
+  if (explicitOffline === false) return false;
 
-  const maxPlayers = server.max_players ?? server.MaxPlayers ?? 0;
-  return !(Boolean(server.game || server.GameDesc) || maxPlayers > 0);
+  const success = booleanValue(server.success);
+  if (success !== undefined) return !success;
+
+  const thresholdMinutes = numericValue(server.offline_threshold_minutes, 20);
+  if (isOlderThanMinutes(getLastResponseTimestamp(server), thresholdMinutes)) return true;
+
+  return false;
 }
 
 export function isServerOnline(server: ServerStatus): boolean {
@@ -76,6 +78,13 @@ function formatElapsedDuration(value: string, labels: ServerTimeLabels): string 
   return parts.join(' ');
 }
 
+function isOlderThanMinutes(value: string, minutes: number): boolean {
+  if (!value || minutes <= 0) return false;
+  const date = parseServerDate(value);
+  if (!date) return false;
+  return Date.now() - date.getTime() > minutes * 60_000;
+}
+
 function firstValidDate(...values: Array<string | undefined>): string {
   return values.find((value) => Boolean(parseServerDate(value)))?.trim() ?? '';
 }
@@ -89,6 +98,37 @@ function parseServerDate(value: string | undefined): Date | null {
   const date = new Date(normalized);
   if (!Number.isFinite(date.getTime()) || date.getFullYear() <= 1970) return null;
   return date;
+}
+
+function firstBoolean(...values: unknown[]): boolean | undefined {
+  for (const value of values) {
+    const parsed = booleanValue(value);
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value === 1) return true;
+    if (value === 0) return false;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1' || normalized === 'yes') return true;
+    if (normalized === 'false' || normalized === '0' || normalized === 'no') return false;
+  }
+  return undefined;
+}
+
+function numericValue(value: unknown, fallback: number): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
 }
 
 function translateRelativeMarker(value: string | undefined, labels: ServerTimeLabels): string {

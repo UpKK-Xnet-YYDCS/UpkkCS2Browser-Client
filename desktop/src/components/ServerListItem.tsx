@@ -356,9 +356,14 @@ export const ServerListItem = memo(ServerListItemInner, (prev, next) => {
     ps.bots === ns.bots &&
     ps.map_name === ns.map_name &&
     ps.name === ns.name &&
+    ps.comments === ns.comments &&
     ps.Online === ns.Online &&
     ps.online === ns.online &&
+    ps.is_online === ns.is_online &&
+    ps.success === ns.success &&
     ps.server_offline === ns.server_offline &&
+    ps.offline === ns.offline &&
+    ps.offline_threshold_minutes === ns.offline_threshold_minutes &&
     ps.last_seen === ns.last_seen &&
     ps.last_updated === ns.last_updated &&
     ps.updated_at === ns.updated_at &&
