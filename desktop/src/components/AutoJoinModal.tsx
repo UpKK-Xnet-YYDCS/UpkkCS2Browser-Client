@@ -2,8 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import type { ServerStatus } from '@/types';
 import { refreshServer } from '@/api';
-import { buildJoinUrl } from './SteamClientSwitch';
-import { useI18n } from '@/store/i18n';
+import { buildJoinUrl } from '@/services/steamClient';
+import { useI18n } from '@/hooks/useI18n';
 import { isTauriAvailable, queryServerA2S } from '@/services/a2s';
 import { logInfo, logWarn, logError, logDebug } from '@/store/log';
 
@@ -203,7 +203,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     
     // Reset countdown
     setCountdown(checkInterval);
-  }, [serverIp, serverPort, baseAddress, minSlots, onClose, t, checkInterval, server.game_id, server.GameID, server.game]);
+  }, [serverIp, serverPort, baseAddress, minSlots, onClose, t, checkInterval, server.game_id, server.GameID, server.game, server.name]);
 
   // Start monitoring
   const startMonitoring = useCallback(() => {

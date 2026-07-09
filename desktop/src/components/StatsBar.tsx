@@ -1,5 +1,5 @@
-import { useAppStore } from '@/store';
-import { useI18n } from '@/store/i18n';
+import { useAppStore } from '@/hooks/useAppStore';
+import { useI18n } from '@/hooks/useI18n';
 
 const ServerIcon = () => (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

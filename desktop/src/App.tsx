@@ -1,8 +1,11 @@
 import { useCallback, useMemo, lazy, Suspense } from 'react';
 import { AppProvider } from './store';
 import { UserProvider } from './store/user';
-import { ThemeProvider, useTheme, rgbaToCss } from './store/theme';
-import { I18nProvider, useI18n } from './store/i18n';
+import { ThemeProvider } from './store/theme';
+import { useTheme } from './hooks/useTheme';
+import { rgbaToCss } from './store/themeUtils';
+import { I18nProvider } from './store/i18n';
+import { useI18n } from './hooks/useI18n';
 import { HomePage } from './pages/HomePage';
 import { MonitorPage } from './pages/MonitorPage';
 import { TabNavigation, useTabNavigation, SteamClientSwitch, LoginModal, UpdateProvider, UserStatusButton } from './components';

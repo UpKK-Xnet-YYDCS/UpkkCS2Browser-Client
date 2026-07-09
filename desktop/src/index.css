@@ -133,3 +133,10 @@ button, a, input, select, textarea {
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+
+/* Server card grid density is user-adjustable from the desktop toolbar. */
+.server-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(var(--server-card-min-width, 320px), 100%), 1fr));
+  gap: 1rem;
+}

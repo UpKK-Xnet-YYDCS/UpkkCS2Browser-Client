@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAppStore } from '@/store';
-import { useI18n } from '@/store/i18n';
+import { useAppStore } from '@/hooks/useAppStore';
+import { useI18n } from '@/hooks/useI18n';
 
 // Simple inline SVG icons
 const SearchIcon = () => (
@@ -23,7 +23,8 @@ export function SearchBar() {
 
   // Sync local query with store query (for external changes)
   useEffect(() => {
-    setLocalQuery(searchQuery);
+    const timer = window.setTimeout(() => setLocalQuery(searchQuery), 0);
+    return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
   // Debounce search - only update store query, HomePage handles fetch

@@ -33,6 +33,14 @@ export interface ServerStatus {
   version: string;
   game_id: number;
   last_updated: string;
+  last_updated_relative?: string;
+  last_seen?: string;
+  last_seen_relative?: string;
+  updated_at?: string;
+  updated_at_relative?: string;
+  online?: boolean;
+  server_offline?: boolean;
+  offline_threshold_minutes?: number;
   
   // Legacy compatibility (PascalCase - may not be present in new API)
   ID?: number;

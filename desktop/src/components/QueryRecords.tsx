@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getA2SDebug, type A2SQueryDebugRecord, type A2SLatencyStatPoint } from '@/api';
-import { useI18n } from '@/store/i18n';
+import { useI18n } from '@/hooks/useI18n';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 const LATENCY_WARNING_MS = 500;
@@ -111,7 +111,7 @@ function LatencyChart({ stats }: { stats: A2SLatencyStatPoint[] }) {
   }, [stats]);
 
   // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
-  useCanvasChart(canvasRef, drawChart, [stats]);
+  useCanvasChart(canvasRef, drawChart);
 
   return (
     <div className="h-40">

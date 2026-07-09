@@ -1,6 +1,12 @@
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
-import { useAppStore } from '@/store';
-import { useI18n } from '@/store/i18n';
+import { useEffect, useState, useMemo, useRef, useCallback, type CSSProperties } from 'react';
+import {
+  CARD_MIN_WIDTH_DEFAULT,
+  CARD_MIN_WIDTH_MAX,
+  CARD_MIN_WIDTH_MIN,
+  CARD_MIN_WIDTH_STEP,
+} from '@/store';
+import { useAppStore } from '@/hooks/useAppStore';
+import { useI18n } from '@/hooks/useI18n';
 import { 
   ServerCard, 
   ServerListItem,
@@ -22,12 +28,8 @@ import {
 import type { ServerStatus } from '@/types';
 import { parseServerAddress, queryServerA2S, isTauriAvailable } from '@/services/a2s';
 import { clearResponseCache } from '@/api';
-import { showToast } from '@/components/ToastNotification';
-
-/** Check if a server is considered online (has game, players capacity, or Online flag) */
-function isServerOnline(s: ServerStatus): boolean {
-  return Boolean(s.game) || (s.max_players ?? 0) > 0 || s.Online === true;
-}
+import { showToast } from '@/services/toast';
+import { isServerOnline } from '@/utils/serverStatus';
 
 // Default auto-refresh interval in seconds
 const DEFAULT_AUTO_REFRESH_INTERVAL = 60;
@@ -81,6 +83,50 @@ const CountdownProgressBar = ({ secondsRemaining, totalSeconds, isLoading }: Cou
     </div>
   );
 };
+
+interface CardSizeControlProps {
+  value: number;
+  onChange: (value: number) => void;
+}
+
+const CardSizeIcon = () => (
+  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V6a2 2 0 012-2h2m8 0h2a2 2 0 012 2v2M4 16v2a2 2 0 002 2h2m8 0h2a2 2 0 002-2v-2M9 12h6" />
+  </svg>
+);
+
+function CardSizeControl({ value, onChange }: CardSizeControlProps) {
+  const { t } = useI18n();
+  const resetToDefault = () => onChange(CARD_MIN_WIDTH_DEFAULT);
+
+  return (
+    <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+      <CardSizeIcon />
+      <label htmlFor="server-card-size" className="text-xs font-medium whitespace-nowrap">
+        {t.cardSize}
+      </label>
+      <input
+        id="server-card-size"
+        type="range"
+        min={CARD_MIN_WIDTH_MIN}
+        max={CARD_MIN_WIDTH_MAX}
+        step={CARD_MIN_WIDTH_STEP}
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+        className="w-24 h-1.5 accent-blue-500 cursor-pointer"
+        aria-label={t.cardSize}
+      />
+      <button
+        type="button"
+        onClick={resetToDefault}
+        className="min-w-10 text-right text-xs tabular-nums hover:text-blue-600 dark:hover:text-blue-400"
+        title={t.resetCardSize}
+      >
+        {value}px
+      </button>
+    </div>
+  );
+}
 
 // Search icon for local favorites
 const SearchIcon = () => (
@@ -198,6 +244,8 @@ export function HomePage() {
     selectedCountry,
     viewMode,
     setViewMode,
+    cardMinWidth,
+    setCardMinWidth,
     perPage,
     favorites,
     addFavorite,
@@ -208,6 +256,9 @@ export function HomePage() {
     currentPage,
   } = useAppStore();
   const { t } = useI18n();
+  const cardGridStyle = useMemo(() => ({
+    '--server-card-min-width': `${cardMinWidth}px`,
+  }) as CSSProperties, [cardMinWidth]);
 
   const [selectedServer, setSelectedServer] = useState<ServerStatus | null>(null);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
@@ -333,11 +384,15 @@ export function HomePage() {
   // When showFavoritesOnly is toggled on, fetch favorites via A2S; reset page
   useEffect(() => {
     if (showFavoritesOnly) {
-      setFavPage(1);
-      setFavGameFilter('');
-      fetchFavServers();
+      const timer = window.setTimeout(() => {
+        setFavPage(1);
+        setFavGameFilter('');
+        void fetchFavServers();
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
-  }, [showFavoritesOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+    return undefined;
+  }, [showFavoritesOnly, fetchFavServers]);
 
   // Re-fetch when favorites list content changes while in favorites-only mode
   // (e.g., after adding/removing a server via AddLocalServerModal)
@@ -403,13 +458,16 @@ export function HomePage() {
   // Clamp favPage to valid range when favorites list changes
   useEffect(() => {
     if (showFavoritesOnly && favPage > favTotalPages) {
-      setFavPage(Math.max(1, favTotalPages));
+      const timer = window.setTimeout(() => setFavPage(Math.max(1, favTotalPages)), 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [showFavoritesOnly, favPage, favTotalPages]);
 
   // Reset favPage when search query or game filter changes
   useEffect(() => {
-    setFavPage(1);
+    const timer = window.setTimeout(() => setFavPage(1), 0);
+    return () => window.clearTimeout(timer);
   }, [favSearchQuery, favGameFilter]);
 
   const displayedServers = useMemo(() => {
@@ -554,8 +612,10 @@ export function HomePage() {
   // Reset isManualRefresh when loading completes
   useEffect(() => {
     if (!isLoading && !favLoading && isManualRefresh) {
-      setIsManualRefresh(false);
+      const timer = window.setTimeout(() => setIsManualRefresh(false), 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [isLoading, favLoading, isManualRefresh]);
 
   // Export local favorites to a JSON file
@@ -642,6 +702,9 @@ export function HomePage() {
               <GameTypeFilter />
               <RegionFilter />
               <ViewModeSwitch viewMode={viewMode} onViewModeChange={setViewMode} />
+              {viewMode === 'card' && (
+                <CardSizeControl value={cardMinWidth} onChange={setCardMinWidth} />
+              )}
             </div>
             <StatsBar />
           </div>
@@ -844,7 +907,7 @@ export function HomePage() {
               <div className="mb-4 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg animate-pulse" />
               
               {viewMode === 'card' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="server-card-grid" style={cardGridStyle}>
                   {Array.from({ length: 6 }).map((_, index) => (
                     <ServerCardSkeleton key={index} />
                   ))}
@@ -923,7 +986,7 @@ export function HomePage() {
               </div>
               
               {viewMode === 'card' ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="server-card-grid" style={cardGridStyle}>
                   {displayedServers.map((server, index) => {
                     const globalIndex = (favPage - 1) * perPage + index;
                     return showFavoritesOnly ? (
@@ -1056,4 +1119,3 @@ export function HomePage() {
     </div>
   );
 }
-

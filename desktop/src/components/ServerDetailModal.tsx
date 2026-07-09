@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type { ServerStatus, Player } from '@/types';
 import { getServerPlayers, getServerDetail, removeFavorite as apiRemoveFavorite, addFavorite as apiAddFavorite, checkFavorite as apiCheckFavorite, getApiToken } from '@/api';
-import { useI18n } from '@/store/i18n';
-import { buildJoinUrl } from './SteamClientSwitch';
+import { useI18n } from '@/hooks/useI18n';
+import { buildJoinUrl } from '@/services/steamClient';
 import { AutoJoinModal } from './AutoJoinModal';
 import { PlayerHistoryChart } from './PlayerHistoryChart';
 import { MapHistory } from './MapHistory';
 import { QueryRecords } from './QueryRecords';
+import { formatServerDate, getLastResponseTimestamp, getOfflineDuration, isServerOnline } from '@/utils/serverStatus';
 
 interface ServerDetailModalProps {
   server: ServerStatus;
@@ -48,6 +49,18 @@ const AutoJoinIcon = () => (
   </svg>
 );
 
+const WifiOffIcon = () => (
+  <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M8.53 8.56A8.96 8.96 0 0112 7c2.39 0 4.68.94 6.36 2.64M5.64 5.64A13.93 13.93 0 0112 4c3.87 0 7.37 1.57 9.9 4.1M12 20h.01" />
+  </svg>
+);
+
+const ClockIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
+  </svg>
+);
+
 function formatDuration(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
@@ -58,7 +71,7 @@ function formatDuration(seconds: number): string {
 export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavoriteRemoved }: ServerDetailModalProps) {
   const [players, setPlayers] = useState<Player[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getApiToken()));
   const [copied, setCopied] = useState(false);
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
@@ -66,7 +79,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
   const [cloudFavState, setCloudFavState] = useState<boolean | null>(isCloudFavorite ?? null);
   const [cloudFavLoading, setCloudFavLoading] = useState(false);
   const [detailVersion, setDetailVersion] = useState(server.version || server.Version || '');
-  const { t } = useI18n();
+  const { t, language } = useI18n();
 
   // Get server data with fallbacks for API format differences
   const serverIp = server.ip || server.Addr || '';
@@ -86,8 +99,19 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
   const displayAddress = serverPort ? `${baseAddress}:${serverPort}` : baseAddress;
   const serverGame = server.game || server.GameDesc || '';
   const serverCategory = server.category || server.Category || '';
+  const serverOnline = isServerOnline(server);
+  const offlineDuration = serverOnline ? '' : getOfflineDuration(server, {
+    secondsAgo: t.secondsAgo,
+    minutesAgo: t.minutesAgo,
+    hoursAgo: t.hoursAgo,
+    minuteUnit: t.minuteUnit,
+    hourUnit: t.hourUnit,
+    dayUnit: t.dayUnit,
+  });
+  const lastResponseTimestamp = getLastResponseTimestamp(server);
+  const lastResponseText = formatServerDate(lastResponseTimestamp, language) || 'N/A';
 
-  const fetchPlayers = async () => {
+  const fetchPlayers = useCallback(async () => {
     setLoadingPlayers(true);
     try {
       const result = await getServerPlayers(server.ID || `${serverIp}:${serverPort}`);
@@ -106,13 +130,13 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
     } finally {
       setLoadingPlayers(false);
     }
-  };
+  }, [server.ID, serverIp, serverPort]);
 
   useEffect(() => {
+    const timers: number[] = [];
     // Check if user has API token (authenticated)
     const token = getApiToken();
     if (token) {
-      setIsAuthenticated(true);
       // Check cloud favorite status if not already known
       if (cloudFavState === null && serverIp && serverPort) {
         apiCheckFavorite(String(serverIp), String(serverPort))
@@ -121,7 +145,10 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
       }
     }
     if (serverPlayers > 0) {
-      fetchPlayers();
+      const timer = window.setTimeout(() => {
+        void fetchPlayers();
+      }, 0);
+      timers.push(timer);
     }
     // Fetch server detail to get version if not already available
     if (!detailVersion && serverIp && serverPort) {
@@ -131,7 +158,10 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
         })
         .catch(() => {});
     }
-  }, []);
+    return () => {
+      timers.forEach((timer) => window.clearTimeout(timer));
+    };
+  }, [cloudFavState, detailVersion, fetchPlayers, serverIp, serverPlayers, serverPort]);
 
   const handleConnect = async () => {
     // 使用 buildJoinUrl 函数获取正确的协议（steam:// 或 steamchina://）
@@ -246,6 +276,44 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+          {!serverOnline && (
+            <div className="relative overflow-hidden mb-5 p-4 rounded-xl bg-slate-950 text-slate-100 border border-white/10 shadow-lg">
+              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-white/40 via-white/10 to-transparent" />
+              <div className="grid grid-cols-[auto_minmax(0,1fr)] sm:grid-cols-[auto_minmax(0,1fr)_auto] gap-4 items-start">
+                <div className="grid place-items-center w-12 h-12 rounded-xl bg-white/10 border border-white/10 text-slate-200">
+                  <WifiOffIcon />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-[11px] font-black uppercase tracking-[0.16em] text-red-200/80">{t.offline}</div>
+                  <h3 className="mt-1 text-lg font-black text-white">{t.serverOfflineTitle}</h3>
+                  <p className="mt-1 text-sm leading-6 text-slate-300">{t.serverOfflineDescription}</p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {offlineDuration && (
+                      <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-white">
+                        <ClockIcon />
+                        <span>
+                          <small className="block text-[11px] font-medium text-slate-400">{t.serverOfflineDuration}</small>
+                          {offlineDuration}
+                        </span>
+                      </span>
+                    )}
+                    <span className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-bold text-white">
+                      <ClockIcon />
+                      <span>
+                        <small className="block text-[11px] font-medium text-slate-400">{t.serverLastResponse}</small>
+                        {lastResponseText}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+                <span className="inline-flex items-center gap-2 justify-self-start sm:justify-self-end rounded-full border border-red-400/20 bg-red-950/50 px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-red-200">
+                  <span className="w-2 h-2 rounded-full bg-red-400 shadow-[0_0_0_4px_rgba(248,113,113,0.16)]" />
+                  {t.offline}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* Server Info Grid */}
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">

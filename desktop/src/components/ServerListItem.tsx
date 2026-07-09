@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import type { ServerStatus } from '@/types';
-import { useAppStore } from '@/store';
-import { useI18n } from '@/store/i18n';
-import { buildJoinUrl } from './SteamClientSwitch';
+import { useAppStore } from '@/hooks/useAppStore';
+import { useI18n } from '@/hooks/useI18n';
+import { buildJoinUrl } from '@/services/steamClient';
 import { AutoJoinModal } from './AutoJoinModal';
 import { logInfo } from '@/store/log';
+import { isServerOnline } from '@/utils/serverStatus';
 
 // Simple inline SVG icons
 const Icons = {
@@ -84,9 +85,7 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
   const serverCountry = server.country_name || server.Country || '';
   const serverCountryCode = server.country_code || server.CountryCode || '';
   const serverVac = server.vac ?? server.VAC ?? false;
-  // Online status: check if server has a game type or max_players > 0 (server is responding)
-  // Players count of 0 does NOT mean offline - empty servers are still online
-  const serverOnline = Boolean(server.game) || serverMaxPlayers > 0 || server.Online === true;
+  const serverOnline = isServerOnline(server);
   // If display_address exists (IP/domain without port), append port; otherwise fallback to ip:port
   // Strip any trailing port from display_address to avoid duplication (e.g. "1.1.1.1:29667:29667")
   const rawBaseAddress = server.display_address || serverIp;
@@ -171,7 +170,10 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
     >
       {/* Status indicator */}
       <div className="flex-shrink-0">
-        <span className={`w-3 h-3 rounded-full block ${serverOnline ? 'bg-green-500' : 'bg-red-500'}`} />
+        <span
+          className={`w-3 h-3 rounded-full block ${serverOnline ? 'bg-green-500' : 'bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.16)]'}`}
+          title={serverOnline ? t.online : t.offline}
+        />
       </div>
 
       {/* Server name and address */}
@@ -355,6 +357,14 @@ export const ServerListItem = memo(ServerListItemInner, (prev, next) => {
     ps.map_name === ns.map_name &&
     ps.name === ns.name &&
     ps.Online === ns.Online &&
+    ps.online === ns.online &&
+    ps.server_offline === ns.server_offline &&
+    ps.last_seen === ns.last_seen &&
+    ps.last_updated === ns.last_updated &&
+    ps.updated_at === ns.updated_at &&
+    ps.last_seen_relative === ns.last_seen_relative &&
+    ps.last_updated_relative === ns.last_updated_relative &&
+    ps.updated_at_relative === ns.updated_at_relative &&
     ps.game === ns.game &&
     prev.onClick === next.onClick
   );

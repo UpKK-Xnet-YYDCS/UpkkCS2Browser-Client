@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useTheme, rgbaToCss } from '@/store/theme';
-import { useI18n, type Translations } from '@/store/i18n';
-import { useAppStore } from '@/store';
+import { useTheme } from '@/hooks/useTheme';
+import { rgbaToCss } from '@/store/themeUtils';
+import { useI18n } from '@/hooks/useI18n';
+import type { Translations } from '@/store/i18n';
+import { useAppStore } from '@/hooks/useAppStore';
 import { getApiToken, setApiToken, clearApiToken, checkAuthStatus, getSteamLoginUrl, getGoogleLoginUrl, getDiscordLoginUrl, getUpkkLoginUrl, getFavorites, type FavoriteServer, type AuthStatus } from '@/api';
-import { buildJoinUrl } from '@/components/SteamClientSwitch';
-import { showToast } from '@/components/ToastNotification';
+import { buildJoinUrl } from '@/services/steamClient';
+import { showToast } from '@/services/toast';
 import { isTauriAvailable, parseServerAddress, queryServerA2S } from '@/services/a2s';
 import {
   type MonitorRule,
@@ -194,8 +196,10 @@ function RuleEditor({ rule, onSave, onCancel, t }: RuleEditorProps) {
   // Always load favorites
   useEffect(() => {
     if (!favoritesLoaded) {
-      loadFavorites();
+      const timer = window.setTimeout(() => loadFavorites(), 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [favoritesLoaded, loadFavorites]);
 
   // Resolve server names for local-only favorites via A2S queries
@@ -596,7 +600,10 @@ export function MonitorPage() {
   const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Ref to hold latest rules so the monitor loop doesn't restart when rules change
   const rulesRef = useRef(rules);
-  rulesRef.current = rules;
+
+  useEffect(() => {
+    rulesRef.current = rules;
+  }, [rules]);
 
   // Persist monitor enabled state to localStorage so it survives page refreshes
   useEffect(() => {
@@ -748,7 +755,10 @@ export function MonitorPage() {
 
   // Ref to hold latest runCheck so the monitor loop doesn't restart when runCheck changes
   const runCheckRef = useRef(runCheck);
-  runCheckRef.current = runCheck;
+
+  useEffect(() => {
+    runCheckRef.current = runCheck;
+  }, [runCheck]);
 
   // Auto-monitor loop — only restarts when isEnabled or interval changes,
   // not when rules/runCheck change (uses refs to access latest values)

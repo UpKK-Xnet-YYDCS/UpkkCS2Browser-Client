@@ -1,13 +1,14 @@
 import type { ServerStatus } from '@/types';
-import { useAppStore } from '@/store';
+import { useAppStore } from '@/hooks/useAppStore';
 import { useState, useEffect, useRef, memo } from 'react';
 import { createPortal } from 'react-dom';
 import * as api from '@/api';
 import { getApiToken } from '@/api';
-import { buildJoinUrl } from './SteamClientSwitch';
+import { buildJoinUrl } from '@/services/steamClient';
 import { AutoJoinModal } from './AutoJoinModal';
-import { useI18n } from '@/store/i18n';
+import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logError } from '@/store/log';
+import { getOfflineDuration, isServerOnline } from '@/utils/serverStatus';
 
 // API base URL for map images
 const API_BASE_URL = 'https://servers.upkk.com';
@@ -44,6 +45,16 @@ const Icons = {
   AutoJoin: () => (
     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24">
       <path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+    </svg>
+  ),
+  WifiOff: () => (
+    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M8.53 8.56A8.96 8.96 0 0112 7c2.39 0 4.68.94 6.36 2.64M5.64 5.64A13.93 13.93 0 0112 4c3.87 0 7.37 1.57 9.9 4.1M1.39 8.1A18.93 18.93 0 0112 5m1.73 10.46A3 3 0 009.88 11.6M12 20h.01" />
+    </svg>
+  ),
+  Clock: () => (
+    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2m6-2a10 10 0 11-20 0 10 10 0 0120 0z" />
     </svg>
   ),
   MultiServer: () => (
@@ -122,9 +133,15 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
   const serverCountry = server.country_name || server.Country || '';
   const serverCountryCode = server.country_code || server.CountryCode || '';
   const serverVac = server.vac ?? server.VAC ?? false;
-  // Online status: check if server has a game type or max_players > 0 (server is responding)
-  // Players count of 0 does NOT mean offline - empty servers are still online
-  const serverOnline = Boolean(server.game) || serverMaxPlayers > 0 || server.Online === true;
+  const serverOnline = isServerOnline(server);
+  const offlineDuration = serverOnline ? '' : getOfflineDuration(server, {
+    secondsAgo: t.secondsAgo,
+    minutesAgo: t.minutesAgo,
+    hoursAgo: t.hoursAgo,
+    minuteUnit: t.minuteUnit,
+    hourUnit: t.hourUnit,
+    dayUnit: t.dayUnit,
+  });
   // Always show address:port format - display_address from API may only contain IP/domain without port
   // Strip any trailing port from display_address to avoid duplication (e.g. "1.1.1.1:29667:29667")
   const rawBaseAddress = server.display_address || serverIp;
@@ -266,19 +283,34 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
           alt={serverMap}
           className="w-full h-full object-cover"
           onError={handleImageError}
+          loading="lazy"
+          decoding="async"
         />
         {/* Overlay gradient for text readability */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/20" />
+
+        {!serverOnline && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-1.5 bg-slate-950/70 text-white backdrop-blur-[1px] pointer-events-none">
+            <Icons.WifiOff />
+            <strong className="text-sm font-black tracking-wide">{t.offline}</strong>
+            {offlineDuration && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/90">
+                <Icons.Clock />
+                {t.serverOfflineDuration}: {offlineDuration}
+              </span>
+            )}
+          </div>
+        )}
         
         {/* Map name on image */}
-        <div className="absolute bottom-2 left-2 right-16">
+        <div className="absolute bottom-2 left-2 right-16 z-20">
           <span className="text-white text-sm font-bold truncate block drop-shadow-lg">
             {serverMap}
           </span>
         </div>
         
         {/* Player count overlay */}
-        <div className="absolute bottom-2 right-2 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-lg flex items-center gap-1.5">
+        <div className="absolute bottom-2 right-2 z-20 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-lg flex items-center gap-1.5">
           <Icons.Users />
           <span className="text-white text-xs font-bold">
             {serverPlayers}/{serverMaxPlayers}
@@ -290,7 +322,7 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
         <button
           onClick={handleFavoriteClick}
           disabled={isFavoriteLoading}
-          className={`absolute top-2 right-2 p-1.5 rounded-lg backdrop-blur-sm transition-all duration-200 ${
+          className={`absolute top-2 right-2 z-20 p-1.5 rounded-lg backdrop-blur-sm transition-all duration-200 ${
             isFavoriteLoading
               ? 'text-gray-400 bg-black/40'
               : favorite 
@@ -304,7 +336,7 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
         )}
         
         {/* Status indicator */}
-        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-lg">
+        <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-lg">
           <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
           <span className="text-white text-xs font-medium">{serverOnline ? t.online : t.offline}</span>
         </div>
@@ -521,6 +553,14 @@ export const ServerCard = memo(ServerCardInner, (prev, next) => {
     ps.map_name === ns.map_name &&
     ps.name === ns.name &&
     ps.Online === ns.Online &&
+    ps.online === ns.online &&
+    ps.server_offline === ns.server_offline &&
+    ps.last_seen === ns.last_seen &&
+    ps.last_updated === ns.last_updated &&
+    ps.updated_at === ns.updated_at &&
+    ps.last_seen_relative === ns.last_seen_relative &&
+    ps.last_updated_relative === ns.last_updated_relative &&
+    ps.updated_at_relative === ns.updated_at_relative &&
     ps.game === ns.game &&
     prev.onClick === next.onClick &&
     prev.onFavoriteChange === next.onFavoriteChange &&

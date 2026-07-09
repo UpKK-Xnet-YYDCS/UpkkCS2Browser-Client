@@ -1,7 +1,7 @@
-import { useState, type ReactNode } from 'react';
-import { useI18n, type Translations } from '@/store/i18n';
-
-export type TabId = 'servers' | 'favorites' | 'monitor' | 'forum' | 'checkin' | 'settings';
+import type { ReactNode } from 'react';
+import { useI18n } from '@/hooks/useI18n';
+import type { Translations } from '@/store/i18n';
+import type { TabId } from '@/hooks/useTabNavigation';
 
 type TabLabelKey = keyof Pick<Translations, 'tabServers' | 'tabFavorites' | 'tabMonitor' | 'tabForum' | 'tabCheckIn' | 'tabSettings'>;
 
@@ -85,9 +85,4 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
       ))}
     </div>
   );
-}
-
-export function useTabNavigation(defaultTab: TabId = 'servers') {
-  const [activeTab, setActiveTab] = useState<TabId>(defaultTab);
-  return { activeTab, setActiveTab };
 }

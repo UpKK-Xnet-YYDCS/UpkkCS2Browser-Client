@@ -1,4 +1,4 @@
-import { useI18n } from '@/store/i18n';
+import { useI18n } from '@/hooks/useI18n';
 
 interface AddServerModalProps {
   onClose: () => void;

@@ -8,9 +8,9 @@
  * - Discord webhook notifications
  */
 
-import { showToast } from '@/components/ToastNotification';
+import { showToast } from '@/services/toast';
 import { parseServerAddress, queryServerA2S, isTauriAvailable } from '@/services/a2s';
-import { buildJoinUrl } from '@/components/SteamClientSwitch';
+import { buildJoinUrl } from '@/services/steamClient';
 
 // ============== Types ==============
 

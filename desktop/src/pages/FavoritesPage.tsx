@@ -4,8 +4,9 @@ import * as api from '@/api';
 import { getApiToken, setApiToken, clearApiToken, clearResponseCache } from '@/api';
 import type { FavoriteServer, AuthStatus } from '@/api';
 import type { ServerStatus } from '@/types';
-import { useTheme, rgbaToCss } from '@/store/theme';
-import { useI18n } from '@/store/i18n';
+import { useTheme } from '@/hooks/useTheme';
+import { rgbaToCss } from '@/store/themeUtils';
+import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logDebug } from '@/store/log';
 import { ServerCard } from '@/components/ServerCard';
 import { ServerListItem } from '@/components/ServerListItem';
@@ -454,7 +455,10 @@ export function FavoritesPage() {
   }, [authStatus.logged_in]);
 
   useEffect(() => {
-    loadFavorites();
+    const timer = window.setTimeout(() => {
+      void loadFavorites();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [loadFavorites]);
 
   // Auto-refresh with countdown (same pattern as HomePage)
@@ -611,14 +615,17 @@ export function FavoritesPage() {
 
   // Reset to page 1 when search changes
   useEffect(() => {
-    setCurrentPage(1);
+    const timer = window.setTimeout(() => setCurrentPage(1), 0);
+    return () => window.clearTimeout(timer);
   }, [searchQuery]);
 
   // Clamp currentPage to valid range when favorites list shrinks
   useEffect(() => {
     if (currentPage > totalPages) {
-      setCurrentPage(Math.max(1, totalPages));
+      const timer = window.setTimeout(() => setCurrentPage(Math.max(1, totalPages)), 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [currentPage, totalPages]);
 
   // Not logged in - show login prompt with multiple providers

@@ -1,15 +1,18 @@
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
-import { useAppStore } from '@/store';
-import { useTheme, type ColorRegion } from '@/store/theme';
-import { useI18n, languageLabels, type Language } from '@/store/i18n';
+import { useAppStore } from '@/hooks/useAppStore';
+import { useTheme } from '@/hooks/useTheme';
+import type { ColorRegion } from '@/store/theme';
+import { useI18n } from '@/hooks/useI18n';
+import type { Language } from '@/store/i18n';
+import { languageLabels } from '@/store/i18nLabels';
 import { getApiBaseUrl, XPROJ_USER_AGENT, getPrefetchPages, setPrefetchPages, getPrefetchDelay, setPrefetchDelay } from '@/api';
 import { RGBAColorPicker } from '@/components/RGBAColorPicker';
-import { useUpdateCheck } from '@/components/UpdateModal';
+import { useUpdateCheck } from '@/contexts/updateContext';
 import { APP_VERSION } from '@/services/update';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { clearCredentials } from '@/services/secureStorage';
 import { type A2SQueryResult, parseServerAddress, queryServerA2S } from '@/services/a2s';
-import { getSteamClient, setSteamClient } from '@/components/SteamClientSwitch';
+import { getSteamClient, setSteamClient } from '@/services/steamClient';
 import { subscribeLog, getLogEntries, clearLogs, type LogEntry } from '@/store/log';
 import {
   type NotificationSound,
@@ -18,7 +21,7 @@ import {
   getNotificationSound,
   setNotificationSound,
   playNotificationSound,
-} from '@/components/ToastNotification';
+} from '@/services/toast';
 
 const SunIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

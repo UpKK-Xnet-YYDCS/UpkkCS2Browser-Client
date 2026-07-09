@@ -6,190 +6,31 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-
-// ============== Types ==============
-
-export interface ToastMessage {
-  id: string;
-  title: string;
-  body: string;
-  type?: 'info' | 'success' | 'warning' | 'error';
-  duration?: number; // ms, default 6000
-  createdAt: number;
-}
-
-export type NotificationSound = 'chime' | 'bubble' | 'bell' | 'none';
-
-// ============== Notification Sound ==============
-
-const SOUND_STORAGE_KEY = 'notificationSound';
-const SOUND_ENABLED_KEY = 'notificationSoundEnabled';
-
-/**
- * Get whether notification sound is enabled (default: true)
- */
-export function isNotificationSoundEnabled(): boolean {
-  const saved = localStorage.getItem(SOUND_ENABLED_KEY);
-  return saved !== 'false';
-}
-
-/**
- * Set notification sound enabled/disabled
- */
-export function setNotificationSoundEnabled(enabled: boolean): void {
-  localStorage.setItem(SOUND_ENABLED_KEY, String(enabled));
-}
-
-/**
- * Get current notification sound type (default: 'chime')
- */
-export function getNotificationSound(): NotificationSound {
-  const saved = localStorage.getItem(SOUND_STORAGE_KEY) as NotificationSound | null;
-  if (saved === 'chime' || saved === 'bubble' || saved === 'bell' || saved === 'none') return saved;
-  return 'bubble';
-}
-
-/**
- * Set notification sound type
- */
-export function setNotificationSound(sound: NotificationSound): void {
-  localStorage.setItem(SOUND_STORAGE_KEY, sound);
-}
-
-/**
- * Play a notification sound using Web Audio API.
- * Generates pleasant synthesized tones without external audio files.
- */
-export function playNotificationSound(sound?: NotificationSound): void {
-  if (!isNotificationSoundEnabled()) return;
-  const type = sound || getNotificationSound();
-  if (type === 'none') return;
-
-  try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
-
-    if (type === 'chime') {
-      // Gentle two-tone chime (C5 → E5)
-      const playTone = (freq: number, start: number, dur: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.25, ctx.currentTime + start);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(ctx.currentTime + start);
-        osc.stop(ctx.currentTime + start + dur);
-      };
-      playTone(523.25, 0, 0.3);    // C5
-      playTone(659.25, 0.15, 0.4); // E5
-    } else if (type === 'bubble') {
-      // Soft bubble pop sound
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(600, ctx.currentTime);
-      osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.08);
-      osc.frequency.exponentialRampToValueAtTime(800, ctx.currentTime + 0.15);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start(ctx.currentTime);
-      osc.stop(ctx.currentTime + 0.3);
-    } else if (type === 'bell') {
-      // Gentle bell with harmonics
-      const playHarmonic = (freq: number, vol: number, dur: number) => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(vol, ctx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + dur);
-      };
-      playHarmonic(830, 0.2, 0.8);   // fundamental
-      playHarmonic(1660, 0.08, 0.4);  // 2nd harmonic
-      playHarmonic(2490, 0.03, 0.2);  // 3rd harmonic
-    }
-  } catch {
-    // Audio not available
-  }
-}
-
-// ============== Global Toast State ==============
-
-type ToastListener = (toasts: ToastMessage[]) => void;
-
-let globalToasts: ToastMessage[] = [];
-const listeners = new Set<ToastListener>();
-
-function notifyListeners() {
-  listeners.forEach(fn => fn([...globalToasts]));
-}
-
-/**
- * Show a toast notification in the bottom-right corner of the app.
- */
-export function showToast(title: string, body: string, type: ToastMessage['type'] = 'info', duration = 6000): void {
-  const toast: ToastMessage = {
-    id: `toast_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
-    title,
-    body,
-    type,
-    duration,
-    createdAt: Date.now(),
-  };
-  globalToasts = [...globalToasts, toast];
-  notifyListeners();
-
-  // Play notification sound
-  playNotificationSound();
-}
-
-function dismissToast(id: string): void {
-  globalToasts = globalToasts.filter(t => t.id !== id);
-  notifyListeners();
-}
-
-// ============== Hook ==============
-
-function useToasts(): ToastMessage[] {
-  const [toasts, setToasts] = useState<ToastMessage[]>(globalToasts);
-
-  useEffect(() => {
-    const listener: ToastListener = (updated) => setToasts(updated);
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
-  }, []);
-
-  return toasts;
-}
+import { dismissToast, useToasts, type ToastMessage } from '@/services/toast';
 
 // ============== Toast Item Component ==============
 
-function ToastItem({ toast, onDismiss }: { toast: ToastMessage; onDismiss: () => void }) {
+function ToastItem({ toast }: { toast: ToastMessage }) {
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dismiss = useCallback(() => dismissToast(toast.id), [toast.id]);
 
   useEffect(() => {
     if (toast.duration && toast.duration > 0) {
       timerRef.current = setTimeout(() => {
         setExiting(true);
-        setTimeout(onDismiss, 300);
+        setTimeout(dismiss, 300);
       }, toast.duration);
     }
     return () => {
       if (timerRef.current) clearTimeout(timerRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [toast.duration]);
+  }, [dismiss, toast.duration]);
 
   const handleDismiss = useCallback(() => {
     setExiting(true);
-    setTimeout(onDismiss, 300);
-  }, [onDismiss]);
+    setTimeout(dismiss, 300);
+  }, [dismiss]);
 
   const bgColor = toast.type === 'success' ? 'bg-green-600'
     : toast.type === 'warning' ? 'bg-amber-600'
@@ -241,10 +82,7 @@ export function ToastContainer() {
     <div className="fixed bottom-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
       {toasts.map(toast => (
         <div key={toast.id} className="pointer-events-auto">
-          <ToastItem
-            toast={toast}
-            onDismiss={() => dismissToast(toast.id)}
-          />
+          <ToastItem toast={toast} />
         </div>
       ))}
     </div>

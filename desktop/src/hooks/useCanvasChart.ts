@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject, type DependencyList } from 'react';
+import { useEffect, type RefObject } from 'react';
 
 /**
  * A hook that reliably renders a chart on an HTML5 canvas element.
@@ -14,18 +14,12 @@ import { useEffect, useRef, type RefObject, type DependencyList } from 'react';
  * @param canvasRef - React ref to the <canvas> element
  * @param drawFn   - Pure drawing function receiving (ctx, width, height) in CSS pixels.
  *                   The context is already DPI-scaled; draw using CSS-pixel coordinates.
- * @param deps     - Dependency list that triggers a redraw (same semantics as useEffect deps)
+ * Redraws whenever the caller's memoized draw function changes.
  */
 export function useCanvasChart(
   canvasRef: RefObject<HTMLCanvasElement | null>,
   drawFn: (ctx: CanvasRenderingContext2D, width: number, height: number) => void,
-  deps: DependencyList,
 ): void {
-  // Keep the latest drawFn in a ref so the ResizeObserver callback always
-  // calls the most recent version without needing to re-subscribe.
-  const drawFnRef = useRef(drawFn);
-  drawFnRef.current = drawFn;
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -61,7 +55,7 @@ export function useCanvasChart(
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
       ctx.clearRect(0, 0, rect.width, rect.height);
-      drawFnRef.current(ctx, rect.width, rect.height);
+      drawFn(ctx, rect.width, rect.height);
     };
 
     // Initial draw (via rAF to ensure layout is settled after React commit)
@@ -81,6 +75,5 @@ export function useCanvasChart(
       if (rafId !== null) cancelAnimationFrame(rafId);
       observer?.disconnect();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [canvasRef, drawFn]);
 }

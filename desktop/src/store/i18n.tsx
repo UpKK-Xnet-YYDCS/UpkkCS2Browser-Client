@@ -1,15 +1,8 @@
-import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { I18nContext, type I18nContextType } from './i18nContext';
 
 // Supported languages
 export type Language = 'en' | 'ja' | 'zh-CN' | 'zh-TW' | 'ko';
-
-export const languageLabels: Record<Language, string> = {
-  'en': 'English',
-  'ja': '日本語',
-  'zh-CN': '简体中文',
-  'zh-TW': '繁體中文',
-  'ko': '한국어',
-};
 
 // Detect system language and map to supported language
 const detectSystemLanguage = (): Language => {
@@ -384,6 +377,18 @@ export interface Translations {
   // Missing i18n for various components
   online: string;
   offline: string;
+  serverOfflineTitle: string;
+  serverOfflineDescription: string;
+  serverOfflineDuration: string;
+  serverLastResponse: string;
+  secondsAgo: string;
+  minutesAgo: string;
+  hoursAgo: string;
+  minuteUnit: string;
+  hourUnit: string;
+  dayUnit: string;
+  cardSize: string;
+  resetCardSize: string;
   showOfflineServers: string;
   clearOfflineServers: string;
   realPlayers: string;
@@ -932,6 +937,18 @@ const en: Translations = {
   // Missing i18n for various components
   online: 'Online',
   offline: 'Offline',
+  serverOfflineTitle: 'This server is currently offline',
+  serverOfflineDescription: 'Live player counts and connection availability may be outdated until the server responds again.',
+  serverOfflineDuration: 'Offline for',
+  serverLastResponse: 'Last response',
+  secondsAgo: 'seconds ago',
+  minutesAgo: 'minutes ago',
+  hoursAgo: 'hours ago',
+  minuteUnit: 'm',
+  hourUnit: 'h',
+  dayUnit: 'd',
+  cardSize: 'Card size',
+  resetCardSize: 'Reset card size',
   showOfflineServers: 'Show Offline',
   clearOfflineServers: 'Clean Offline',
   realPlayers: 'Real Players',
@@ -1480,6 +1497,18 @@ const ja: Translations = {
   // Missing i18n for various components
   online: 'オンライン',
   offline: 'オフライン',
+  serverOfflineTitle: 'このサーバーは現在オフラインです',
+  serverOfflineDescription: 'サーバーが応答するまで、プレイヤー数と接続状態は最新でない可能性があります。',
+  serverOfflineDuration: 'オフライン時間',
+  serverLastResponse: '最終応答',
+  secondsAgo: '秒前',
+  minutesAgo: '分前',
+  hoursAgo: '時間前',
+  minuteUnit: '分',
+  hourUnit: '時間',
+  dayUnit: '日',
+  cardSize: 'カードサイズ',
+  resetCardSize: 'カードサイズをリセット',
   showOfflineServers: 'オフラインを表示',
   clearOfflineServers: 'オフラインを削除',
   realPlayers: '実プレイヤー',
@@ -2028,6 +2057,18 @@ const zhCN: Translations = {
   // Missing i18n for various components
   online: '在线',
   offline: '离线',
+  serverOfflineTitle: '此服务器当前离线',
+  serverOfflineDescription: '服务器恢复响应前，在线人数和连接状态可能不是最新数据。',
+  serverOfflineDuration: '持续离线',
+  serverLastResponse: '最后响应',
+  secondsAgo: '秒前',
+  minutesAgo: '分钟前',
+  hoursAgo: '小时前',
+  minuteUnit: '分钟',
+  hourUnit: '小时',
+  dayUnit: '天',
+  cardSize: '卡片大小',
+  resetCardSize: '重置卡片大小',
   showOfflineServers: '显示离线',
   clearOfflineServers: '清理离线',
   realPlayers: '真实玩家',
@@ -2576,6 +2617,18 @@ const zhTW: Translations = {
   // Missing i18n for various components
   online: '線上',
   offline: '離線',
+  serverOfflineTitle: '此伺服器目前離線',
+  serverOfflineDescription: '伺服器恢復回應前，線上人數與連線狀態可能不是最新資料。',
+  serverOfflineDuration: '持續離線',
+  serverLastResponse: '最後回應',
+  secondsAgo: '秒前',
+  minutesAgo: '分鐘前',
+  hoursAgo: '小時前',
+  minuteUnit: '分鐘',
+  hourUnit: '小時',
+  dayUnit: '天',
+  cardSize: '卡片大小',
+  resetCardSize: '重置卡片大小',
   showOfflineServers: '顯示離線',
   clearOfflineServers: '清理離線',
   realPlayers: '真實玩家',
@@ -3124,6 +3177,18 @@ const ko: Translations = {
   // Missing i18n for various components
   online: '온라인',
   offline: '오프라인',
+  serverOfflineTitle: '이 서버는 현재 오프라인입니다',
+  serverOfflineDescription: '서버가 다시 응답할 때까지 플레이어 수와 연결 상태가 최신 정보가 아닐 수 있습니다.',
+  serverOfflineDuration: '오프라인 시간',
+  serverLastResponse: '마지막 응답',
+  secondsAgo: '초 전',
+  minutesAgo: '분 전',
+  hoursAgo: '시간 전',
+  minuteUnit: '분',
+  hourUnit: '시간',
+  dayUnit: '일',
+  cardSize: '카드 크기',
+  resetCardSize: '카드 크기 초기화',
   showOfflineServers: '오프라인 표시',
   clearOfflineServers: '오프라인 삭제',
   realPlayers: '실제 플레이어',
@@ -3355,16 +3420,6 @@ const translations: Record<Language, Translations> = {
   'ko': ko,
 };
 
-// Language context
-interface I18nContextType {
-  language: Language;
-  setLanguage: (lang: Language | 'auto') => void;
-  t: Translations;
-  isAuto: boolean;
-}
-
-const I18nContext = createContext<I18nContextType | null>(null);
-
 // Storage key
 const LANGUAGE_STORAGE_KEY = 'upkk-language';
 
@@ -3415,20 +3470,4 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   };
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
-}
-
-export function useI18n(): I18nContextType {
-  const context = useContext(I18nContext);
-  if (!context) {
-    throw new Error('useI18n must be used within an I18nProvider');
-  }
-  return context;
-}
-
-// Helper to get current language label
-export function getLanguageLabel(lang: Language | 'auto', currentLang: Language): string {
-  if (lang === 'auto') {
-    return `Auto (${languageLabels[currentLang]})`;
-  }
-  return languageLabels[lang];
 }

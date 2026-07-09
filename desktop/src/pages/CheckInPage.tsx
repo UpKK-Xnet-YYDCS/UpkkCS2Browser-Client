@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { XPROJ_USER_AGENT } from '@/api';
-import { useUserStore } from '@/store/user';
-import { useI18n } from '@/store/i18n';
+import { useUserStore } from '@/hooks/useUserStore';
+import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logDebug } from '@/store/log';
 
 const FORUM_URL = 'https://bbs.upkk.com';

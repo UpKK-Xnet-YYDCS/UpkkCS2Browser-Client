@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { useUserStore } from '@/store/user';
-import { useI18n } from '@/store/i18n';
+import { useUserStore } from '@/hooks/useUserStore';
+import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logDebug } from '@/store/log';
 
 const FORUM_URL = 'https://bbs.upkk.com';
@@ -76,21 +76,29 @@ export function ForumPage() {
   useEffect(() => {
     if (!openAttempted.current) {
       openAttempted.current = true;
-      // If not logged in, show login modal and wait for login
-      if (!isLoggedIn) {
-        openLoginModal();
-        setStatus('waiting-login');
-      } else {
-        openForumWindow();
-      }
+      const timer = window.setTimeout(() => {
+        // If not logged in, show login modal and wait for login
+        if (!isLoggedIn) {
+          openLoginModal();
+          setStatus('waiting-login');
+        } else {
+          void openForumWindow();
+        }
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [openForumWindow, isLoggedIn, openLoginModal]);
 
   // Open forum after user logs in (only if we were waiting for login)
   useEffect(() => {
     if (isLoggedIn && status === 'waiting-login') {
-      openForumWindow();
+      const timer = window.setTimeout(() => {
+        void openForumWindow();
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [isLoggedIn, status, openForumWindow]);
 
   const handleRetry = () => {

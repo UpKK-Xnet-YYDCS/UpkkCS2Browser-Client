@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/hooks/useUserStore';
 
 // Icons
 const UserIcon = () => (

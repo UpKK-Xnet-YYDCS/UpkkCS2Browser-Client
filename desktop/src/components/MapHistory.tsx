@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServerMapHistory, type MapHistoryItem, type MapSessionRecord } from '@/api';
-import { useI18n, type Translations } from '@/store/i18n';
+import { useI18n } from '@/hooks/useI18n';
+import type { Translations } from '@/store/i18n';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 interface MapHistoryProps {
@@ -189,7 +190,7 @@ function MapSessionModal({
   }, [session]);
 
   // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
-  useCanvasChart(canvasRef, drawChart, [session]);
+  useCanvasChart(canvasRef, drawChart);
 
   // Close on escape key
   useEffect(() => {

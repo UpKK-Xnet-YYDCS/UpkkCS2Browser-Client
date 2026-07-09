@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback, createContext, useContext, type ReactNode } from 'react';
-import { useI18n } from '@/store/i18n';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logWarn } from '@/store/log';
+import { UpdateContext, type UpdateContextType } from '@/contexts/updateContext';
 import { 
   checkForUpdates, 
   openDownloadUrl, 
@@ -35,22 +36,6 @@ const SparkleIcon = () => (
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
   </svg>
 );
-
-// Context for update check - allows triggering from Settings
-interface UpdateContextType {
-  triggerManualCheck: () => Promise<UpdateCheckResult>;
-  isChecking: boolean;
-}
-
-const UpdateContext = createContext<UpdateContextType | null>(null);
-
-export function useUpdateCheck() {
-  const context = useContext(UpdateContext);
-  if (!context) {
-    throw new Error('useUpdateCheck must be used within UpdateProvider');
-  }
-  return context;
-}
 
 // Provider wrapper for the update functionality
 export function UpdateProvider({ children }: { children: ReactNode }) {

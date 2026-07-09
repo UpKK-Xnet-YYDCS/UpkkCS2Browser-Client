@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { UserSession, LoginResponse } from '@/types';
 import { 
   saveCredentials, 
@@ -7,6 +7,7 @@ import {
   hasStoredCredentials 
 } from '@/services/secureStorage';
 import { logInfo, logDebug, logWarn } from '@/store/log';
+import { UserContext } from './userContext';
 
 const FORUM_URL = 'https://bbs.upkk.com';
 const LOGIN_ENDPOINT = '/plugin.php?id=xnet_core_api:xproj_login';
@@ -80,7 +81,7 @@ function userReducer(state: UserState, action: Action): UserState {
 }
 
 // Context
-interface UserContextType extends UserState {
+export interface UserContextType extends UserState {
   login: (steamid64: string, securecode: string, shouldRemember?: boolean) => Promise<boolean>;
   logout: () => void;
   openLoginModal: () => void;
@@ -90,8 +91,6 @@ interface UserContextType extends UserState {
   attemptAutoLogin: () => Promise<boolean>;
   isLoggedIn: boolean;
 }
-
-const UserContext = createContext<UserContextType | null>(null);
 
 // Provider component
 export function UserProvider({ children }: { children: ReactNode }) {
@@ -211,7 +210,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           console.error('[Login] JSON解析失败!');
           console.error('[Login] 原始响应:', responseText);
           console.error('[Login] 解析错误:', parseErr);
-          throw new Error(`响应解析失败: ${responseText.substring(0, 100)}`);
+          throw new Error(`响应解析失败: ${responseText.substring(0, 100)}`, { cause: parseErr });
         }
         return await processLoginResponse(data);
       } catch (tauriErr) {
@@ -257,7 +256,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         console.error('[Login] JSON解析失败!');
         console.error('[Login] 原始响应:', responseText);
         console.error('[Login] 解析错误:', parseErr);
-        throw new Error(`响应解析失败: ${responseText.substring(0, 100)}`);
+        throw new Error(`响应解析失败: ${responseText.substring(0, 100)}`, { cause: parseErr });
       }
       return await processLoginResponse(data);
     } catch (error) {
@@ -372,8 +371,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (state.hasStoredCredentials && !state.user && !autoLoginAttempted.current) {
       attemptAutoLogin();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ref check prevents re-execution
-  }, [state.hasStoredCredentials, state.user]);
+  }, [attemptAutoLogin, state.hasStoredCredentials, state.user]);
 
   const value: UserContextType = {
     ...state,
@@ -388,13 +386,4 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
-}
-
-// Hook to use user context
-export function useUserStore(): UserContextType {
-  const context = useContext(UserContext);
-  if (!context) {
-    throw new Error('useUserStore must be used within a UserProvider');
-  }
-  return context;
 }

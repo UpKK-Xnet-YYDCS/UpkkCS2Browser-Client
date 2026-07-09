@@ -69,6 +69,27 @@ class ApiError extends Error {
   }
 }
 
+type TauriHttpFetch = typeof import('@tauri-apps/plugin-http').fetch;
+let tauriHttpFetchPromise: Promise<TauriHttpFetch | null> | null = null;
+
+function isModuleLoadError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('module') ||
+    message.includes('import') ||
+    message.includes('Cannot find') ||
+    message.includes('Failed to resolve');
+}
+
+async function getTauriHttpFetch(): Promise<TauriHttpFetch | null> {
+  tauriHttpFetchPromise ??= import('@tauri-apps/plugin-http')
+    .then((module) => module.fetch)
+    .catch((error) => {
+      if (isModuleLoadError(error)) return null;
+      throw error;
+    });
+  return tauriHttpFetchPromise;
+}
+
 // --- In-flight request deduplication ---
 // Prevents duplicate concurrent requests to the same endpoint
 const inflightRequests = new Map<string, Promise<unknown>>();
@@ -352,8 +373,8 @@ async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise
   
   try {
     // Try using Tauri HTTP plugin first (bypasses CORS restrictions)
-    try {
-      const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+    const tauriFetch = await getTauriHttpFetch();
+    if (tauriFetch) {
       const response = await tauriFetch(url, {
         ...options,
         headers: {
@@ -373,18 +394,7 @@ async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise
       const data = await response.json();
       logDebug('API', '响应成功');
       return data;
-    } catch (tauriErr) {
-      // Only fall back to regular fetch if Tauri module is not available
-      const errMsg = tauriErr instanceof Error ? tauriErr.message : String(tauriErr);
-      const isModuleError = errMsg.includes('module') || 
-                            errMsg.includes('import') || 
-                            errMsg.includes('Cannot find') ||
-                            errMsg.includes('Failed to resolve');
-      
-      if (!isModuleError) {
-        // This is an actual request error, not a module loading error - throw it
-        throw tauriErr;
-      }
+    } else {
       logDebug('API', 'Tauri HTTP 不可用, 回退到 fetch...');
     }
     
@@ -412,7 +422,7 @@ async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise
     if (error instanceof TypeError && error.message.includes('fetch')) {
       const msg = `Network error: ${endpoint}`;
       logError('API', msg);
-      throw new Error(`网络请求失败: ${url} - 无法连接到服务器。请检查网络连接和API地址配置。当前API地址: ${baseUrl}`);
+      throw new Error(`网络请求失败: ${url} - 无法连接到服务器。请检查网络连接和API地址配置。当前API地址: ${baseUrl}`, { cause: error });
     }
     if (error instanceof ApiError) {
       logError('API', `${method} ${endpoint} → ${error.status}`);
@@ -685,18 +695,15 @@ export const logout = async (): Promise<void> => {
   const baseUrl = getBaseUrl();
   try {
     // Try Tauri HTTP plugin first
-    try {
-      const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+    const tauriFetch = await getTauriHttpFetch();
+    if (tauriFetch) {
       await tauriFetch(`${baseUrl}/auth/logout`, {
         headers: {
           'User-Agent': XPROJ_USER_AGENT,
           'X-Client-UA': XPROJ_USER_AGENT,
         },
       });
-    } catch (tauriErr) {
-      const errMsg = tauriErr instanceof Error ? tauriErr.message : String(tauriErr);
-      const isModuleError = errMsg.includes('module') || errMsg.includes('import') || errMsg.includes('Cannot find') || errMsg.includes('Failed to resolve');
-      if (!isModuleError) throw tauriErr;
+    } else {
       // Fallback to regular fetch
       await fetch(`${baseUrl}/auth/logout`, {
         headers: {

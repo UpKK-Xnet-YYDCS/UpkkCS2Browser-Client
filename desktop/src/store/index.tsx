@@ -1,8 +1,9 @@
-import { createContext, useContext, useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import type { ServerStatus, ServerRegion, ServerStats, GameType } from '@/types';
 import type { ViewMode } from '@/components';
 import type { CountryInfo } from '@/api';
 import * as api from '@/api';
+import { AppContext } from './appContext';
 
 // State type
 interface AppState {
@@ -25,6 +26,7 @@ interface AppState {
   favorites: string[];
   viewMode: ViewMode;
   perPage: number;
+  cardMinWidth: number;
   // Filter metadata from /api/servers/metadata (global country/map data)
   metadataCountries: CountryInfo[];
   metadataMaps: string[];
@@ -69,7 +71,20 @@ type Action =
   | { type: 'REORDER_FAVORITES'; payload: { from: number; to: number } }
   | { type: 'SET_VIEW_MODE'; payload: ViewMode }
   | { type: 'SET_PER_PAGE'; payload: number }
+  | { type: 'SET_CARD_MIN_WIDTH'; payload: number }
   | { type: 'SET_METADATA'; payload: { countries: CountryInfo[]; maps: string[] } };
+
+export const CARD_MIN_WIDTH_DEFAULT = 320;
+export const CARD_MIN_WIDTH_MIN = 260;
+export const CARD_MIN_WIDTH_MAX = 460;
+export const CARD_MIN_WIDTH_STEP = 20;
+
+function clampCardMinWidth(value: unknown): number {
+  const width = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(width)) return CARD_MIN_WIDTH_DEFAULT;
+  const stepped = Math.round(width / CARD_MIN_WIDTH_STEP) * CARD_MIN_WIDTH_STEP;
+  return Math.min(CARD_MIN_WIDTH_MAX, Math.max(CARD_MIN_WIDTH_MIN, stepped));
+}
 
 // Load persisted state
 const loadPersistedState = (): Partial<AppState> => {
@@ -87,6 +102,7 @@ const loadPersistedState = (): Partial<AppState> => {
         selectedCountry: parsed.selectedCountry || 'all',
         viewMode: parsed.viewMode || 'card',
         perPage: parsed.perPage || 20,
+        cardMinWidth: clampCardMinWidth(parsed.cardMinWidth),
       };
     }
   } catch (e) {
@@ -116,6 +132,7 @@ const initialState: AppState = {
   favorites: [],
   viewMode: 'card',
   perPage: 20,
+  cardMinWidth: CARD_MIN_WIDTH_DEFAULT,
   metadataCountries: [],
   metadataMaps: [],
   ...loadPersistedState(),
@@ -175,6 +192,8 @@ function appReducer(state: AppState, action: Action): AppState {
       return { ...state, viewMode: action.payload };
     case 'SET_PER_PAGE':
       return { ...state, perPage: action.payload, currentPage: 1 };
+    case 'SET_CARD_MIN_WIDTH':
+      return { ...state, cardMinWidth: clampCardMinWidth(action.payload) };
     case 'SET_METADATA':
       return { ...state, metadataCountries: action.payload.countries, metadataMaps: action.payload.maps };
     default:
@@ -183,7 +202,7 @@ function appReducer(state: AppState, action: Action): AppState {
 }
 
 // Context
-interface AppContextType extends AppState {
+export interface AppContextType extends AppState {
   fetchServers: (page?: number, filters?: FetchFilters, options?: FetchOptions) => Promise<void>;
   fetchCategories: () => Promise<void>;
   fetchStats: () => Promise<void>;
@@ -204,9 +223,8 @@ interface AppContextType extends AppState {
   clearError: () => void;
   setViewMode: (mode: ViewMode) => void;
   setPerPage: (perPage: number) => void;
+  setCardMinWidth: (width: number) => void;
 }
-
-const AppContext = createContext<AppContextType | null>(null);
 
 // Provider component
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -232,6 +250,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         selectedCountry: state.selectedCountry,
         viewMode: state.viewMode,
         perPage: state.perPage,
+        cardMinWidth: state.cardMinWidth,
       };
       localStorage.setItem('xproj-desktop-state', JSON.stringify(toPersist));
     }, 500);
@@ -241,7 +260,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         persistTimerRef.current = null;
       }
     };
-  }, [state.favorites, state.apiBaseUrl, state.selectedRegion, state.selectedGameType, state.selectedContinent, state.selectedGeoRegion, state.selectedCountry, state.viewMode, state.perPage]);
+  }, [state.favorites, state.apiBaseUrl, state.selectedRegion, state.selectedGameType, state.selectedContinent, state.selectedGeoRegion, state.selectedCountry, state.viewMode, state.perPage, state.cardMinWidth]);
 
   // fetchServers accepts optional filter overrides to avoid race conditions with stale state
   // When filters parameter is provided, use those values instead of current state
@@ -517,6 +536,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_PER_PAGE', payload: perPage });
   }, []);
 
+  const setCardMinWidth = useCallback((width: number) => {
+    dispatch({ type: 'SET_CARD_MIN_WIDTH', payload: width });
+  }, []);
+
   const value: AppContextType = {
     ...state,
     fetchServers,
@@ -539,16 +562,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
     clearError,
     setViewMode,
     setPerPage,
+    setCardMinWidth,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
-}
-
-// Hook to use app context
-export function useAppStore(): AppContextType {
-  const context = useContext(AppContext);
-  if (!context) {
-    throw new Error('useAppStore must be used within an AppProvider');
-  }
-  return context;
 }

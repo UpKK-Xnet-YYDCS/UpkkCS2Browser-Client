@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { getServerPlayerHistory, type PlayerHistoryStat } from '@/api';
-import { useI18n } from '@/store/i18n';
+import { useI18n } from '@/hooks/useI18n';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 interface PlayerHistoryChartProps {
@@ -33,11 +33,7 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
     { value: '30d', label: t.period30d },
   ];
 
-  useEffect(() => {
-    loadData();
-  }, [serverId, period]);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -49,7 +45,14 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [period, serverId]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void loadData();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [loadData]);
 
   const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     if (stats.length === 0) return;
@@ -137,7 +140,7 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
   }, [stats, period]);
 
   // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
-  useCanvasChart(canvasRef, drawChart, [stats, period]);
+  useCanvasChart(canvasRef, drawChart);
 
   return (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">

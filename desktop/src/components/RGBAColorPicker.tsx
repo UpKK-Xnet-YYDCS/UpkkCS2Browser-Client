@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { RGBAColor } from '@/store/theme';
-import { rgbaToCss, rgbaToHex, hexToRgba, presetColors } from '@/store/theme';
+import { rgbaToCss, rgbaToHex, hexToRgba, presetColors } from '@/store/themeUtils';
 
 interface RGBAColorPickerProps {
   color: RGBAColor;

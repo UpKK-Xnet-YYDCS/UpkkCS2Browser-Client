@@ -1,6 +1,8 @@
 import { useState, useRef } from 'react';
-import { useAppStore } from '@/store';
-import { useTheme, colorRegionLabels, type ColorRegion } from '@/store/theme';
+import { useAppStore } from '@/hooks/useAppStore';
+import { useTheme } from '@/hooks/useTheme';
+import type { ColorRegion } from '@/store/theme';
+import { colorRegionLabels } from '@/store/themeUtils';
 import { getApiBaseUrl } from '@/api';
 import { RGBAColorPicker } from './RGBAColorPicker';
 
