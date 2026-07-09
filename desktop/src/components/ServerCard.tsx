@@ -6,6 +6,8 @@ import * as api from '@/api';
 import { getApiToken } from '@/api';
 import { buildJoinUrl } from '@/services/steamClient';
 import { AutoJoinModal } from './AutoJoinModal';
+import { LocalA2SLatencyBadge } from './LocalA2SLatencyBadge';
+import { LatencyProbeModal } from './LatencyProbeModal';
 import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logError } from '@/store/log';
 import { getOfflineDuration, isServerOnline } from '@/utils/serverStatus';
@@ -99,6 +101,7 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
   // Determine login status synchronously from stored token to avoid per-card API calls
   const isLoggedIn = Boolean(getApiToken());
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
+  const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
   const [autoJoinTarget, setAutoJoinTarget] = useState<ServerStatus | null>(null);
   const [showCloudPrompt, setShowCloudPrompt] = useState<'add' | 'remove' | null>(null);
   const [showMultiServerDropdown, setShowMultiServerDropdown] = useState(false);
@@ -239,6 +242,11 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
     setShowMultiServerDropdown(false);
   };
 
+  const handleLatencyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setShowLatencyProbeModal(true);
+  };
+
   const handleConnectAlternate = (ip: string, port: string, e: React.MouseEvent) => {
     e.stopPropagation();
     const steamUrl = buildJoinUrl(ip, port, server.game_id ?? server.GameID, server.game);
@@ -335,10 +343,23 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
         </button>
         )}
         
-        {/* Status indicator */}
-        <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-1 bg-black/50 backdrop-blur-sm rounded-lg">
-          <span className={`w-2 h-2 rounded-full ${serverOnline ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`} />
-          <span className="text-white text-xs font-medium">{serverOnline ? t.online : t.offline}</span>
+        {/* Local latency indicator */}
+        <div className="absolute top-2 left-2 z-20">
+          <LocalA2SLatencyBadge
+            compact
+            overlay
+            status={server.local_latency_status}
+            latencyMs={server.local_latency_ms}
+            error={server.local_latency_error}
+            onClick={handleLatencyClick}
+            labels={{
+              latency: t.localA2SLatency,
+              queued: t.localA2SQueued,
+              checking: t.localA2SChecking,
+              unavailable: t.localA2SUnavailable,
+              failed: t.localA2SFailed,
+            }}
+          />
         </div>
       </div>
       
@@ -503,6 +524,13 @@ function ServerCardInner({ server, onClick, onFavoriteChange, hideCloudFavorite 
         />
       )}
 
+      {showLatencyProbeModal && (
+        <LatencyProbeModal
+          server={server}
+          onClose={() => setShowLatencyProbeModal(false)}
+        />
+      )}
+
       {/* Cloud Favorite Prompt */}
       {showCloudPrompt && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={(e) => { e.stopPropagation(); setShowCloudPrompt(null); }}>
@@ -567,6 +595,10 @@ export const ServerCard = memo(ServerCardInner, (prev, next) => {
     ps.last_updated_relative === ns.last_updated_relative &&
     ps.updated_at_relative === ns.updated_at_relative &&
     ps.game === ns.game &&
+    ps.local_latency_status === ns.local_latency_status &&
+    ps.local_latency_ms === ns.local_latency_ms &&
+    ps.local_latency_error === ns.local_latency_error &&
+    ps.local_latency_updated_at === ns.local_latency_updated_at &&
     prev.onClick === next.onClick &&
     prev.onFavoriteChange === next.onFavoriteChange &&
     prev.hideCloudFavorite === next.hideCloudFavorite

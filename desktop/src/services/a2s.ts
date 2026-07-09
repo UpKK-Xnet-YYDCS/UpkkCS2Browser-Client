@@ -6,6 +6,13 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
+import { createLocalLatencyScheduler } from './a2sLatency';
+export {
+  createLocalLatencyScheduler,
+  type LocalLatencySnapshot,
+  type LocalLatencyStatus,
+  type LocalLatencyTarget,
+} from './a2sLatency';
 
 // A2S query result from Tauri backend
 export interface A2SQueryResult {
@@ -25,6 +32,17 @@ export interface A2SQueryResult {
   password: boolean;
   vac: boolean;
   version: string;
+  latency_ms?: number;
+}
+
+export interface QueryServerA2SOptions {
+  timeoutMs?: number;
+}
+
+export interface DesktopA2SLatencySchedulerOptions {
+  workerCount?: number;
+  retryCount?: number;
+  retryDelayMs?: number;
 }
 
 /**
@@ -104,7 +122,7 @@ function emptyA2SResult(ip: string, port: string, error: string): A2SQueryResult
  * Returns the result with success/error status — no silent fallback.
  * All errors are surfaced in the result's error field.
  */
-export async function queryServerA2S(ip: string, port: string): Promise<A2SQueryResult> {
+export async function queryServerA2S(ip: string, port: string, options: QueryServerA2SOptions = {}): Promise<A2SQueryResult> {
   if (!isTauriAvailable()) {
     return emptyA2SResult(ip, port, 'Tauri runtime not available — A2S query requires the desktop app');
   }
@@ -112,11 +130,27 @@ export async function queryServerA2S(ip: string, port: string): Promise<A2SQuery
   try {
     // Resolve domain name to IP if needed
     const resolvedIp = await resolveHost(ip);
-    const result = await invoke<A2SQueryResult>('query_server_a2s', { ip: resolvedIp, port });
+    const invokeArgs: { ip: string; port: string; timeoutMs?: number } = { ip: resolvedIp, port };
+    if (typeof options.timeoutMs === 'number') {
+      invokeArgs.timeoutMs = options.timeoutMs;
+    }
+    const result = await invoke<A2SQueryResult>('query_server_a2s', invokeArgs);
     return result;
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error('[A2S] Query failed:', errMsg);
     return emptyA2SResult(ip, port, errMsg);
   }
+}
+
+export function createDesktopA2SLatencyScheduler(options: DesktopA2SLatencySchedulerOptions = {}) {
+  return createLocalLatencyScheduler({
+    concurrency: options.workerCount,
+    ttlMs: 60_000,
+    timeoutMs: 3_000,
+    retryCount: options.retryCount,
+    retryDelayMs: options.retryDelayMs,
+    isAvailable: isTauriAvailable,
+    query: queryServerA2S,
+  });
 }

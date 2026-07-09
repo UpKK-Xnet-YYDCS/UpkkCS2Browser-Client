@@ -5,6 +5,8 @@ import { useAppStore } from '@/hooks/useAppStore';
 import { useI18n } from '@/hooks/useI18n';
 import { buildJoinUrl } from '@/services/steamClient';
 import { AutoJoinModal } from './AutoJoinModal';
+import { LocalA2SLatencyBadge } from './LocalA2SLatencyBadge';
+import { LatencyProbeModal } from './LatencyProbeModal';
 import { logInfo } from '@/store/log';
 import { isServerOnline } from '@/utils/serverStatus';
 
@@ -52,6 +54,7 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
   const { isFavorite, addFavorite, removeFavorite } = useAppStore();
   const { t } = useI18n();
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
+  const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
   const [autoJoinTarget, setAutoJoinTarget] = useState<ServerStatus | null>(null);
   const [showMultiServerDropdown, setShowMultiServerDropdown] = useState(false);
   const multiServerRef = useRef<HTMLDivElement>(null);
@@ -118,6 +121,11 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
     setAutoJoinTarget({ ...server, ip, port: String(port) } as ServerStatus);
     setShowAutoJoinModal(true);
     setShowMultiServerDropdown(false);
+  };
+
+  const handleLatencyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    setShowLatencyProbeModal(true);
   };
 
   const handleFavoriteClick = (e: React.MouseEvent) => {
@@ -215,6 +223,24 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
         {serverBots > 0 && (
           <span className="text-xs text-gray-400">(+{serverBots})</span>
         )}
+      </div>
+
+      {/* Local latency */}
+      <div className="flex min-w-[70px]">
+        <LocalA2SLatencyBadge
+          compact
+          status={server.local_latency_status}
+          latencyMs={server.local_latency_ms}
+          error={server.local_latency_error}
+          onClick={handleLatencyClick}
+          labels={{
+            latency: t.localA2SLatency,
+            queued: t.localA2SQueued,
+            checking: t.localA2SChecking,
+            unavailable: t.localA2SUnavailable,
+            failed: t.localA2SFailed,
+          }}
+        />
       </div>
 
       {/* Game */}
@@ -340,6 +366,13 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
           onClose={() => { setShowAutoJoinModal(false); setAutoJoinTarget(null); }}
         />
       )}
+
+      {showLatencyProbeModal && (
+        <LatencyProbeModal
+          server={server}
+          onClose={() => setShowLatencyProbeModal(false)}
+        />
+      )}
     </div>
   );
 }
@@ -371,6 +404,10 @@ export const ServerListItem = memo(ServerListItemInner, (prev, next) => {
     ps.last_updated_relative === ns.last_updated_relative &&
     ps.updated_at_relative === ns.updated_at_relative &&
     ps.game === ns.game &&
+    ps.local_latency_status === ns.local_latency_status &&
+    ps.local_latency_ms === ns.local_latency_ms &&
+    ps.local_latency_error === ns.local_latency_error &&
+    ps.local_latency_updated_at === ns.local_latency_updated_at &&
     prev.onClick === next.onClick
   );
 });

@@ -2,7 +2,7 @@ use tauri::Manager;
 use tauri::Emitter;
 use url::Url;
 use std::net::UdpSocket;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // Secure credential storage module
 mod secure_storage;
@@ -41,6 +41,7 @@ pub struct A2SQueryResult {
     pub password: bool,
     pub vac: bool,
     pub version: String,
+    pub latency_ms: Option<u64>,
 }
 
 impl Default for A2SQueryResult {
@@ -62,6 +63,7 @@ impl Default for A2SQueryResult {
             password: false,
             vac: false,
             version: String::new(),
+            latency_ms: None,
         }
     }
 }
@@ -76,9 +78,23 @@ fn read_cstring(data: &[u8], start: usize) -> (String, usize) {
     (s, end + 1) // +1 to skip the null terminator
 }
 
+fn clamp_a2s_timeout(timeout_ms: Option<u64>) -> Duration {
+    let ms = timeout_ms.unwrap_or(5_000).clamp(500, 5_000);
+    Duration::from_millis(ms)
+}
+
+fn elapsed_millis(started_at: Instant) -> u64 {
+    let elapsed = started_at.elapsed().as_millis();
+    if elapsed > u64::MAX as u128 {
+        u64::MAX
+    } else {
+        elapsed as u64
+    }
+}
+
 // Perform A2S_INFO query to a game server
 // This is the local UDP implementation matching the backend Go logic
-fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
+fn a2s_query(ip: &str, port: &str, timeout_ms: Option<u64>) -> A2SQueryResult {
     let mut result = A2SQueryResult::default();
     result.ip = ip.to_string();
     result.port = port.to_string();
@@ -94,8 +110,9 @@ fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
         }
     };
     
-    // Set timeout (5 seconds, matching backend)
-    if let Err(e) = socket.set_read_timeout(Some(Duration::from_secs(5))) {
+    // Set timeout (5 seconds by default, bounded for UI probes)
+    let timeout = clamp_a2s_timeout(timeout_ms);
+    if let Err(e) = socket.set_read_timeout(Some(timeout)) {
         result.error = Some(format!("Failed to set timeout: {}", e));
         return result;
     }
@@ -106,7 +123,9 @@ fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
         return result;
     }
     
-    // Send A2S_INFO query
+    // Send A2S_INFO query and time the first round-trip. If a challenge is returned,
+    // this first A2S_INFO -> S2C_CHALLENGE RTT is the local query latency.
+    let query_started_at = Instant::now();
     if let Err(e) = socket.send(&A2S_INFO) {
         result.error = Some(format!("Failed to send query: {}", e));
         return result;
@@ -121,6 +140,7 @@ fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
             return result;
         }
     };
+    let first_latency_ms = elapsed_millis(query_started_at);
     
     if n < 6 {
         result.error = Some("Response too short".into());
@@ -135,6 +155,8 @@ fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
     
     // Check if challenge is needed (response type 'A' = 0x41)
     if buf[4] == 0x41 && n >= 9 {
+        result.latency_ms = Some(first_latency_ms);
+
         // Extract challenge number
         let challenge = u32::from_le_bytes([buf[5], buf[6], buf[7], buf[8]]);
         
@@ -168,6 +190,8 @@ fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
             result.error = Some("Invalid response header after challenge".into());
             return result;
         }
+    } else {
+        result.latency_ms = Some(first_latency_ms);
     }
     
     // Verify response type 'I' (0x49) for A2S_INFO response
@@ -276,10 +300,10 @@ fn a2s_query(ip: &str, port: &str) -> A2SQueryResult {
 // Tauri command for A2S query
 // This allows the frontend to perform direct UDP queries to game servers
 #[tauri::command]
-async fn query_server_a2s(ip: String, port: String) -> Result<A2SQueryResult, String> {
+async fn query_server_a2s(ip: String, port: String, timeout_ms: Option<u64>) -> Result<A2SQueryResult, String> {
     // Run the blocking UDP query in a thread pool to avoid blocking the async runtime
     let result = tokio::task::spawn_blocking(move || {
-        a2s_query(&ip, &port)
+        a2s_query(&ip, &port, timeout_ms)
     }).await.map_err(|e| format!("Query task failed: {}", e))?;
     
     Ok(result)

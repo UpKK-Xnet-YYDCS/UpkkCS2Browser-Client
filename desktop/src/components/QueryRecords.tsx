@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 import { getA2SDebug, type A2SQueryDebugRecord, type A2SLatencyStatPoint } from '@/api';
 import { useI18n } from '@/hooks/useI18n';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
@@ -38,8 +38,21 @@ function calculateStats(stats: A2SLatencyStatPoint[]) {
   };
 }
 
-function LatencyChart({ stats }: { stats: A2SLatencyStatPoint[] }) {
+interface LatencyChartProps {
+  stats: A2SLatencyStatPoint[];
+  labels: {
+    time: string;
+    avgLatency: string;
+    maxLatency: string;
+    successRate: string;
+    packetLoss: string;
+    totalQueries: string;
+  };
+}
+
+function LatencyChart({ stats, labels }: LatencyChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hover, setHover] = useState<{ point: A2SLatencyStatPoint; left: number; tooltipLeft: number } | null>(null);
 
   const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     if (stats.length === 0) return;
@@ -113,9 +126,76 @@ function LatencyChart({ stats }: { stats: A2SLatencyStatPoint[] }) {
   // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
   useCanvasChart(canvasRef, drawChart);
 
+  const handleMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (stats.length === 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const padding = { right: 20, left: 50 };
+    const chartWidth = rect.width - padding.left - padding.right;
+    const relativeX = Math.min(Math.max(event.clientX - rect.left, padding.left), rect.width - padding.right);
+    const index = stats.length <= 1
+      ? 0
+      : Math.min(stats.length - 1, Math.max(0, Math.round(((relativeX - padding.left) / Math.max(chartWidth, 1)) * (stats.length - 1))));
+    const left = stats.length <= 1
+      ? padding.left
+      : padding.left + (chartWidth / (stats.length - 1)) * index;
+    setHover({
+      point: stats[index],
+      left,
+      tooltipLeft: Math.min(rect.width - 112, Math.max(112, left)),
+    });
+  };
+
+  const hoverSuccessRate = hover && hover.point.query_count > 0
+    ? (hover.point.success_count / hover.point.query_count) * 100
+    : 0;
+
   return (
-    <div className="h-40">
-      <canvas ref={canvasRef} className="w-full h-full" style={{ display: 'block' }} />
+    <div className="relative h-40">
+      <canvas
+        ref={canvasRef}
+        className="h-full w-full"
+        style={{ display: 'block' }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setHover(null)}
+      />
+      {hover && (
+        <>
+          <div
+            className="pointer-events-none absolute top-0 h-full w-px bg-gray-400/70 dark:bg-gray-500/70"
+            style={{ left: hover.left }}
+          />
+          <div
+            className="pointer-events-none absolute top-2 z-10 w-56 -translate-x-1/2 rounded-lg border border-gray-200 bg-white/95 p-3 text-xs shadow-xl backdrop-blur dark:border-gray-700 dark:bg-gray-950/95"
+            style={{ left: hover.tooltipLeft }}
+          >
+            <div className="mb-2 font-black text-gray-900 dark:text-white">
+              {labels.time}: {new Date(hover.point.timestamp * 1000).toLocaleString()}
+            </div>
+            <div className="space-y-1 font-semibold tabular-nums">
+              <div className="flex items-center justify-between gap-3 text-blue-600 dark:text-blue-300">
+                <span>{labels.avgLatency}</span>
+                <span>{hover.point.avg_latency.toFixed(1)} ms</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-amber-600 dark:text-amber-300">
+                <span>{labels.maxLatency}</span>
+                <span>{hover.point.max_latency.toFixed(1)} ms</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-green-600 dark:text-green-300">
+                <span>{labels.successRate}</span>
+                <span>{hoverSuccessRate.toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-red-600 dark:text-red-300">
+                <span>{labels.packetLoss}</span>
+                <span>{(100 - hoverSuccessRate).toFixed(1)}%</span>
+              </div>
+              <div className="flex items-center justify-between gap-3 text-gray-500 dark:text-gray-400">
+                <span>{labels.totalQueries}</span>
+                <span>{hover.point.query_count}</span>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -201,9 +281,21 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
       {/* Latency chart */}
       {stats.length > 0 && (
         <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{t.queryLatencyChart}</div>
-          <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">{t.queryLatencyChartDesc}</div>
-          <LatencyChart stats={stats} />
+          <div className="mb-2">
+            <div className="mb-1 text-sm font-semibold text-gray-900 dark:text-white">{t.queryLatencyChart}</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">{t.queryLatencyChartDesc}</div>
+          </div>
+          <LatencyChart
+            stats={stats}
+            labels={{
+              time: t.chartTooltipTime,
+              avgLatency: t.queryAvgLatency,
+              maxLatency: t.queryMaxLatency,
+              successRate: t.querySuccessRate,
+              packetLoss: t.latencyProbePacketLoss,
+              totalQueries: t.queryTotalQueries,
+            }}
+          />
           <div className="flex items-center justify-center gap-4 mt-2 text-xs">
             <div className="flex items-center gap-1">
               <div className="w-3 h-3 rounded bg-blue-500" />

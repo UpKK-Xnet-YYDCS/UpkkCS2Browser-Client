@@ -221,6 +221,46 @@ export interface Translations {
   // Server card/list
   players: string;
   ping: string;
+  localA2SLatency: string;
+  localA2SQueued: string;
+  localA2SChecking: string;
+  localA2SUnavailable: string;
+  localA2SFailed: string;
+  latencyLimit: string;
+  latencyFilterAll: string;
+  latencyFilterUnknown: string;
+  latencySettings: string;
+  latencyDeepScan: string;
+  latencyDeepScanDesc: string;
+  latencyWorkerCount: string;
+  latencyWorkerCountDesc: string;
+  latencyRetryCount: string;
+  latencyRetryCountDesc: string;
+  latencyRetryDelay: string;
+  latencyRetryDelayDesc: string;
+  latencyProbeOpen: string;
+  latencyProbeTitle: string;
+  latencyProbeInterval: string;
+  latencyProbeDuration: string;
+  latencyProbeTimeout: string;
+  latencyProbeRetries: string;
+  latencyProbeStart: string;
+  latencyProbeStop: string;
+  latencyProbeRunning: string;
+  latencyProbeIdle: string;
+  latencyProbeChart: string;
+  latencyProbeNoSamples: string;
+  latencyProbeNoTarget: string;
+  latencyProbeRtt: string;
+  latencyProbeSent: string;
+  latencyProbeReceived: string;
+  latencyProbePacketLoss: string;
+  latencyProbeAverage: string;
+  latencyProbeMin: string;
+  latencyProbeMax: string;
+  latencyProbeStability: string;
+  latencyProbeSample: string;
+  latencyProbeFailureReason: string;
   map: string;
   category: string;
   version: string;
@@ -355,6 +395,7 @@ export interface Translations {
   querySuccessRate: string;
   queryLatencyChart: string;
   queryLatencyChartDesc: string;
+  queryRecordsNodeNotice: string;
   queryRecentRecords: string;
   queryLocalNode: string;
   queryRemoteNode: string;
@@ -364,6 +405,7 @@ export interface Translations {
   queryError: string;
   queryA2SData: string;
   queryClickToExpand: string;
+  chartTooltipTime: string;
   collapse: string;
   expand: string;
   
@@ -789,6 +831,46 @@ const en: Translations = {
   
   players: 'Players',
   ping: 'Ping',
+  localA2SLatency: 'Local A2S latency',
+  localA2SQueued: 'Local A2S latency queued',
+  localA2SChecking: 'Checking local A2S latency',
+  localA2SUnavailable: 'Local A2S requires the desktop app',
+  localA2SFailed: 'Local A2S latency failed',
+  latencyLimit: 'Latency limit',
+  latencyFilterAll: 'All latency',
+  latencyFilterUnknown: 'Unknown',
+  latencySettings: 'Local latency checks',
+  latencyDeepScan: 'Deep scan',
+  latencyDeepScanDesc: 'Background deep scan fills local A2S latency for loaded and favorite candidates at low priority. The visible page always stays first, but enabling this may increase UDP queries.',
+  latencyWorkerCount: 'Parallel workers',
+  latencyWorkerCountDesc: 'How many local A2S latency checks can run at the same time. Current page checks still stay first.',
+  latencyRetryCount: 'Retry count',
+  latencyRetryCountDesc: 'Failed latency checks retry this many times before showing timeout.',
+  latencyRetryDelay: 'Retry delay (ms)',
+  latencyRetryDelayDesc: 'Backoff delay before each retry. 300ms is a balanced default for rendering speed.',
+  latencyProbeOpen: 'Deep latency / packet loss',
+  latencyProbeTitle: 'Deep Latency Probe',
+  latencyProbeInterval: 'Interval (s)',
+  latencyProbeDuration: 'Duration (s)',
+  latencyProbeTimeout: 'Timeout (s)',
+  latencyProbeRetries: 'Retries',
+  latencyProbeStart: 'Start Probe',
+  latencyProbeStop: 'Stop',
+  latencyProbeRunning: 'Probing',
+  latencyProbeIdle: 'Ready',
+  latencyProbeChart: 'RTT curve',
+  latencyProbeNoSamples: 'No samples yet',
+  latencyProbeNoTarget: 'Server address unavailable',
+  latencyProbeRtt: 'RTT',
+  latencyProbeSent: 'Sent',
+  latencyProbeReceived: 'Received',
+  latencyProbePacketLoss: 'Packet loss',
+  latencyProbeAverage: 'Average',
+  latencyProbeMin: 'Min',
+  latencyProbeMax: 'Max',
+  latencyProbeStability: 'Stability',
+  latencyProbeSample: 'Sample',
+  latencyProbeFailureReason: 'Failure reason',
   map: 'Map',
   category: 'Category',
   version: 'Version',
@@ -915,6 +997,7 @@ const en: Translations = {
   querySuccessRate: 'Success Rate',
   queryLatencyChart: 'Query Latency Trend (24h)',
   queryLatencyChartDesc: 'This is the latency from our server querying the game server, not your actual latency',
+  queryRecordsNodeNotice: 'These are UPKK server probe results from the US California node and do not represent your latency. Use deep latency / packet loss detection to test locally.',
   queryRecentRecords: 'Recent Query Records',
   queryLocalNode: 'Local',
   queryRemoteNode: 'Remote',
@@ -924,6 +1007,7 @@ const en: Translations = {
   queryError: 'Error',
   queryA2SData: 'A2S Data',
   queryClickToExpand: 'click to expand',
+  chartTooltipTime: 'Time',
   collapse: 'Collapse',
   expand: 'Expand',
   
@@ -1349,6 +1433,46 @@ const ja: Translations = {
   
   players: 'プレイヤー',
   ping: 'Ping',
+  localA2SLatency: 'ローカルA2Sレイテンシ',
+  localA2SQueued: 'ローカルA2Sレイテンシ待機中',
+  localA2SChecking: 'ローカルA2Sレイテンシ確認中',
+  localA2SUnavailable: 'ローカルA2Sはデスクトップアプリで利用できます',
+  localA2SFailed: 'ローカルA2Sレイテンシ取得失敗',
+  latencyLimit: 'レイテンシ制限',
+  latencyFilterAll: 'すべてのレイテンシ',
+  latencyFilterUnknown: '不明',
+  latencySettings: 'ローカルレイテンシ確認',
+  latencyDeepScan: '詳細スキャン',
+  latencyDeepScanDesc: 'バックグラウンド詳細スキャンは、読み込み済み候補とお気に入り候補のローカルA2Sレイテンシを低優先度で補完します。表示中のページが常に優先されますが、UDPクエリが増える可能性があります。',
+  latencyWorkerCount: '並列ワーカー',
+  latencyWorkerCountDesc: '同時に実行するローカルA2Sレイテンシ確認数です。表示中のページは常に優先されます。',
+  latencyRetryCount: '再試行回数',
+  latencyRetryCountDesc: '失敗したレイテンシ確認は、この回数だけ再試行してからタイムアウト表示になります。',
+  latencyRetryDelay: '再試行遅延 (ms)',
+  latencyRetryDelayDesc: '各再試行前に待機するバックオフ時間です。300msは描画速度とのバランスがよい既定値です。',
+  latencyProbeOpen: '詳細レイテンシ / パケットロス',
+  latencyProbeTitle: '詳細レイテンシプローブ',
+  latencyProbeInterval: '間隔 (秒)',
+  latencyProbeDuration: '時間 (秒)',
+  latencyProbeTimeout: 'タイムアウト (秒)',
+  latencyProbeRetries: '再試行',
+  latencyProbeStart: '開始',
+  latencyProbeStop: '停止',
+  latencyProbeRunning: '測定中',
+  latencyProbeIdle: '待機中',
+  latencyProbeChart: 'RTT曲線',
+  latencyProbeNoSamples: 'サンプルなし',
+  latencyProbeNoTarget: 'サーバーアドレスがありません',
+  latencyProbeRtt: 'RTT',
+  latencyProbeSent: '送信',
+  latencyProbeReceived: '受信',
+  latencyProbePacketLoss: 'パケットロス',
+  latencyProbeAverage: '平均',
+  latencyProbeMin: '最小',
+  latencyProbeMax: '最大',
+  latencyProbeStability: '安定度',
+  latencyProbeSample: 'サンプル',
+  latencyProbeFailureReason: '失敗理由',
   map: 'マップ',
   category: 'カテゴリ',
   version: 'バージョン',
@@ -1475,6 +1599,7 @@ const ja: Translations = {
   querySuccessRate: '成功率',
   queryLatencyChart: 'クエリ遅延トレンド（24時間）',
   queryLatencyChartDesc: 'これは本サイトがゲームサーバーを照会した応答時間であり、実際の遅延ではありません',
+  queryRecordsNodeNotice: 'これはUPKKサーバー【米国・カリフォルニア】ノードからの測定結果であり、あなたの遅延を表すものではありません。詳細レイテンシ / パケットロス検出でローカル測定できます。',
   queryRecentRecords: '最近のクエリ記録',
   queryLocalNode: 'ローカル',
   queryRemoteNode: 'リモート',
@@ -1484,6 +1609,7 @@ const ja: Translations = {
   queryError: 'エラー',
   queryA2SData: 'A2Sデータ',
   queryClickToExpand: 'クリックで展開',
+  chartTooltipTime: '時刻',
   collapse: '折りたたむ',
   expand: '展開',
   
@@ -1909,6 +2035,46 @@ const zhCN: Translations = {
   
   players: '玩家',
   ping: '延迟',
+  localA2SLatency: '本地 A2S 延迟',
+  localA2SQueued: '本地 A2S 延迟等待中',
+  localA2SChecking: '正在检测本地 A2S 延迟',
+  localA2SUnavailable: '本地 A2S 需要桌面端',
+  localA2SFailed: '本地 A2S 延迟检测失败',
+  latencyLimit: '延迟限制',
+  latencyFilterAll: '全部延迟',
+  latencyFilterUnknown: '未知',
+  latencySettings: '本地延迟检测',
+  latencyDeepScan: '深度扫描',
+  latencyDeepScanDesc: '后台深度扫描会以低优先级补测已加载和收藏候选的本地 A2S 延迟。当前页始终优先，但开启后可能增加 UDP 查询量。',
+  latencyWorkerCount: '并行 worker',
+  latencyWorkerCountDesc: '同时运行的本地 A2S 延迟检测数量。当前页检测仍然优先。',
+  latencyRetryCount: '重试次数',
+  latencyRetryCountDesc: '延迟检测失败后会重试这么多次，重试仍失败才显示超时。',
+  latencyRetryDelay: '重试延迟（ms）',
+  latencyRetryDelayDesc: '每次重试前等待的退避时间。默认 300ms 兼顾渲染速度和稳定性。',
+  latencyProbeOpen: '深度延迟/丢包率检测',
+  latencyProbeTitle: '深度延迟探测',
+  latencyProbeInterval: '探测间隔（秒）',
+  latencyProbeDuration: '测试时长（秒）',
+  latencyProbeTimeout: '超时（秒）',
+  latencyProbeRetries: '失败重试',
+  latencyProbeStart: '开始探测',
+  latencyProbeStop: '停止',
+  latencyProbeRunning: '探测中',
+  latencyProbeIdle: '就绪',
+  latencyProbeChart: 'RTT 曲线',
+  latencyProbeNoSamples: '暂无采样',
+  latencyProbeNoTarget: '服务器地址不可用',
+  latencyProbeRtt: 'RTT',
+  latencyProbeSent: '发送',
+  latencyProbeReceived: '收到',
+  latencyProbePacketLoss: '丢包率',
+  latencyProbeAverage: '平均',
+  latencyProbeMin: '最低',
+  latencyProbeMax: '最高',
+  latencyProbeStability: '稳定度',
+  latencyProbeSample: '采样',
+  latencyProbeFailureReason: '失败原因',
   map: '地图',
   category: '分类',
   version: '版本',
@@ -2035,6 +2201,7 @@ const zhCN: Translations = {
   querySuccessRate: '成功率',
   queryLatencyChart: '查询延迟趋势（24小时）',
   queryLatencyChartDesc: '此延迟为本站查询服务器的响应时间，不代表您的实际延迟',
+  queryRecordsNodeNotice: '这是 UPKK 服务器【美国-加州】探测结果，不代表您的延迟。你可以使用深度延迟/丢包率检测来测试。',
   queryRecentRecords: '最近查询记录',
   queryLocalNode: '本地查询',
   queryRemoteNode: '远程节点',
@@ -2044,6 +2211,7 @@ const zhCN: Translations = {
   queryError: '错误',
   queryA2SData: 'A2S 数据',
   queryClickToExpand: '点击展开',
+  chartTooltipTime: '时间',
   collapse: '收起',
   expand: '展开',
   
@@ -2469,6 +2637,46 @@ const zhTW: Translations = {
   
   players: '玩家',
   ping: '延遲',
+  localA2SLatency: '本機 A2S 延遲',
+  localA2SQueued: '本機 A2S 延遲等待中',
+  localA2SChecking: '正在偵測本機 A2S 延遲',
+  localA2SUnavailable: '本機 A2S 需要桌面端',
+  localA2SFailed: '本機 A2S 延遲偵測失敗',
+  latencyLimit: '延遲限制',
+  latencyFilterAll: '全部延遲',
+  latencyFilterUnknown: '未知',
+  latencySettings: '本機延遲偵測',
+  latencyDeepScan: '深度掃描',
+  latencyDeepScanDesc: '背景深度掃描會以低優先級補測已載入和收藏候選的本機 A2S 延遲。當前頁永遠優先，但開啟後可能增加 UDP 查詢量。',
+  latencyWorkerCount: '並行 worker',
+  latencyWorkerCountDesc: '同時執行的本機 A2S 延遲偵測數量。當前頁偵測仍然優先。',
+  latencyRetryCount: '重試次數',
+  latencyRetryCountDesc: '延遲偵測失敗後會重試這麼多次，重試仍失敗才顯示逾時。',
+  latencyRetryDelay: '重試延遲（ms）',
+  latencyRetryDelayDesc: '每次重試前等待的退避時間。預設 300ms 兼顧渲染速度和穩定性。',
+  latencyProbeOpen: '深度延遲/封包遺失率檢測',
+  latencyProbeTitle: '深度延遲探測',
+  latencyProbeInterval: '探測間隔（秒）',
+  latencyProbeDuration: '測試時長（秒）',
+  latencyProbeTimeout: '逾時（秒）',
+  latencyProbeRetries: '失敗重試',
+  latencyProbeStart: '開始探測',
+  latencyProbeStop: '停止',
+  latencyProbeRunning: '探測中',
+  latencyProbeIdle: '就緒',
+  latencyProbeChart: 'RTT 曲線',
+  latencyProbeNoSamples: '暫無採樣',
+  latencyProbeNoTarget: '伺服器地址不可用',
+  latencyProbeRtt: 'RTT',
+  latencyProbeSent: '傳送',
+  latencyProbeReceived: '收到',
+  latencyProbePacketLoss: '封包遺失率',
+  latencyProbeAverage: '平均',
+  latencyProbeMin: '最低',
+  latencyProbeMax: '最高',
+  latencyProbeStability: '穩定度',
+  latencyProbeSample: '採樣',
+  latencyProbeFailureReason: '失敗原因',
   map: '地圖',
   category: '分類',
   version: '版本',
@@ -2595,6 +2803,7 @@ const zhTW: Translations = {
   querySuccessRate: '成功率',
   queryLatencyChart: '查詢延遲趨勢（24小時）',
   queryLatencyChartDesc: '此延遲為本站查詢伺服器的回應時間，不代表您的實際延遲',
+  queryRecordsNodeNotice: '這是 UPKK 伺服器【美國-加州】探測結果，不代表您的延遲。你可以使用深度延遲/封包遺失率檢測來測試。',
   queryRecentRecords: '最近查詢記錄',
   queryLocalNode: '本地查詢',
   queryRemoteNode: '遠端節點',
@@ -2604,6 +2813,7 @@ const zhTW: Translations = {
   queryError: '錯誤',
   queryA2SData: 'A2S 資料',
   queryClickToExpand: '點擊展開',
+  chartTooltipTime: '時間',
   collapse: '收起',
   expand: '展開',
   
@@ -3029,6 +3239,46 @@ const ko: Translations = {
   
   players: '플레이어',
   ping: '핑',
+  localA2SLatency: '로컬 A2S 지연 시간',
+  localA2SQueued: '로컬 A2S 지연 시간 대기 중',
+  localA2SChecking: '로컬 A2S 지연 시간 확인 중',
+  localA2SUnavailable: '로컬 A2S는 데스크톱 앱에서 사용할 수 있습니다',
+  localA2SFailed: '로컬 A2S 지연 시간 확인 실패',
+  latencyLimit: '지연 제한',
+  latencyFilterAll: '모든 지연 시간',
+  latencyFilterUnknown: '알 수 없음',
+  latencySettings: '로컬 지연 검사',
+  latencyDeepScan: '심층 스캔',
+  latencyDeepScanDesc: '백그라운드 심층 스캔은 로드된 후보와 즐겨찾기 후보의 로컬 A2S 지연 시간을 낮은 우선순위로 보완합니다. 현재 페이지가 항상 우선이지만 UDP 쿼리가 증가할 수 있습니다.',
+  latencyWorkerCount: '병렬 워커',
+  latencyWorkerCountDesc: '동시에 실행할 로컬 A2S 지연 검사 수입니다. 현재 페이지 검사는 항상 우선됩니다.',
+  latencyRetryCount: '재시도 횟수',
+  latencyRetryCountDesc: '지연 검사 실패 시 이 횟수만큼 재시도한 뒤에도 실패하면 타임아웃으로 표시합니다.',
+  latencyRetryDelay: '재시도 지연 (ms)',
+  latencyRetryDelayDesc: '각 재시도 전에 기다리는 백오프 시간입니다. 300ms는 렌더링 속도와 안정성의 균형 잡힌 기본값입니다.',
+  latencyProbeOpen: '심층 지연 / 패킷 손실 검사',
+  latencyProbeTitle: '심층 지연 프로브',
+  latencyProbeInterval: '간격 (초)',
+  latencyProbeDuration: '시간 (초)',
+  latencyProbeTimeout: '타임아웃 (초)',
+  latencyProbeRetries: '재시도',
+  latencyProbeStart: '시작',
+  latencyProbeStop: '중지',
+  latencyProbeRunning: '검사 중',
+  latencyProbeIdle: '준비됨',
+  latencyProbeChart: 'RTT 곡선',
+  latencyProbeNoSamples: '샘플 없음',
+  latencyProbeNoTarget: '서버 주소를 사용할 수 없음',
+  latencyProbeRtt: 'RTT',
+  latencyProbeSent: '전송',
+  latencyProbeReceived: '수신',
+  latencyProbePacketLoss: '패킷 손실',
+  latencyProbeAverage: '평균',
+  latencyProbeMin: '최소',
+  latencyProbeMax: '최대',
+  latencyProbeStability: '안정도',
+  latencyProbeSample: '샘플',
+  latencyProbeFailureReason: '실패 이유',
   map: '맵',
   category: '카테고리',
   version: '버전',
@@ -3155,6 +3405,7 @@ const ko: Translations = {
   querySuccessRate: '성공률',
   queryLatencyChart: '쿼리 지연 추세 (24시간)',
   queryLatencyChartDesc: '이 지연은 본 사이트가 게임 서버를 조회한 응답 시간이며, 실제 지연이 아닙니다',
+  queryRecordsNodeNotice: '이는 UPKK 서버【미국-캘리포니아】 노드의 탐지 결과이며, 사용자의 지연 시간을 의미하지 않습니다. 심층 지연 / 패킷 손실 검사로 로컬에서 테스트할 수 있습니다.',
   queryRecentRecords: '최근 쿼리 기록',
   queryLocalNode: '로컬',
   queryRemoteNode: '원격',
@@ -3164,6 +3415,7 @@ const ko: Translations = {
   queryError: '오류',
   queryA2SData: 'A2S 데이터',
   queryClickToExpand: '클릭하여 펼치기',
+  chartTooltipTime: '시간',
   collapse: '접기',
   expand: '펼치기',
   

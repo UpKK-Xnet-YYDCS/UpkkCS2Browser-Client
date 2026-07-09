@@ -20,13 +20,29 @@ import {
   GameTypeFilter,
   CategoryFilter,
   FavoriteFilter,
+  LatencyFilter,
   Pagination,
   TopPagination,
   StatsBar,
   ViewModeSwitch,
+  type LatencyFilterValue,
 } from '@/components';
 import type { ServerStatus } from '@/types';
-import { parseServerAddress, queryServerA2S, isTauriAvailable } from '@/services/a2s';
+import {
+  createDesktopA2SLatencyScheduler,
+  parseServerAddress,
+  queryServerA2S,
+  isTauriAvailable,
+  type LocalLatencySnapshot,
+  type LocalLatencyTarget,
+} from '@/services/a2s';
+import {
+  applyLatencySnapshot,
+  getServerLatencyTarget,
+  isSameLatencySnapshot,
+  matchesLatencyFilter,
+} from '@/services/latencyDisplay';
+import { useLatencyDetectionSettings } from '@/services/latencySettings';
 import { clearResponseCache } from '@/api';
 import { showToast } from '@/services/toast';
 import { isServerOnline } from '@/utils/serverStatus';
@@ -274,6 +290,20 @@ export function HomePage() {
   const [showOfflineServers, setShowOfflineServers] = useState(false);
   const [favGameFilter, setFavGameFilter] = useState('');
   const [showAllGameTags, setShowAllGameTags] = useState(false);
+  const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
+  const latencyDetectionSettings = useLatencyDetectionSettings();
+  const latencyDeepScanEnabled = latencyDetectionSettings.deepScanEnabled;
+  const latencySchedulerOptions = useMemo(() => ({
+    workerCount: latencyDetectionSettings.workerCount,
+    retryCount: latencyDetectionSettings.retryCount,
+    retryDelayMs: latencyDetectionSettings.retryDelayMs,
+  }), [latencyDetectionSettings.retryCount, latencyDetectionSettings.retryDelayMs, latencyDetectionSettings.workerCount]);
+  const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
+  const latencySchedulerRef = useRef(createDesktopA2SLatencyScheduler(latencySchedulerOptions));
+
+  useEffect(() => {
+    latencySchedulerRef.current = createDesktopA2SLatencyScheduler(latencySchedulerOptions);
+  }, [latencySchedulerOptions]);
 
   // Auto-refresh countdown state - initialize with value from localStorage or default
   // Using useState with lazy initializer for proper one-time initialization
@@ -321,6 +351,7 @@ export function HomePage() {
       server_type: '', environment: '',
       vac: false, password: false, version: '', game_id: 0,
       last_updated: new Date().toISOString(), Online: false,
+      local_latency_status: isTauriAvailable() ? 'queued' : 'unavailable',
     });
 
     // Phase 1: Parse all addresses and show them immediately as placeholders
@@ -330,11 +361,50 @@ export function HomePage() {
       .map(e => makePlaceholder(e.parsed!.ip, e.parsed!.port));
     setFavServers(initialList);
 
-    // Phase 2: Query servers using 3 concurrent workers with non-overlapping assignments
+    // Phase 2: Query servers using configured workers with non-overlapping assignments
     try {
       const QUERY_TIMEOUT_MS = 5000;
-      const CONCURRENCY = 3;
+      const CONCURRENCY = latencySchedulerOptions.workerCount;
       const validParsed = parsedList.filter(e => e.parsed !== null).map(e => e.parsed!);
+      const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
+      const queryFavoriteServer = async (parsed: { ip: string; port: string }) => {
+        let lastResult: Awaited<ReturnType<typeof queryServerA2S>> | null = null;
+        for (let attempt = 0; attempt <= latencySchedulerOptions.retryCount; attempt += 1) {
+          try {
+            const result = await Promise.race([
+              queryServerA2S(parsed.ip, parsed.port, { timeoutMs: QUERY_TIMEOUT_MS }),
+              new Promise<null>((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), QUERY_TIMEOUT_MS)
+              ),
+            ]);
+            if (result?.success) return result;
+            lastResult = result;
+          } catch (error) {
+            lastResult = {
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+              ip: parsed.ip,
+              port: parsed.port,
+              name: '',
+              map_name: '',
+              game: '',
+              players: 0,
+              max_players: 0,
+              bots: 0,
+              real_players: 0,
+              server_type: '',
+              environment: '',
+              password: false,
+              vac: false,
+              version: '',
+            };
+          }
+          if (attempt < latencySchedulerOptions.retryCount && latencySchedulerOptions.retryDelayMs > 0) {
+            await sleep(latencySchedulerOptions.retryDelayMs);
+          }
+        }
+        return lastResult;
+      };
       let nextIndex = 0;
 
       const worker = async () => {
@@ -343,12 +413,12 @@ export function HomePage() {
           if (idx >= validParsed.length) break;
           const parsed = validParsed[idx];
           try {
-            const a2s = await Promise.race([
-              queryServerA2S(parsed.ip, parsed.port),
-              new Promise<null>((_, reject) =>
-                setTimeout(() => reject(new Error('timeout')), QUERY_TIMEOUT_MS)
-              ),
-            ]);
+            setFavServers(prev => prev.map(s =>
+              s.ip === parsed.ip && s.port === parsed.port
+                ? { ...s, local_latency_status: 'checking', local_latency_error: undefined }
+                : s
+            ));
+            const a2s = await queryFavoriteServer(parsed);
             if (a2s && a2s.success) {
               const server: ServerStatus = {
                 name: a2s.name, ip: parsed.ip, port: parsed.port, game: a2s.game,
@@ -361,14 +431,29 @@ export function HomePage() {
                 environment: a2s.environment, vac: a2s.vac, password: a2s.password,
                 version: a2s.version, game_id: 0,
                 last_updated: new Date().toISOString(), Online: true,
+                local_latency_status: Number.isFinite(a2s.latency_ms) ? 'success' : 'failed',
+                local_latency_ms: Number.isFinite(a2s.latency_ms) ? Math.round(a2s.latency_ms ?? 0) : undefined,
+                local_latency_error: Number.isFinite(a2s.latency_ms) ? undefined : 'A2S latency unavailable',
+                local_latency_updated_at: new Date().toISOString(),
               };
               // Replace the placeholder in-place so the list order is preserved
               setFavServers(prev => prev.map(s =>
                 s.ip === parsed.ip && s.port === parsed.port ? server : s
               ));
+            } else {
+              setFavServers(prev => prev.map(s =>
+                s.ip === parsed.ip && s.port === parsed.port
+                  ? { ...s, local_latency_status: 'failed', local_latency_error: a2s?.error || 'A2S query failed', local_latency_updated_at: new Date().toISOString() }
+                  : s
+              ));
             }
-          } catch {
+          } catch (error) {
             // Timed out or error — placeholder already shows as offline
+            setFavServers(prev => prev.map(s =>
+              s.ip === parsed.ip && s.port === parsed.port
+                ? { ...s, local_latency_status: 'failed', local_latency_error: error instanceof Error ? error.message : String(error), local_latency_updated_at: new Date().toISOString() }
+                : s
+            ));
           }
         }
       };
@@ -379,7 +464,7 @@ export function HomePage() {
     } finally {
       setFavLoading(false);
     }
-  }, [favorites]);
+  }, [favorites, latencySchedulerOptions]);
 
   // When showFavoritesOnly is toggled on, fetch favorites via A2S; reset page
   useEffect(() => {
@@ -453,7 +538,18 @@ export function HomePage() {
     });
   }, [gameFavServers, favSearchQuery]);
 
-  const favTotalPages = Math.max(1, Math.ceil(filteredFavServers.length / perPage));
+  const favServersWithLatency = useMemo(() => {
+    return filteredFavServers.map(server => {
+      const target = getServerLatencyTarget(server);
+      return target ? applyLatencySnapshot(server, latencyByKey[target.key]) : server;
+    });
+  }, [filteredFavServers, latencyByKey]);
+
+  const latencyFilteredFavServers = useMemo(() => {
+    return favServersWithLatency.filter(server => matchesLatencyFilter(server, latencyFilter));
+  }, [favServersWithLatency, latencyFilter]);
+
+  const favTotalPages = Math.max(1, Math.ceil(latencyFilteredFavServers.length / perPage));
 
   // Clamp favPage to valid range when favorites list changes
   useEffect(() => {
@@ -468,16 +564,70 @@ export function HomePage() {
   useEffect(() => {
     const timer = window.setTimeout(() => setFavPage(1), 0);
     return () => window.clearTimeout(timer);
-  }, [favSearchQuery, favGameFilter]);
+  }, [favSearchQuery, favGameFilter, latencyFilter]);
 
   const displayedServers = useMemo(() => {
     // Geo filters (continent/geo_region/country) are applied server-side via API params,
     // so no client-side filtering is needed here. Just paginate local favorites.
     const result = showFavoritesOnly 
-      ? filteredFavServers.slice((favPage - 1) * perPage, (favPage - 1) * perPage + perPage)
+      ? latencyFilteredFavServers.slice((favPage - 1) * perPage, (favPage - 1) * perPage + perPage)
       : servers;
     return result;
-  }, [servers, showFavoritesOnly, filteredFavServers, favPage, perPage]);
+  }, [servers, showFavoritesOnly, latencyFilteredFavServers, favPage, perPage]);
+
+  const displayedServersWithLatency = useMemo(() => {
+    const withLatency = displayedServers.map(server => {
+      const target = getServerLatencyTarget(server);
+      return target ? applyLatencySnapshot(server, latencyByKey[target.key]) : server;
+    });
+    return withLatency.filter(server => matchesLatencyFilter(server, latencyFilter));
+  }, [displayedServers, latencyByKey, latencyFilter]);
+
+  useEffect(() => {
+    const targets = displayedServers
+      .map(getServerLatencyTarget)
+      .filter((target): target is LocalLatencyTarget => target !== null);
+
+    let cancelled = false;
+    latencySchedulerRef.current.measure(targets, (key, snapshot) => {
+      if (cancelled) return;
+      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
+    }).catch(error => {
+      console.error('[HomePage] Failed to measure local A2S latency:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [displayedServers, latencySchedulerOptions]);
+
+  useEffect(() => {
+    if (!latencyDeepScanEnabled) return undefined;
+
+    const sourceServers = showFavoritesOnly ? filteredFavServers : servers;
+    const targets = sourceServers
+      .map(getServerLatencyTarget)
+      .filter((target): target is LocalLatencyTarget => target !== null);
+
+    let cancelled = false;
+    const scheduler = latencySchedulerRef.current;
+    scheduler.measure(targets, (key, snapshot) => {
+      if (cancelled) return;
+      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
+    }, { mode: 'background' }).catch(error => {
+      console.error('[HomePage] Failed to deep scan local A2S latency:', error);
+    });
+
+    return () => {
+      cancelled = true;
+      const visibleTargets = displayedServers
+        .map(getServerLatencyTarget)
+        .filter((target): target is LocalLatencyTarget => target !== null);
+      scheduler.measure(visibleTargets, () => undefined).catch(error => {
+        console.error('[HomePage] Failed to reprioritize local A2S latency:', error);
+      });
+    };
+  }, [latencyDeepScanEnabled, showFavoritesOnly, filteredFavServers, servers, displayedServers, latencySchedulerOptions]);
 
   // Reorder local favorites
   const handleLocalReorder = useCallback((index: number, direction: 'up' | 'down') => {
@@ -744,6 +894,13 @@ export function HomePage() {
               onToggle={setShowFavoritesOnly}
               favoriteCount={favorites.length}
             />
+            <LatencyFilter
+              value={latencyFilter}
+              onChange={setLatencyFilter}
+              label={t.latencyLimit}
+              allLabel={t.latencyFilterAll}
+              unknownLabel={t.latencyFilterUnknown}
+            />
             {showFavoritesOnly && (
               <>
                 <button
@@ -938,7 +1095,7 @@ export function HomePage() {
           )}
 
           {/* Favorites only empty state */}
-          {!favLoading && showFavoritesOnly && displayedServers.length === 0 && (
+          {!favLoading && showFavoritesOnly && filteredFavServers.length === 0 && (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
                 <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-yellow-100 to-yellow-200 dark:from-yellow-900/30 dark:to-yellow-800/30 rounded-2xl flex items-center justify-center">
@@ -958,8 +1115,28 @@ export function HomePage() {
             </div>
           )}
 
+          {/* Latency filter empty state */}
+          {!isLoading && !favLoading && latencyFilter !== 'all' && displayedServers.length > 0 && displayedServersWithLatency.length === 0 && (
+            <div className="flex items-center justify-center py-20">
+              <div className="text-center">
+                <div className="w-20 h-20 mx-auto mb-4 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 rounded-2xl flex items-center justify-center">
+                  <svg className="w-10 h-10 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">{t.noServersFound}</h3>
+                <button
+                  onClick={() => setLatencyFilter('all')}
+                  className="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {t.showAllServers}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Server display - Card or List view */}
-          {displayedServers.length > 0 && (
+          {displayedServersWithLatency.length > 0 && (
             <div className="relative">
               {/* Loading overlay for manual refresh only - not shown for local favorites */}
               {isLoading && !showFavoritesOnly && isManualRefresh && (
@@ -977,7 +1154,7 @@ export function HomePage() {
                   <TopPagination
                     overrideCurrentPage={favPage}
                     overrideTotalPages={favTotalPages}
-                    overrideTotalServers={filteredFavServers.length}
+                    overrideTotalServers={latencyFilteredFavServers.length}
                     onPageChange={setFavPage}
                   />
                 ) : (
@@ -987,7 +1164,7 @@ export function HomePage() {
               
               {viewMode === 'card' ? (
                 <div className="server-card-grid" style={cardGridStyle}>
-                  {displayedServers.map((server, index) => {
+                  {displayedServersWithLatency.map((server, index) => {
                     const globalIndex = (favPage - 1) * perPage + index;
                     return showFavoritesOnly ? (
                       <div key={`${server.ip || server.Addr}:${server.port || server.Port}-${index}`} className="relative group">
@@ -1030,7 +1207,7 @@ export function HomePage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {displayedServers.map((server, index) => {
+                  {displayedServersWithLatency.map((server, index) => {
                     const globalIndex = (favPage - 1) * perPage + index;
                     return showFavoritesOnly ? (
                       <div key={`${server.ip || server.Addr}:${server.port || server.Port}-${index}`} className="relative group">
@@ -1078,7 +1255,7 @@ export function HomePage() {
                 <Pagination
                   overrideCurrentPage={favPage}
                   overrideTotalPages={favTotalPages}
-                  overrideTotalServers={filteredFavServers.length}
+                  overrideTotalServers={latencyFilteredFavServers.length}
                   onPageChange={setFavPage}
                 />
               ) : (

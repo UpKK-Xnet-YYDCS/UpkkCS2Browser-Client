@@ -29,13 +29,6 @@ const SpinnerIcon = () => (
   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
 );
 
-// Local A2S icon (shows when using local UDP query)
-const LocalQueryIcon = () => (
-  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-  </svg>
-);
-
 // Auto-join check interval in seconds
 const DEFAULT_CHECK_INTERVAL = 7; // default 7 seconds
 const MIN_CHECK_INTERVAL = 2; // minimum 2 seconds for local A2S
@@ -69,7 +62,6 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
   const [countdown, setCountdown] = useState(DEFAULT_CHECK_INTERVAL);
   const [statusText, setStatusText] = useState('');
   const [currentPlayers, setCurrentPlayers] = useState(server.players ?? server.Players ?? 0);
-  const [useLocalA2S, setUseLocalA2S] = useState(false); // Track if using local A2S
   const [currentMaxPlayers, setCurrentMaxPlayers] = useState(serverMaxPlayers);
   
   // Refs for intervals
@@ -83,7 +75,8 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
   }, [isMonitoring]);
 
   // Stop monitoring function (defined as inline to avoid circular dependency)
-  const doStopMonitoring = () => {
+  const doStopMonitoring = useCallback(() => {
+    isMonitoringRef.current = false;
     setIsMonitoring(false);
     setStatusText('');
     
@@ -95,7 +88,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
     }
-  };
+  }, []);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -119,8 +112,8 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
 
   // Check server and join if slots available
   // Uses local A2S query (Tauri) when available, falls back to API
-  const checkServer = useCallback(async () => {
-    if (!isMonitoringRef.current) return;
+  const checkServer = useCallback(async (): Promise<boolean> => {
+    if (!isMonitoringRef.current) return false;
 
     setStatusText(t.autoJoinChecking);
     
@@ -131,13 +124,12 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     try {
       // Try local A2S query first (Tauri only - direct UDP query)
       if (isTauriAvailable()) {
-        const a2sResult = await queryServerA2S(String(serverIp), String(serverPort));
+        const a2sResult = await queryServerA2S(String(serverIp), String(serverPort), { timeoutMs: 2_500 });
         
         if (a2sResult && a2sResult.success) {
           realPlayers = a2sResult.real_players;
           maxPlayers = a2sResult.max_players;
           querySuccess = true;
-          setUseLocalA2S(true);
           logInfo('AutoJoin', `A2S ${serverIp}:${serverPort} → ${realPlayers}/${maxPlayers}`);
           logDebug('AutoJoin', `Using local A2S query: ${realPlayers}/${maxPlayers}`);
         }
@@ -152,7 +144,6 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
           realPlayers = result.server.real_players ?? result.server.players ?? result.server.Players ?? 0;
           maxPlayers = result.server.max_players ?? result.server.MaxPlayers ?? DEFAULT_MAX_PLAYERS;
           querySuccess = true;
-          setUseLocalA2S(false);
           logInfo('AutoJoin', `API ${serverIp}:${serverPort} → ${realPlayers}/${maxPlayers}`);
           logDebug('AutoJoin', `Using API query: ${realPlayers}/${maxPlayers}`);
         }
@@ -188,6 +179,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
             doStopMonitoring();
             onClose();
           }, 2000);
+          return false;
         } else {
           setStatusText(`${t.autoJoinWaiting} (${realPlayers}/${maxPlayers})`);
         }
@@ -203,22 +195,27 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     
     // Reset countdown
     setCountdown(checkInterval);
-  }, [serverIp, serverPort, baseAddress, minSlots, onClose, t, checkInterval, server.game_id, server.GameID, server.game, server.name]);
+    return true;
+  }, [serverIp, serverPort, baseAddress, minSlots, onClose, t, checkInterval, server.game_id, server.GameID, server.game, server.name, doStopMonitoring]);
 
   // Start monitoring
-  const startMonitoring = useCallback(() => {
+  const startMonitoring = useCallback(async () => {
     // Save settings to localStorage
     localStorage.setItem('autoJoinMinSlots', String(minSlots));
     localStorage.setItem('autoJoinCheckInterval', String(checkInterval));
     
+    isMonitoringRef.current = true;
     setIsMonitoring(true);
     setCountdown(checkInterval);
     
-    // Check immediately
-    setTimeout(checkServer, 0);
+    // Check immediately before installing the interval so auto-join uses the freshest local A2S result.
+    const shouldContinue = await checkServer();
+    if (!shouldContinue || !isMonitoringRef.current) return;
     
     // Set up check interval (convert seconds to milliseconds)
-    checkIntervalRef.current = setInterval(checkServer, checkInterval * 1000);
+    checkIntervalRef.current = setInterval(() => {
+      void checkServer();
+    }, checkInterval * 1000);
     
     // Set up countdown interval
     countdownIntervalRef.current = setInterval(() => {
@@ -231,7 +228,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     if (isMonitoring) {
       doStopMonitoring();
     } else {
-      startMonitoring();
+      void startMonitoring();
     }
   };
 
@@ -291,12 +288,6 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
               <div className="flex items-center gap-3 mb-3">
                 <SpinnerIcon />
                 <span className="text-blue-700 dark:text-blue-400 font-medium">{statusText || t.autoJoinMonitoring}</span>
-                {useLocalA2S && (
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium rounded-full">
-                    <LocalQueryIcon />
-                    A2S
-                  </span>
-                )}
               </div>
               <div className="flex justify-between text-sm text-blue-600 dark:text-blue-300">
                 <span>{t.autoJoinCurrentPlayers}: {currentPlayers}/{currentMaxPlayers} ({t.autoJoinRemaining} {availableSlots})</span>

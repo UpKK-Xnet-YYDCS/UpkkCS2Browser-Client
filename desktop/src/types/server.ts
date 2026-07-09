@@ -44,6 +44,10 @@ export interface ServerStatus {
   server_offline?: boolean | string | number;
   offline?: boolean | string | number;
   offline_threshold_minutes?: number | string;
+  local_latency_ms?: number;
+  local_latency_status?: 'queued' | 'checking' | 'success' | 'failed' | 'unavailable';
+  local_latency_error?: string;
+  local_latency_updated_at?: string;
   
   // Legacy compatibility (PascalCase - may not be present in new API)
   ID?: number;

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
 import { getServerPlayerHistory, type PlayerHistoryStat } from '@/api';
 import { useI18n } from '@/hooks/useI18n';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
@@ -23,6 +23,7 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
   const [error, setError] = useState<string | null>(null);
   const [period, setPeriod] = useState<Period>('24h');
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [hover, setHover] = useState<{ point: PlayerHistoryStat; left: number; tooltipLeft: number } | null>(null);
   
   // Get periods with translations
   const PERIODS: { value: Period; label: string }[] = [
@@ -40,12 +41,12 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
       const response = await getServerPlayerHistory(serverId, period);
       setStats(response.stats || []);
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败');
+      setError(err instanceof Error ? err.message : t.loadFailed);
       setStats([]);
     } finally {
       setLoading(false);
     }
-  }, [period, serverId]);
+  }, [period, serverId, t.loadFailed]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -95,8 +96,8 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
       const x = padding.left + (chartWidth / (stats.length - 1 || 1)) * i;
       const date = new Date(stats[i].timestamp);
       const label = period === '7d' || period === '30d'
-        ? date.toLocaleDateString('zh-CN', { month: 'short', day: 'numeric' })
-        : date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+        ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+        : date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
       ctx.fillText(label, x, height - 8);
     }
 
@@ -142,6 +143,28 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
   // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
   useCanvasChart(canvasRef, drawChart);
 
+  const handleMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {
+    if (stats.length === 0) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const padding = { left: 40, right: 20 };
+    const chartWidth = rect.width - padding.left - padding.right;
+    const relativeX = Math.min(Math.max(event.clientX - rect.left, padding.left), rect.width - padding.right);
+    const index = stats.length <= 1
+      ? 0
+      : Math.min(stats.length - 1, Math.max(0, Math.round(((relativeX - padding.left) / Math.max(chartWidth, 1)) * (stats.length - 1))));
+    const left = stats.length <= 1
+      ? padding.left
+      : padding.left + (chartWidth / (stats.length - 1)) * index;
+    setHover({
+      point: stats[index],
+      left,
+      tooltipLeft: Math.min(rect.width - 104, Math.max(104, left)),
+    });
+  };
+
+  const hoverRealPlayers = hover ? hover.point.real_players ?? hover.point.players ?? 0 : 0;
+  const hoverBots = hover ? hover.point.bots ?? 0 : 0;
+
   return (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3">
@@ -180,12 +203,40 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
         </div>
       ) : (
         <>
-          <div className="h-40">
+          <div className="relative h-40">
             <canvas
               ref={canvasRef}
-              className="w-full h-full"
+              className="h-full w-full"
               style={{ display: 'block' }}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={() => setHover(null)}
             />
+            {hover && (
+              <>
+                <div
+                  className="pointer-events-none absolute top-0 h-full w-px bg-gray-400/70 dark:bg-gray-500/70"
+                  style={{ left: hover.left }}
+                />
+                <div
+                  className="pointer-events-none absolute top-2 z-10 w-52 -translate-x-1/2 rounded-lg border border-gray-200 bg-white/95 p-3 text-xs shadow-xl backdrop-blur dark:border-gray-700 dark:bg-gray-950/95"
+                  style={{ left: hover.tooltipLeft }}
+                >
+                  <div className="mb-2 font-black text-gray-900 dark:text-white">
+                    {t.chartTooltipTime}: {new Date(hover.point.timestamp).toLocaleString()}
+                  </div>
+                  <div className="space-y-1 font-semibold tabular-nums">
+                    <div className="flex items-center justify-between gap-3 text-blue-600 dark:text-blue-300">
+                      <span>{t.realPlayers}</span>
+                      <span>{hoverRealPlayers}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 text-amber-600 dark:text-amber-300">
+                      <span>{t.bots}</span>
+                      <span>{hoverBots}</span>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
           <div className="flex items-center justify-center gap-4 mt-2 text-xs">
             <div className="flex items-center gap-1">

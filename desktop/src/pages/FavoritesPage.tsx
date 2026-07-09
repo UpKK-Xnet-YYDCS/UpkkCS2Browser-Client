@@ -10,9 +10,22 @@ import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logDebug } from '@/store/log';
 import { ServerCard } from '@/components/ServerCard';
 import { ServerListItem } from '@/components/ServerListItem';
+import { LatencyFilter, type LatencyFilterValue } from '@/components/LatencyFilter';
 import { ViewModeSwitch } from '@/components/ViewModeSwitch';
 import type { ViewMode } from '@/components/ViewModeSwitch';
 import { ServerDetailModal } from '@/components/ServerDetailModal';
+import {
+  createDesktopA2SLatencyScheduler,
+  type LocalLatencySnapshot,
+  type LocalLatencyTarget,
+} from '@/services/a2s';
+import {
+  applyLatencySnapshot,
+  getServerLatencyTarget,
+  isSameLatencySnapshot,
+  matchesLatencyFilter,
+} from '@/services/latencyDisplay';
+import { useLatencyDetectionSettings } from '@/services/latencySettings';
 
 // LocalStorage keys for persisting auth state
 const AUTH_STORAGE_KEY = 'xproj_auth_status';
@@ -306,6 +319,14 @@ export function FavoritesPage() {
   const [selectedServer, setSelectedServer] = useState<ServerStatus | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
+  const latencyDetectionSettings = useLatencyDetectionSettings();
+  const latencyDeepScanEnabled = latencyDetectionSettings.deepScanEnabled;
+  const latencySchedulerOptions = useMemo(() => ({
+    workerCount: latencyDetectionSettings.workerCount,
+    retryCount: latencyDetectionSettings.retryCount,
+    retryDelayMs: latencyDetectionSettings.retryDelayMs,
+  }), [latencyDetectionSettings.retryCount, latencyDetectionSettings.retryDelayMs, latencyDetectionSettings.workerCount]);
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
     const saved = localStorage.getItem('favoritesPerPage');
@@ -316,6 +337,12 @@ export function FavoritesPage() {
     return (saved === 'list' ? 'list' : 'card') as ViewMode;
   });
   const loginDetectedRef = useRef(false);
+  const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
+  const latencySchedulerRef = useRef(createDesktopA2SLatencyScheduler(latencySchedulerOptions));
+
+  useEffect(() => {
+    latencySchedulerRef.current = createDesktopA2SLatencyScheduler(latencySchedulerOptions);
+  }, [latencySchedulerOptions]);
 
   // Auto-refresh countdown (same pattern as HomePage)
   const [refreshInterval] = useState(() => {
@@ -508,13 +535,12 @@ export function FavoritesPage() {
   };
 
   // Reorder favorites
-  const handleReorder = async (index: number, direction: 'up' | 'down') => {
-    const globalIndex = (currentPage - 1) * itemsPerPage + index;
-    const swapIndex = direction === 'up' ? globalIndex - 1 : globalIndex + 1;
+  const handleReorder = async (sourceIndex: number, direction: 'up' | 'down') => {
+    const swapIndex = direction === 'up' ? sourceIndex - 1 : sourceIndex + 1;
     if (swapIndex < 0 || swapIndex >= favorites.length) return;
 
     const newFavorites = [...favorites];
-    [newFavorites[globalIndex], newFavorites[swapIndex]] = [newFavorites[swapIndex], newFavorites[globalIndex]];
+    [newFavorites[sourceIndex], newFavorites[swapIndex]] = [newFavorites[swapIndex], newFavorites[sourceIndex]];
     setFavorites(newFavorites);
 
     // Persist sort order to backend
@@ -593,31 +619,94 @@ export function FavoritesPage() {
     }
   };
 
+  const favoriteRows = useMemo(() => {
+    return favorites.map((fav, sourceIndex) => ({
+      fav,
+      sourceIndex,
+      server: favoriteToServerStatus(fav),
+    }));
+  }, [favorites]);
+
   // Client-side search filtering
-  const filteredFavorites = useMemo(() => {
-    if (!searchQuery.trim()) return favorites;
+  const searchedFavoriteRows = useMemo(() => {
+    if (!searchQuery.trim()) return favoriteRows;
     const q = searchQuery.toLowerCase();
-    return favorites.filter(fav => {
+    return favoriteRows.filter(({ fav }) => {
       const name = (fav.current_name || fav.server_name || '').toLowerCase();
       const addr = `${fav.server_ip}:${fav.server_port}`.toLowerCase();
       const map = (fav.map_name || '').toLowerCase();
       const category = (fav.category || '').toLowerCase();
       return name.includes(q) || addr.includes(q) || map.includes(q) || category.includes(q);
     });
-  }, [favorites, searchQuery]);
+  }, [favoriteRows, searchQuery]);
+
+  const filteredFavoriteRows = useMemo(() => {
+    return searchedFavoriteRows
+      .map(row => {
+        const target = getServerLatencyTarget(row.server);
+        const server = target ? applyLatencySnapshot(row.server, latencyByKey[target.key]) : row.server;
+        return { ...row, server };
+      })
+      .filter(row => matchesLatencyFilter(row.server, latencyFilter));
+  }, [searchedFavoriteRows, latencyByKey, latencyFilter]);
 
   // Pagination
-  const totalPages = Math.max(1, Math.ceil(filteredFavorites.length / itemsPerPage));
-  const paginatedFavorites = useMemo(() => {
+  const totalPages = Math.max(1, Math.ceil(filteredFavoriteRows.length / itemsPerPage));
+  const paginatedFavoriteRows = useMemo(() => {
     const start = (currentPage - 1) * itemsPerPage;
-    return filteredFavorites.slice(start, start + itemsPerPage);
-  }, [filteredFavorites, currentPage, itemsPerPage]);
+    return filteredFavoriteRows.slice(start, start + itemsPerPage);
+  }, [filteredFavoriteRows, currentPage, itemsPerPage]);
+
+  useEffect(() => {
+    if (!authStatus.logged_in) return undefined;
+    const targets = paginatedFavoriteRows
+      .map(row => getServerLatencyTarget(row.server))
+      .filter((target): target is LocalLatencyTarget => target !== null);
+
+    let cancelled = false;
+    latencySchedulerRef.current.measure(targets, (key, snapshot) => {
+      if (cancelled) return;
+      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
+    }).catch(error => {
+      console.error('[Favorites] Failed to measure local A2S latency:', error);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [authStatus.logged_in, paginatedFavoriteRows, latencySchedulerOptions]);
+
+  useEffect(() => {
+    if (!authStatus.logged_in || !latencyDeepScanEnabled) return undefined;
+    const targets = searchedFavoriteRows
+      .map(row => getServerLatencyTarget(row.server))
+      .filter((target): target is LocalLatencyTarget => target !== null);
+
+    let cancelled = false;
+    const scheduler = latencySchedulerRef.current;
+    scheduler.measure(targets, (key, snapshot) => {
+      if (cancelled) return;
+      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
+    }, { mode: 'background' }).catch(error => {
+      console.error('[Favorites] Failed to deep scan local A2S latency:', error);
+    });
+
+    return () => {
+      cancelled = true;
+      const visibleTargets = paginatedFavoriteRows
+        .map(row => getServerLatencyTarget(row.server))
+        .filter((target): target is LocalLatencyTarget => target !== null);
+      scheduler.measure(visibleTargets, () => undefined).catch(error => {
+        console.error('[Favorites] Failed to reprioritize local A2S latency:', error);
+      });
+    };
+  }, [authStatus.logged_in, latencyDeepScanEnabled, searchedFavoriteRows, paginatedFavoriteRows, latencySchedulerOptions]);
 
   // Reset to page 1 when search changes
   useEffect(() => {
     const timer = window.setTimeout(() => setCurrentPage(1), 0);
     return () => window.clearTimeout(timer);
-  }, [searchQuery]);
+  }, [searchQuery, latencyFilter]);
 
   // Clamp currentPage to valid range when favorites list shrinks
   useEffect(() => {
@@ -731,7 +820,7 @@ export function FavoritesPage() {
                 </h1>
                 <p className="text-xs text-gray-500">
                   {authStatus.user?.username && `${t.welcome}, ${authStatus.user.username}`}
-                  {filteredFavorites.length > 0 && ` · ${filteredFavorites.length} ${t.favorites}`}
+                  {filteredFavoriteRows.length > 0 && ` · ${filteredFavoriteRows.length} ${t.favorites}`}
                 </p>
               </div>
             </div>
@@ -779,6 +868,13 @@ export function FavoritesPage() {
             )}
             {/* View mode switch */}
             <ViewModeSwitch viewMode={viewMode} onViewModeChange={handleViewModeChange} />
+            <LatencyFilter
+              value={latencyFilter}
+              onChange={setLatencyFilter}
+              label={t.latencyLimit}
+              allLabel={t.latencyFilterAll}
+              unknownLabel={t.latencyFilterUnknown}
+            />
             {/* Add favorite button */}
             <button
               onClick={() => setShowAddModal(true)}
@@ -858,7 +954,7 @@ export function FavoritesPage() {
           )}
 
           {/* Favorites grid */}
-          {paginatedFavorites.length > 0 && (
+          {paginatedFavoriteRows.length > 0 && (
             <div className="relative">
               {/* Loading overlay for manual refresh */}
               {isLoading && isManualRefresh && (
@@ -873,7 +969,7 @@ export function FavoritesPage() {
               {/* Top pagination and page size */}
               <div className="mb-4 flex items-center justify-between">
                 <p className="text-sm text-gray-500">
-                  {t.favorites}: {filteredFavorites.length}
+                  {t.favorites}: {filteredFavoriteRows.length}
                   {searchQuery && ` / ${totalFavorites}`}
                 </p>
                 <div className="flex items-center gap-3">
@@ -916,9 +1012,8 @@ export function FavoritesPage() {
 
               {viewMode === 'card' ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                {paginatedFavorites.map((fav, index) => {
-                  const serverStatus = favoriteToServerStatus(fav);
-                  const globalIndex = (currentPage - 1) * itemsPerPage + index;
+                {paginatedFavoriteRows.map(({ fav, server, sourceIndex }) => {
+                  const serverStatus = server;
                   return (
                     <div key={`${fav.server_ip}:${fav.server_port}`} className="relative group">
                       <ServerCard
@@ -930,8 +1025,8 @@ export function FavoritesPage() {
                       {/* Reorder buttons */}
                       <div className="absolute top-2 left-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleReorder(index, 'up'); }}
-                          disabled={globalIndex === 0}
+                          onClick={(e) => { e.stopPropagation(); handleReorder(sourceIndex, 'up'); }}
+                          disabled={sourceIndex === 0}
                           className="p-1 rounded-md bg-black/50 text-white/80 hover:bg-black/70 hover:text-white disabled:opacity-30 backdrop-blur-sm transition-all"
                           title={t.moveUp}
                         >
@@ -940,8 +1035,8 @@ export function FavoritesPage() {
                           </svg>
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleReorder(index, 'down'); }}
-                          disabled={globalIndex >= favorites.length - 1}
+                          onClick={(e) => { e.stopPropagation(); handleReorder(sourceIndex, 'down'); }}
+                          disabled={sourceIndex >= favorites.length - 1}
                           className="p-1 rounded-md bg-black/50 text-white/80 hover:bg-black/70 hover:text-white disabled:opacity-30 backdrop-blur-sm transition-all"
                           title={t.moveDown}
                         >
@@ -956,16 +1051,15 @@ export function FavoritesPage() {
               </div>
               ) : (
               <div className="space-y-2">
-                {paginatedFavorites.map((fav, index) => {
-                  const serverStatus = favoriteToServerStatus(fav);
-                  const globalIndex = (currentPage - 1) * itemsPerPage + index;
+                {paginatedFavoriteRows.map(({ fav, server, sourceIndex }) => {
+                  const serverStatus = server;
                   return (
                     <div key={`${fav.server_ip}:${fav.server_port}`} className="relative group">
                       {/* Reorder buttons for list view - positioned at left to avoid blocking join button */}
                       <div className="absolute top-1/2 -translate-y-1/2 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleReorder(index, 'up'); }}
-                          disabled={globalIndex === 0}
+                          onClick={(e) => { e.stopPropagation(); handleReorder(sourceIndex, 'up'); }}
+                          disabled={sourceIndex === 0}
                           className="p-1 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 transition-all"
                           title={t.moveUp}
                         >
@@ -974,8 +1068,8 @@ export function FavoritesPage() {
                           </svg>
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); handleReorder(index, 'down'); }}
-                          disabled={globalIndex >= favorites.length - 1}
+                          onClick={(e) => { e.stopPropagation(); handleReorder(sourceIndex, 'down'); }}
+                          disabled={sourceIndex >= favorites.length - 1}
                           className="p-1 rounded-md bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-300 dark:hover:bg-gray-600 disabled:opacity-30 transition-all"
                           title={t.moveDown}
                         >
@@ -1055,13 +1149,16 @@ export function FavoritesPage() {
             </div>
           )}
 
-          {/* Search returned no results */}
-          {!isLoading && searchQuery && filteredFavorites.length === 0 && favorites.length > 0 && (
+          {/* Search or latency filter returned no results */}
+          {!isLoading && filteredFavoriteRows.length === 0 && favorites.length > 0 && (
             <div className="flex items-center justify-center py-20">
               <div className="text-center">
                 <p className="text-gray-500">{t.noServersFound}</p>
                 <button
-                  onClick={() => setSearchQuery('')}
+                  onClick={() => {
+                    setSearchQuery('');
+                    setLatencyFilter('all');
+                  }}
                   className="mt-2 text-sm text-blue-500 hover:text-blue-600"
                 >
                   {t.showAllServers}

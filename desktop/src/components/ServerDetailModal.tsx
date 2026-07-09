@@ -4,6 +4,7 @@ import { getServerPlayers, getServerDetail, removeFavorite as apiRemoveFavorite,
 import { useI18n } from '@/hooks/useI18n';
 import { buildJoinUrl } from '@/services/steamClient';
 import { AutoJoinModal } from './AutoJoinModal';
+import { LatencyProbeModal } from './LatencyProbeModal';
 import { PlayerHistoryChart } from './PlayerHistoryChart';
 import { MapHistory } from './MapHistory';
 import { QueryRecords } from './QueryRecords';
@@ -49,6 +50,12 @@ const AutoJoinIcon = () => (
   </svg>
 );
 
+const LatencyProbeIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 19V5m0 14h16M7 15l3-4 3 2 4-7" />
+  </svg>
+);
+
 const WifiOffIcon = () => (
   <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3l18 18M8.53 8.56A8.96 8.96 0 0112 7c2.39 0 4.68.94 6.36 2.64M5.64 5.64A13.93 13.93 0 0112 4c3.87 0 7.37 1.57 9.9 4.1M12 20h.01" />
@@ -74,6 +81,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
   const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getApiToken()));
   const [copied, setCopied] = useState(false);
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
+  const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [cloudFavState, setCloudFavState] = useState<boolean | null>(isCloudFavorite ?? null);
@@ -482,11 +490,16 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
           {serverIp && serverPort && (
             <div className="mb-6">
               <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  <h3 className="font-semibold text-gray-900 dark:text-white">📊 {t.queryRecordsTitle}</h3>
+                <div className="mb-3 flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                    </svg>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">📊 {t.queryRecordsTitle}</h3>
+                  </div>
+                  <p className="text-xs leading-5 text-blue-700 dark:text-blue-300 md:max-w-sm md:text-right">
+                    {t.queryRecordsNodeNotice}
+                  </p>
                 </div>
                 <QueryRecords serverAddress={`${serverIp}:${serverPort}`} />
               </div>
@@ -530,7 +543,16 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
         </div>
 
         {/* Footer Actions */}
-        <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center gap-3">
+        <div className="border-t border-gray-200 dark:border-gray-700 px-6 py-4 flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => setShowLatencyProbeModal(true)}
+            className="flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-600 font-bold rounded-xl transition-all"
+            title={t.latencyProbeOpen}
+            aria-label={t.latencyProbeOpen}
+          >
+            <LatencyProbeIcon />
+            <span className="hidden sm:inline">{t.latencyProbeOpen}</span>
+          </button>
           <button
             onClick={() => setShowAutoJoinModal(true)}
             className="px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
@@ -565,6 +587,13 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
         <AutoJoinModal
           server={server}
           onClose={() => setShowAutoJoinModal(false)}
+        />
+      )}
+
+      {showLatencyProbeModal && (
+        <LatencyProbeModal
+          server={server}
+          onClose={() => setShowLatencyProbeModal(false)}
         />
       )}
 
