@@ -29,20 +29,16 @@ import {
 } from '@/components';
 import type { ServerStatus } from '@/types';
 import {
-  createDesktopA2SLatencyScheduler,
   parseServerAddress,
   queryServerA2S,
   isTauriAvailable,
-  type LocalLatencySnapshot,
-  type LocalLatencyTarget,
 } from '@/services/a2s';
 import {
   applyLatencySnapshot,
   getServerLatencyTarget,
-  isSameLatencySnapshot,
   matchesLatencyFilter,
 } from '@/services/latencyDisplay';
-import { useLatencyDetectionSettings } from '@/services/latencySettings';
+import { useLocalLatencyQueue } from '@/hooks/useLocalLatencyQueue';
 import { clearResponseCache } from '@/api';
 import { showToast } from '@/services/toast';
 import { isServerOnline } from '@/utils/serverStatus';
@@ -291,19 +287,13 @@ export function HomePage() {
   const [favGameFilter, setFavGameFilter] = useState('');
   const [showAllGameTags, setShowAllGameTags] = useState(false);
   const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
-  const latencyDetectionSettings = useLatencyDetectionSettings();
-  const latencyDeepScanEnabled = latencyDetectionSettings.deepScanEnabled;
-  const latencySchedulerOptions = useMemo(() => ({
-    workerCount: latencyDetectionSettings.workerCount,
-    retryCount: latencyDetectionSettings.retryCount,
-    retryDelayMs: latencyDetectionSettings.retryDelayMs,
-  }), [latencyDetectionSettings.retryCount, latencyDetectionSettings.retryDelayMs, latencyDetectionSettings.workerCount]);
-  const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
-  const latencySchedulerRef = useRef(createDesktopA2SLatencyScheduler(latencySchedulerOptions));
-
-  useEffect(() => {
-    latencySchedulerRef.current = createDesktopA2SLatencyScheduler(latencySchedulerOptions);
-  }, [latencySchedulerOptions]);
+  const {
+    latencyByKey,
+    latencyDetectionSettings,
+    latencySchedulerOptions,
+    measureServers,
+  } = useLocalLatencyQueue('HomePage');
+  const shouldBackfillLatency = latencyDetectionSettings.deepScanEnabled || latencyFilter !== 'all';
 
   // Auto-refresh countdown state - initialize with value from localStorage or default
   // Using useState with lazy initializer for proper one-time initialization
@@ -363,7 +353,7 @@ export function HomePage() {
 
     // Phase 2: Query servers using configured workers with non-overlapping assignments
     try {
-      const QUERY_TIMEOUT_MS = 5000;
+      const QUERY_TIMEOUT_MS = latencySchedulerOptions.timeoutMs;
       const CONCURRENCY = latencySchedulerOptions.workerCount;
       const validParsed = parsedList.filter(e => e.parsed !== null).map(e => e.parsed!);
       const sleep = (ms: number) => new Promise(resolve => window.setTimeout(resolve, ms));
@@ -584,50 +574,18 @@ export function HomePage() {
   }, [displayedServers, latencyByKey, latencyFilter]);
 
   useEffect(() => {
-    const targets = displayedServers
-      .map(getServerLatencyTarget)
-      .filter((target): target is LocalLatencyTarget => target !== null);
-
-    let cancelled = false;
-    latencySchedulerRef.current.measure(targets, (key, snapshot) => {
-      if (cancelled) return;
-      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
-    }).catch(error => {
-      console.error('[HomePage] Failed to measure local A2S latency:', error);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [displayedServers, latencySchedulerOptions]);
+    return measureServers(displayedServers);
+  }, [displayedServers, latencySchedulerOptions, measureServers]);
 
   useEffect(() => {
-    if (!latencyDeepScanEnabled) return undefined;
+    if (!shouldBackfillLatency) return undefined;
 
     const sourceServers = showFavoritesOnly ? filteredFavServers : servers;
-    const targets = sourceServers
-      .map(getServerLatencyTarget)
-      .filter((target): target is LocalLatencyTarget => target !== null);
-
-    let cancelled = false;
-    const scheduler = latencySchedulerRef.current;
-    scheduler.measure(targets, (key, snapshot) => {
-      if (cancelled) return;
-      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
-    }, { mode: 'background' }).catch(error => {
-      console.error('[HomePage] Failed to deep scan local A2S latency:', error);
+    return measureServers(sourceServers, {
+      mode: 'background',
+      excludeServers: displayedServers,
     });
-
-    return () => {
-      cancelled = true;
-      const visibleTargets = displayedServers
-        .map(getServerLatencyTarget)
-        .filter((target): target is LocalLatencyTarget => target !== null);
-      scheduler.measure(visibleTargets, () => undefined).catch(error => {
-        console.error('[HomePage] Failed to reprioritize local A2S latency:', error);
-      });
-    };
-  }, [latencyDeepScanEnabled, showFavoritesOnly, filteredFavServers, servers, displayedServers, latencySchedulerOptions]);
+  }, [shouldBackfillLatency, showFavoritesOnly, filteredFavServers, servers, displayedServers, latencySchedulerOptions, measureServers]);
 
   // Reorder local favorites
   const handleLocalReorder = useCallback((index: number, direction: 'up' | 'down') => {

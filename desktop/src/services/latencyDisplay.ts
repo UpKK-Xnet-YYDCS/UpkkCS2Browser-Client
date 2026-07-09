@@ -1,4 +1,5 @@
 import type { ServerStatus } from '@/types';
+import { isServerOffline } from '../utils/serverStatus.ts';
 import type { LocalLatencySnapshot, LocalLatencyTarget } from './a2sLatency';
 
 export type LatencyGrade = 'green' | 'yellow' | 'amber' | 'red' | 'unknown';
@@ -56,6 +57,7 @@ export function getServerLatencyTarget(server: ServerStatus): LocalLatencyTarget
     key: `${ip}:${serverPort}`,
     ip,
     port: serverPort,
+    priority: isServerOffline(server) ? 1 : 0,
   };
 }
 

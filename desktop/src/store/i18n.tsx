@@ -154,6 +154,16 @@ export interface Translations {
   loginWithDiscord: string;
   loginWithUpkk: string;
   loginChooseProvider: string;
+  loginModalTitle: string;
+  loginModalSubtitle: string;
+  loginSteamIdPlaceholder: string;
+  loginSecureCodeLabel: string;
+  loginSecureCodePlaceholder: string;
+  loginRememberMe: string;
+  loginRememberMeDesc: string;
+  loginSecureCodeHelp: string;
+  loginSubmitting: string;
+  loginSecurityFooter: string;
   syncFavoritesHint: string;
   myFavorites: string;
   welcome: string;
@@ -238,6 +248,8 @@ export interface Translations {
   latencyRetryCountDesc: string;
   latencyRetryDelay: string;
   latencyRetryDelayDesc: string;
+  latencyA2STimeout: string;
+  latencyA2STimeoutDesc: string;
   latencyProbeOpen: string;
   latencyProbeTitle: string;
   latencyProbeInterval: string;
@@ -255,6 +267,7 @@ export interface Translations {
   latencyProbeSent: string;
   latencyProbeReceived: string;
   latencyProbePacketLoss: string;
+  latencyProbeAttemptLoss: string;
   latencyProbeAverage: string;
   latencyProbeMin: string;
   latencyProbeMax: string;
@@ -768,6 +781,16 @@ const en: Translations = {
   loginWithDiscord: 'Login with Discord',
   loginWithUpkk: '[China] Login with Upkk Forum',
   loginChooseProvider: 'Choose a login method',
+  loginModalTitle: 'User Login',
+  loginModalSubtitle: 'Log in with SteamID64 and secure code',
+  loginSteamIdPlaceholder: 'Enter your SteamID64',
+  loginSecureCodeLabel: 'Secure Code',
+  loginSecureCodePlaceholder: 'Enter your secure code',
+  loginRememberMe: 'Remember login information',
+  loginRememberMeDesc: 'Store encrypted device-bound credentials and auto-login next time.',
+  loginSecureCodeHelp: 'Click here to get your SteamID64 and secure code',
+  loginSubmitting: 'Logging in...',
+  loginSecurityFooter: 'Secure login - AES-256 encryption - device-bound protection',
   syncFavoritesHint: 'Sync favorites between web and desktop versions after login',
   myFavorites: 'My Favorites',
   welcome: 'Welcome',
@@ -842,12 +865,14 @@ const en: Translations = {
   latencySettings: 'Local latency checks',
   latencyDeepScan: 'Deep scan',
   latencyDeepScanDesc: 'Background deep scan fills local A2S latency for loaded and favorite candidates at low priority. The visible page always stays first, but enabling this may increase UDP queries.',
-  latencyWorkerCount: 'Parallel workers',
-  latencyWorkerCountDesc: 'How many local A2S latency checks can run at the same time. Current page checks still stay first.',
+  latencyWorkerCount: 'Parallel queries',
+  latencyWorkerCountDesc: 'How many local UDP/A2S latency queries can run at the same time. Current page checks still stay first.',
   latencyRetryCount: 'Retry count',
   latencyRetryCountDesc: 'Failed latency checks retry this many times before showing timeout.',
   latencyRetryDelay: 'Retry delay (ms)',
   latencyRetryDelayDesc: 'Backoff delay before each retry. 300ms is a balanced default for rendering speed.',
+  latencyA2STimeout: 'UDP/A2S request timeout (ms)',
+  latencyA2STimeoutDesc: 'Timeout for each local UDP/A2S query. Default 2000ms keeps slow offline probes from blocking the list.',
   latencyProbeOpen: 'Deep latency / packet loss',
   latencyProbeTitle: 'Deep Latency Probe',
   latencyProbeInterval: 'Interval (s)',
@@ -865,6 +890,7 @@ const en: Translations = {
   latencyProbeSent: 'Sent',
   latencyProbeReceived: 'Received',
   latencyProbePacketLoss: 'Packet loss',
+  latencyProbeAttemptLoss: 'Attempt loss',
   latencyProbeAverage: 'Average',
   latencyProbeMin: 'Min',
   latencyProbeMax: 'Max',
@@ -1370,6 +1396,16 @@ const ja: Translations = {
   loginWithDiscord: 'Discordでログイン',
   loginWithUpkk: '[中国大陸] Upkkフォーラムでログイン',
   loginChooseProvider: 'ログイン方法を選択',
+  loginModalTitle: 'ユーザーログイン',
+  loginModalSubtitle: 'SteamID64とセキュアコードでログイン',
+  loginSteamIdPlaceholder: 'SteamID64を入力',
+  loginSecureCodeLabel: 'セキュアコード',
+  loginSecureCodePlaceholder: 'セキュアコードを入力',
+  loginRememberMe: 'ログイン情報を保存',
+  loginRememberMeDesc: 'デバイスに紐づく暗号化ストレージに保存し、次回自動ログインします。',
+  loginSecureCodeHelp: 'SteamID64とセキュアコードを取得',
+  loginSubmitting: 'ログイン中...',
+  loginSecurityFooter: '安全なログイン - AES-256暗号化 - デバイス保護',
   syncFavoritesHint: 'ログイン後、Web版とデスクトップ版でお気に入りを同期',
   myFavorites: 'マイお気に入り',
   welcome: 'ようこそ',
@@ -1444,12 +1480,14 @@ const ja: Translations = {
   latencySettings: 'ローカルレイテンシ確認',
   latencyDeepScan: '詳細スキャン',
   latencyDeepScanDesc: 'バックグラウンド詳細スキャンは、読み込み済み候補とお気に入り候補のローカルA2Sレイテンシを低優先度で補完します。表示中のページが常に優先されますが、UDPクエリが増える可能性があります。',
-  latencyWorkerCount: '並列ワーカー',
+  latencyWorkerCount: '並列クエリ数',
   latencyWorkerCountDesc: '同時に実行するローカルA2Sレイテンシ確認数です。表示中のページは常に優先されます。',
   latencyRetryCount: '再試行回数',
   latencyRetryCountDesc: '失敗したレイテンシ確認は、この回数だけ再試行してからタイムアウト表示になります。',
   latencyRetryDelay: '再試行遅延 (ms)',
   latencyRetryDelayDesc: '各再試行前に待機するバックオフ時間です。300msは描画速度とのバランスがよい既定値です。',
+  latencyA2STimeout: 'UDP/A2Sリクエストタイムアウト (ms)',
+  latencyA2STimeoutDesc: '各ローカルA2Sクエリのタイムアウトです。既定の2000msで遅いオフライン測定が一覧を塞ぎにくくなります。',
   latencyProbeOpen: '詳細レイテンシ / パケットロス',
   latencyProbeTitle: '詳細レイテンシプローブ',
   latencyProbeInterval: '間隔 (秒)',
@@ -1467,6 +1505,7 @@ const ja: Translations = {
   latencyProbeSent: '送信',
   latencyProbeReceived: '受信',
   latencyProbePacketLoss: 'パケットロス',
+  latencyProbeAttemptLoss: '試行ロス',
   latencyProbeAverage: '平均',
   latencyProbeMin: '最小',
   latencyProbeMax: '最大',
@@ -1972,6 +2011,16 @@ const zhCN: Translations = {
   loginWithDiscord: '使用 Discord 登录',
   loginWithUpkk: '[中国大陆网络] 使用 Upkk 论坛账号登录',
   loginChooseProvider: '选择登录方式',
+  loginModalTitle: '用户登录',
+  loginModalSubtitle: '使用 SteamID64 和安全码登录',
+  loginSteamIdPlaceholder: '输入您的 SteamID64',
+  loginSecureCodeLabel: '安全码',
+  loginSecureCodePlaceholder: '输入您的安全码',
+  loginRememberMe: '记住登录信息',
+  loginRememberMeDesc: '使用设备绑定加密存储，下次启动自动登录。',
+  loginSecureCodeHelp: '点击这里获取 SteamID64 和安全码',
+  loginSubmitting: '登录中...',
+  loginSecurityFooter: '安全登录 - AES-256 加密 - 设备绑定保护',
   syncFavoritesHint: '登录后您可以在网页版和桌面版之间同步收藏',
   myFavorites: '我的收藏',
   welcome: '欢迎',
@@ -2046,12 +2095,14 @@ const zhCN: Translations = {
   latencySettings: '本地延迟检测',
   latencyDeepScan: '深度扫描',
   latencyDeepScanDesc: '后台深度扫描会以低优先级补测已加载和收藏候选的本地 A2S 延迟。当前页始终优先，但开启后可能增加 UDP 查询量。',
-  latencyWorkerCount: '并行 worker',
+  latencyWorkerCount: '并行查询数量',
   latencyWorkerCountDesc: '同时运行的本地 A2S 延迟检测数量。当前页检测仍然优先。',
   latencyRetryCount: '重试次数',
   latencyRetryCountDesc: '延迟检测失败后会重试这么多次，重试仍失败才显示超时。',
   latencyRetryDelay: '重试延迟（ms）',
   latencyRetryDelayDesc: '每次重试前等待的退避时间。默认 300ms 兼顾渲染速度和稳定性。',
+  latencyA2STimeout: 'UDP/A2S 请求超时（ms）',
+  latencyA2STimeoutDesc: '每次本地 A2S 查询的超时时间。默认 2000ms，避免离线慢探测长时间阻塞列表。',
   latencyProbeOpen: '深度延迟/丢包率检测',
   latencyProbeTitle: '深度延迟探测',
   latencyProbeInterval: '探测间隔（秒）',
@@ -2069,6 +2120,7 @@ const zhCN: Translations = {
   latencyProbeSent: '发送',
   latencyProbeReceived: '收到',
   latencyProbePacketLoss: '丢包率',
+  latencyProbeAttemptLoss: '尝试丢失率',
   latencyProbeAverage: '平均',
   latencyProbeMin: '最低',
   latencyProbeMax: '最高',
@@ -2574,6 +2626,16 @@ const zhTW: Translations = {
   loginWithDiscord: '使用 Discord 登入',
   loginWithUpkk: '[大陸用戶] 使用 Upkk 論壇帳號登入',
   loginChooseProvider: '選擇登入方式',
+  loginModalTitle: '使用者登入',
+  loginModalSubtitle: '使用 SteamID64 和安全碼登入',
+  loginSteamIdPlaceholder: '輸入您的 SteamID64',
+  loginSecureCodeLabel: '安全碼',
+  loginSecureCodePlaceholder: '輸入您的安全碼',
+  loginRememberMe: '記住登入資訊',
+  loginRememberMeDesc: '使用裝置綁定加密儲存，下次啟動自動登入。',
+  loginSecureCodeHelp: '點擊這裡取得 SteamID64 和安全碼',
+  loginSubmitting: '登入中...',
+  loginSecurityFooter: '安全登入 - AES-256 加密 - 裝置綁定保護',
   syncFavoritesHint: '登入後您可以在網頁版和桌面版之間同步收藏',
   myFavorites: '我的收藏',
   welcome: '歡迎',
@@ -2648,12 +2710,14 @@ const zhTW: Translations = {
   latencySettings: '本機延遲偵測',
   latencyDeepScan: '深度掃描',
   latencyDeepScanDesc: '背景深度掃描會以低優先級補測已載入和收藏候選的本機 A2S 延遲。當前頁永遠優先，但開啟後可能增加 UDP 查詢量。',
-  latencyWorkerCount: '並行 worker',
+  latencyWorkerCount: '並行查詢數量',
   latencyWorkerCountDesc: '同時執行的本機 A2S 延遲偵測數量。當前頁偵測仍然優先。',
   latencyRetryCount: '重試次數',
   latencyRetryCountDesc: '延遲偵測失敗後會重試這麼多次，重試仍失敗才顯示逾時。',
   latencyRetryDelay: '重試延遲（ms）',
   latencyRetryDelayDesc: '每次重試前等待的退避時間。預設 300ms 兼顧渲染速度和穩定性。',
+  latencyA2STimeout: 'UDP/A2S 請求逾時（ms）',
+  latencyA2STimeoutDesc: '每次本機 A2S 查詢的逾時時間。預設 2000ms，避免離線慢偵測長時間阻塞列表。',
   latencyProbeOpen: '深度延遲/封包遺失率檢測',
   latencyProbeTitle: '深度延遲探測',
   latencyProbeInterval: '探測間隔（秒）',
@@ -2671,6 +2735,7 @@ const zhTW: Translations = {
   latencyProbeSent: '傳送',
   latencyProbeReceived: '收到',
   latencyProbePacketLoss: '封包遺失率',
+  latencyProbeAttemptLoss: '嘗試遺失率',
   latencyProbeAverage: '平均',
   latencyProbeMin: '最低',
   latencyProbeMax: '最高',
@@ -3176,6 +3241,16 @@ const ko: Translations = {
   loginWithDiscord: 'Discord로 로그인',
   loginWithUpkk: '[중국 대륙] Upkk 포럼으로 로그인',
   loginChooseProvider: '로그인 방법 선택',
+  loginModalTitle: '사용자 로그인',
+  loginModalSubtitle: 'SteamID64와 보안 코드로 로그인',
+  loginSteamIdPlaceholder: 'SteamID64를 입력하세요',
+  loginSecureCodeLabel: '보안 코드',
+  loginSecureCodePlaceholder: '보안 코드를 입력하세요',
+  loginRememberMe: '로그인 정보 기억',
+  loginRememberMeDesc: '기기 바인딩 암호화 저장소에 보관하고 다음 실행 시 자동 로그인합니다.',
+  loginSecureCodeHelp: 'SteamID64와 보안 코드 받기',
+  loginSubmitting: '로그인 중...',
+  loginSecurityFooter: '보안 로그인 - AES-256 암호화 - 기기 바인딩 보호',
   syncFavoritesHint: '로그인 후 웹 버전과 데스크톱 버전 간에 즐겨찾기 동기화',
   myFavorites: '내 즐겨찾기',
   welcome: '환영합니다',
@@ -3250,12 +3325,14 @@ const ko: Translations = {
   latencySettings: '로컬 지연 검사',
   latencyDeepScan: '심층 스캔',
   latencyDeepScanDesc: '백그라운드 심층 스캔은 로드된 후보와 즐겨찾기 후보의 로컬 A2S 지연 시간을 낮은 우선순위로 보완합니다. 현재 페이지가 항상 우선이지만 UDP 쿼리가 증가할 수 있습니다.',
-  latencyWorkerCount: '병렬 워커',
+  latencyWorkerCount: '병렬 쿼리 수',
   latencyWorkerCountDesc: '동시에 실행할 로컬 A2S 지연 검사 수입니다. 현재 페이지 검사는 항상 우선됩니다.',
   latencyRetryCount: '재시도 횟수',
   latencyRetryCountDesc: '지연 검사 실패 시 이 횟수만큼 재시도한 뒤에도 실패하면 타임아웃으로 표시합니다.',
   latencyRetryDelay: '재시도 지연 (ms)',
   latencyRetryDelayDesc: '각 재시도 전에 기다리는 백오프 시간입니다. 300ms는 렌더링 속도와 안정성의 균형 잡힌 기본값입니다.',
+  latencyA2STimeout: 'UDP/A2S 요청 시간 제한 (ms)',
+  latencyA2STimeoutDesc: '각 로컬 A2S 쿼리의 시간 제한입니다. 기본 2000ms로 느린 오프라인 검사가 목록을 오래 막지 않게 합니다.',
   latencyProbeOpen: '심층 지연 / 패킷 손실 검사',
   latencyProbeTitle: '심층 지연 프로브',
   latencyProbeInterval: '간격 (초)',
@@ -3273,6 +3350,7 @@ const ko: Translations = {
   latencyProbeSent: '전송',
   latencyProbeReceived: '수신',
   latencyProbePacketLoss: '패킷 손실',
+  latencyProbeAttemptLoss: '시도 손실',
   latencyProbeAverage: '평균',
   latencyProbeMin: '최소',
   latencyProbeMax: '최대',

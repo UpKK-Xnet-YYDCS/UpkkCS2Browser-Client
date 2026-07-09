@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
+import { useI18n } from '@/hooks/useI18n';
 import { useUserStore } from '@/hooks/useUserStore';
 
-// Icons
 const UserIcon = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -22,7 +22,7 @@ const ExternalLinkIcon = () => (
 
 const SteamIcon = () => (
   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 2a10 10 0 0 0-10 10c0 4.42 2.87 8.17 6.84 9.5l2.82-1.47c.4-.2.86-.2 1.26 0l2.82 1.47C19.13 20.17 22 16.42 22 12A10 10 0 0 0 12 2zm0 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 14c-2.67 0-5.02-1.35-6.41-3.4l2.41-1.26a4 4 0 0 0 8 0l2.41 1.26A7.98 7.98 0 0 1 12 19z"/>
+    <path d="M12 2a10 10 0 0 0-10 10c0 4.42 2.87 8.17 6.84 9.5l2.82-1.47c.4-.2.86-.2 1.26 0l2.82 1.47C19.13 20.17 22 16.42 22 12A10 10 0 0 0 12 2zm0 3a3 3 0 1 1 0 6 3 3 0 0 1 0-6zm0 14c-2.67 0-5.02-1.35-6.41-3.4l2.41-1.26a4 4 0 0 0 8 0l2.41 1.26A7.98 7.98 0 0 1 12 19z" />
   </svg>
 );
 
@@ -42,6 +42,7 @@ const ShieldIcon = () => (
 const SECURE_CODE_URL = 'https://bbs.upkk.com/plugin.php?id=xnet_steam_openid:SoftLogin_getsecurecode';
 
 export function LoginModal() {
+  const { t } = useI18n();
   const { showLoginModal, closeLoginModal, login, isLoading, error, rememberMe, setRememberMe } = useUserStore();
   const [steamid64, setSteamid64] = useState('');
   const [securecode, setSecurecode] = useState('');
@@ -50,8 +51,8 @@ export function LoginModal() {
     return null;
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
     if (!steamid64.trim() || !securecode.trim()) {
       return;
     }
@@ -60,11 +61,9 @@ export function LoginModal() {
 
   const handleOpenSecureCodePage = async () => {
     try {
-      // Always use shell:open to open in system default browser (not built-in webview)
       const { open } = await import('@tauri-apps/plugin-shell');
       await open(SECURE_CODE_URL);
     } catch {
-      // Fallback for non-Tauri environment (web browser)
       window.open(SECURE_CODE_URL, '_blank');
     }
   };
@@ -72,28 +71,27 @@ export function LoginModal() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        {/* Header */}
         <div className="flex items-center justify-between p-5 bg-gradient-to-r from-blue-600 to-indigo-600">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-white">
               <UserIcon />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-white">用户登录</h2>
-              <p className="text-xs text-white/70">使用 SteamID64 和安全码登录</p>
+              <h2 className="text-lg font-bold text-white">{t.loginModalTitle}</h2>
+              <p className="text-xs text-white/70">{t.loginModalSubtitle}</p>
             </div>
           </div>
           <button
             onClick={closeLoginModal}
             className="p-1.5 rounded-lg bg-white/20 text-white hover:bg-white/30 transition-colors"
+            aria-label={t.cancel}
+            title={t.cancel}
           >
             <XIcon />
           </button>
         </div>
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          {/* SteamID64 Input */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               SteamID64
@@ -105,69 +103,64 @@ export function LoginModal() {
               <input
                 type="text"
                 value={steamid64}
-                onChange={(e) => setSteamid64(e.target.value)}
-                placeholder="输入您的 SteamID64"
+                onChange={(event) => setSteamid64(event.target.value)}
+                placeholder={t.loginSteamIdPlaceholder}
                 className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
                 required
               />
             </div>
           </div>
 
-          {/* Secure Code Input */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-              安全码
+              {t.loginSecureCodeLabel}
             </label>
             <input
               type="password"
               value={securecode}
-              onChange={(e) => setSecurecode(e.target.value)}
-              placeholder="输入您的安全码"
+              onChange={(event) => setSecurecode(event.target.value)}
+              placeholder={t.loginSecureCodePlaceholder}
               className="w-full px-4 py-3 border-2 border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
               required
             />
           </div>
 
-          {/* Remember Me Checkbox */}
           <div className="flex items-center gap-3 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
             <input
               type="checkbox"
               id="rememberMe"
               checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
+              onChange={(event) => setRememberMe(event.target.checked)}
               className="w-5 h-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 focus:ring-offset-0"
             />
             <label htmlFor="rememberMe" className="flex-1 cursor-pointer">
               <div className="flex items-center gap-2">
                 <ShieldIcon />
                 <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  记住登录信息
+                  {t.loginRememberMe}
                 </span>
               </div>
               <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                使用设备绑定加密存储，下次启动自动登录
+                {t.loginRememberMeDesc}
               </p>
             </label>
           </div>
 
-          {/* Help Link */}
           <button
             type="button"
             onClick={handleOpenSecureCodePage}
             className="w-full flex items-center justify-center gap-2 py-2.5 text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-colors"
           >
             <ExternalLinkIcon />
-            <span>点击这里获取 SteamID64 和安全码</span>
+            <span>{t.loginSecureCodeHelp}</span>
           </button>
 
-          {/* Error Message */}
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
               <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={isLoading || !steamid64.trim() || !securecode.trim()}
@@ -182,21 +175,20 @@ export function LoginModal() {
             {isLoading ? (
               <>
                 <LoadingSpinner />
-                登录中...
+                {t.loginSubmitting}
               </>
             ) : (
-              '登录'
+              t.login
             )}
           </button>
         </form>
 
-        {/* Footer */}
         <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700">
           <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
             <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 24 24">
-              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z"/>
+              <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm-2 16l-4-4 1.41-1.41L10 14.17l6.59-6.59L18 9l-8 8z" />
             </svg>
-            <span>安全登录 · AES-256加密 · 设备绑定保护</span>
+            <span>{t.loginSecurityFooter}</span>
           </div>
         </div>
       </div>

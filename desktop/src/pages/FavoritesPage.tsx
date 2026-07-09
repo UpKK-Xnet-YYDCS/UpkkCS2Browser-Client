@@ -15,17 +15,11 @@ import { ViewModeSwitch } from '@/components/ViewModeSwitch';
 import type { ViewMode } from '@/components/ViewModeSwitch';
 import { ServerDetailModal } from '@/components/ServerDetailModal';
 import {
-  createDesktopA2SLatencyScheduler,
-  type LocalLatencySnapshot,
-  type LocalLatencyTarget,
-} from '@/services/a2s';
-import {
   applyLatencySnapshot,
   getServerLatencyTarget,
-  isSameLatencySnapshot,
   matchesLatencyFilter,
 } from '@/services/latencyDisplay';
-import { useLatencyDetectionSettings } from '@/services/latencySettings';
+import { useLocalLatencyQueue } from '@/hooks/useLocalLatencyQueue';
 
 // LocalStorage keys for persisting auth state
 const AUTH_STORAGE_KEY = 'xproj_auth_status';
@@ -320,13 +314,12 @@ export function FavoritesPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
-  const latencyDetectionSettings = useLatencyDetectionSettings();
-  const latencyDeepScanEnabled = latencyDetectionSettings.deepScanEnabled;
-  const latencySchedulerOptions = useMemo(() => ({
-    workerCount: latencyDetectionSettings.workerCount,
-    retryCount: latencyDetectionSettings.retryCount,
-    retryDelayMs: latencyDetectionSettings.retryDelayMs,
-  }), [latencyDetectionSettings.retryCount, latencyDetectionSettings.retryDelayMs, latencyDetectionSettings.workerCount]);
+  const {
+    latencyByKey,
+    latencyDetectionSettings,
+    latencySchedulerOptions,
+    measureServers,
+  } = useLocalLatencyQueue('Favorites');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(() => {
     const saved = localStorage.getItem('favoritesPerPage');
@@ -337,12 +330,6 @@ export function FavoritesPage() {
     return (saved === 'list' ? 'list' : 'card') as ViewMode;
   });
   const loginDetectedRef = useRef(false);
-  const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
-  const latencySchedulerRef = useRef(createDesktopA2SLatencyScheduler(latencySchedulerOptions));
-
-  useEffect(() => {
-    latencySchedulerRef.current = createDesktopA2SLatencyScheduler(latencySchedulerOptions);
-  }, [latencySchedulerOptions]);
 
   // Auto-refresh countdown (same pattern as HomePage)
   const [refreshInterval] = useState(() => {
@@ -659,48 +646,23 @@ export function FavoritesPage() {
 
   useEffect(() => {
     if (!authStatus.logged_in) return undefined;
-    const targets = paginatedFavoriteRows
-      .map(row => getServerLatencyTarget(row.server))
-      .filter((target): target is LocalLatencyTarget => target !== null);
-
-    let cancelled = false;
-    latencySchedulerRef.current.measure(targets, (key, snapshot) => {
-      if (cancelled) return;
-      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
-    }).catch(error => {
-      console.error('[Favorites] Failed to measure local A2S latency:', error);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [authStatus.logged_in, paginatedFavoriteRows, latencySchedulerOptions]);
+    return measureServers(paginatedFavoriteRows.map(row => row.server));
+  }, [authStatus.logged_in, paginatedFavoriteRows, latencySchedulerOptions, measureServers]);
 
   useEffect(() => {
-    if (!authStatus.logged_in || !latencyDeepScanEnabled) return undefined;
-    const targets = searchedFavoriteRows
-      .map(row => getServerLatencyTarget(row.server))
-      .filter((target): target is LocalLatencyTarget => target !== null);
-
-    let cancelled = false;
-    const scheduler = latencySchedulerRef.current;
-    scheduler.measure(targets, (key, snapshot) => {
-      if (cancelled) return;
-      setLatencyByKey(prev => isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot });
-    }, { mode: 'background' }).catch(error => {
-      console.error('[Favorites] Failed to deep scan local A2S latency:', error);
+    if (!authStatus.logged_in || !latencyDetectionSettings.deepScanEnabled) return undefined;
+    return measureServers(searchedFavoriteRows.map(row => row.server), {
+      mode: 'background',
+      excludeServers: paginatedFavoriteRows.map(row => row.server),
     });
-
-    return () => {
-      cancelled = true;
-      const visibleTargets = paginatedFavoriteRows
-        .map(row => getServerLatencyTarget(row.server))
-        .filter((target): target is LocalLatencyTarget => target !== null);
-      scheduler.measure(visibleTargets, () => undefined).catch(error => {
-        console.error('[Favorites] Failed to reprioritize local A2S latency:', error);
-      });
-    };
-  }, [authStatus.logged_in, latencyDeepScanEnabled, searchedFavoriteRows, paginatedFavoriteRows, latencySchedulerOptions]);
+  }, [
+    authStatus.logged_in,
+    latencyDetectionSettings.deepScanEnabled,
+    searchedFavoriteRows,
+    paginatedFavoriteRows,
+    latencySchedulerOptions,
+    measureServers,
+  ]);
 
   // Reset to page 1 when search changes
   useEffect(() => {

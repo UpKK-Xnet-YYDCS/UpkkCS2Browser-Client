@@ -49,7 +49,7 @@ test('limits local A2S latency probes to the configured concurrency and de-dupli
   assert.equal(updates.find((update) => update.key === 'duplicate-one' && update.snapshot.status === 'success')?.snapshot.latencyMs, 11);
 });
 
-test('uses three workers and a 3000ms timeout by default', async () => {
+test('uses three workers and a 2000ms timeout by default', async () => {
   let running = 0;
   let maxRunning = 0;
   const timeouts: number[] = [];
@@ -74,7 +74,29 @@ test('uses three workers and a 3000ms timeout by default', async () => {
   ], () => undefined);
 
   assert.equal(maxRunning, 3);
-  assert.deepEqual(timeouts, [3_000, 3_000, 3_000, 3_000]);
+  assert.deepEqual(timeouts, [2_000, 2_000, 2_000, 2_000]);
+});
+
+test('runs lower-priority offline latency probes after online targets', async () => {
+  const calls: string[] = [];
+
+  const scheduler = createLocalLatencyScheduler({
+    concurrency: 1,
+    isAvailable: () => true,
+    query: async (ip) => {
+      calls.push(ip);
+      return { success: true, latency_ms: Number(ip.split('.').at(-1)) };
+    },
+  });
+
+  await scheduler.measure([
+    { key: 'offline-one', ip: '10.0.8.1', port: '27015', priority: 1 },
+    { key: 'online-two', ip: '10.0.8.2', port: '27015', priority: 0 },
+    { key: 'online-three', ip: '10.0.8.3', port: '27015', priority: 0 },
+    { key: 'offline-four', ip: '10.0.8.4', port: '27015', priority: 1 },
+  ], () => undefined);
+
+  assert.deepEqual(calls, ['10.0.8.2', '10.0.8.3', '10.0.8.1', '10.0.8.4']);
 });
 
 test('retries failed latency probes once by default, waits before retry, and stops after success', async () => {
@@ -288,6 +310,43 @@ test('moves pending probes that are still visible to the front without duplicati
   assert.deepEqual(calls, ['10.0.5.1', '10.0.5.3', '10.0.5.4']);
   assert.equal(calls.filter(ip => ip === '10.0.5.3').length, 1);
   assert.equal(visibleUpdates.find(update => update.key === 'visible-three' && update.snapshot.status === 'success')?.snapshot.latencyMs, 3);
+});
+
+test('promotes an existing background queued probe when it becomes visible', async () => {
+  let releaseFirst: (() => void) | undefined;
+  const calls: string[] = [];
+
+  const scheduler = createLocalLatencyScheduler({
+    concurrency: 1,
+    isAvailable: () => true,
+    query: async (ip) => {
+      calls.push(ip);
+      if (ip === '10.0.9.1') {
+        await new Promise<void>(resolve => {
+          releaseFirst = resolve;
+        });
+      }
+      return { success: true, latency_ms: Number(ip.split('.').at(-1)) };
+    },
+  });
+
+  const background = scheduler.measure([
+    { key: 'active-one', ip: '10.0.9.1', port: '27015', priority: 0 },
+    { key: 'background-two', ip: '10.0.9.2', port: '27015', priority: 1 },
+    { key: 'background-three', ip: '10.0.9.3', port: '27015', priority: 1 },
+  ], () => undefined, { mode: 'background' });
+
+  await delay(1);
+
+  const foreground = scheduler.measure([
+    { key: 'visible-three', ip: '10.0.9.3', port: '27015', priority: 0 },
+    { key: 'visible-four', ip: '10.0.9.4', port: '27015', priority: 0 },
+  ], () => undefined);
+
+  releaseFirst?.();
+  await Promise.all([background, foreground]);
+
+  assert.deepEqual(calls, ['10.0.9.1', '10.0.9.3', '10.0.9.4']);
 });
 
 test('clears pending probes when the next visible batch has no latency targets', async () => {

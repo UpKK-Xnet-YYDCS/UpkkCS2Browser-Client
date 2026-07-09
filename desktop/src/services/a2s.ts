@@ -41,6 +41,7 @@ export interface QueryServerA2SOptions {
 
 export interface DesktopA2SLatencySchedulerOptions {
   workerCount?: number;
+  timeoutMs?: number;
   retryCount?: number;
   retryDelayMs?: number;
 }
@@ -147,7 +148,7 @@ export function createDesktopA2SLatencyScheduler(options: DesktopA2SLatencySched
   return createLocalLatencyScheduler({
     concurrency: options.workerCount,
     ttlMs: 60_000,
-    timeoutMs: 3_000,
+    timeoutMs: options.timeoutMs,
     retryCount: options.retryCount,
     retryDelayMs: options.retryDelayMs,
     isAvailable: isTauriAvailable,

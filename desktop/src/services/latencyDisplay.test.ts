@@ -128,6 +128,7 @@ test('builds stable local latency targets and applies snapshots', () => {
     key: 'example.com:27016',
     ip: 'example.com',
     port: '27016',
+    priority: 0,
   });
 
   const updated = applyLatencySnapshot(source, {
@@ -140,4 +141,11 @@ test('builds stable local latency targets and applies snapshots', () => {
   assert.equal(updated.local_latency_ms, 72);
   assert.equal(updated.local_latency_updated_at, '2023-11-14T22:13:20.000Z');
   assert.equal(source.local_latency_ms, undefined);
+});
+
+test('marks already-offline servers as lower-priority latency targets', () => {
+  const offline = server();
+  offline.server_offline = true;
+
+  assert.equal(getServerLatencyTarget(offline)?.priority, 1);
 });

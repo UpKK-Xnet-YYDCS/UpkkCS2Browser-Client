@@ -11,14 +11,8 @@ import { useUpdateCheck } from '@/contexts/updateContext';
 import { APP_VERSION } from '@/services/update';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { clearCredentials } from '@/services/secureStorage';
-import { type A2SQueryResult, parseServerAddress, queryServerA2S } from '@/services/a2s';
-import {
-  setLatencyDeepScanEnabled,
-  setLatencyRetryCount,
-  setLatencyRetryDelayMs,
-  setLatencyWorkerCount,
-  useLatencyDetectionSettings,
-} from '@/services/latencySettings';
+import { A2STestSection } from '@/components/settings/A2STestSection';
+import { LatencySettingsSection } from '@/components/settings/LatencySettingsSection';
 import { getSteamClient, setSteamClient } from '@/services/steamClient';
 import { subscribeLog, getLogEntries, clearLogs, type LogEntry } from '@/store/log';
 import {
@@ -131,15 +125,9 @@ export function SettingsPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [isClearing, setIsClearing] = useState(false);
   const [updateCheckStatus, setUpdateCheckStatus] = useState<'idle' | 'checking' | 'upToDate' | 'error'>('idle');
-  const [a2sAddress, setA2sAddress] = useState('');
-  const [a2sQuerying, setA2sQuerying] = useState(false);
-  const [a2sResult, setA2sResult] = useState<A2SQueryResult | null>(null);
-  const [a2sError, setA2sError] = useState<string | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(isNotificationSoundEnabled);
   const [soundType, setSoundType] = useState<NotificationSound>(getNotificationSound);
   const [steamClient, setSteamClientState] = useState<'steam' | 'steamchina'>(getSteamClient);
-  const latencyDetectionSettings = useLatencyDetectionSettings();
-  const latencyDeepScanEnabled = latencyDetectionSettings.deepScanEnabled;
   const { setApiBaseUrl, fetchServers } = useAppStore();
   const theme = useTheme();
   const { t, language, setLanguage, isAuto } = useI18n();
@@ -285,27 +273,6 @@ export function SettingsPage() {
     theme.setBackgroundImage('');
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
-    }
-  };
-
-  const handleA2sQuery = async () => {
-    const parsed = parseServerAddress(a2sAddress);
-    if (!parsed) return;
-    setA2sQuerying(true);
-    setA2sResult(null);
-    setA2sError(null);
-    try {
-      const result = await queryServerA2S(parsed.ip, parsed.port);
-      if (!result.success) {
-        setA2sError(result.error || t.a2sTestError);
-      } else {
-        setA2sResult(result);
-      }
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setA2sError(msg || t.a2sTestError);
-    } finally {
-      setA2sQuerying(false);
     }
   };
 
@@ -573,77 +540,7 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {/* Local Latency Settings */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 19V5m0 14h16M7 15l3-4 3 2 4-7" />
-                  </svg>
-                  {t.latencySettings}
-                </h3>
-                <div className="space-y-4 rounded-xl bg-gray-50 p-4 dark:bg-gray-700/50">
-                  <div className="flex items-center justify-between gap-4">
-                    <div className="min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-white">{t.latencyDeepScan}</p>
-                      <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{t.latencyDeepScanDesc}</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setLatencyDeepScanEnabled(!latencyDeepScanEnabled)}
-                      className={`relative inline-flex h-7 w-14 flex-shrink-0 items-center rounded-full transition-colors ${
-                        latencyDeepScanEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                      }`}
-                      aria-pressed={latencyDeepScanEnabled}
-                      aria-label={t.latencyDeepScan}
-                    >
-                      <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                        latencyDeepScanEnabled ? 'translate-x-8' : 'translate-x-1'
-                      }`} />
-                    </button>
-                  </div>
-                  <div className="grid gap-3 md:grid-cols-3">
-                    <label className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800">
-                      <span className="block text-sm font-semibold text-gray-900 dark:text-white">{t.latencyWorkerCount}</span>
-                      <span className="mt-1 block min-h-10 text-xs leading-5 text-gray-500 dark:text-gray-400">{t.latencyWorkerCountDesc}</span>
-                      <input
-                        type="number"
-                        min="1"
-                        max="6"
-                        step="1"
-                        value={latencyDetectionSettings.workerCount}
-                        onChange={event => setLatencyWorkerCount(Number(event.target.value))}
-                        className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                      />
-                    </label>
-                    <label className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800">
-                      <span className="block text-sm font-semibold text-gray-900 dark:text-white">{t.latencyRetryCount}</span>
-                      <span className="mt-1 block min-h-10 text-xs leading-5 text-gray-500 dark:text-gray-400">{t.latencyRetryCountDesc}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="5"
-                        step="1"
-                        value={latencyDetectionSettings.retryCount}
-                        onChange={event => setLatencyRetryCount(Number(event.target.value))}
-                        className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                      />
-                    </label>
-                    <label className="rounded-xl border border-gray-200 bg-white p-3 dark:border-gray-600 dark:bg-gray-800">
-                      <span className="block text-sm font-semibold text-gray-900 dark:text-white">{t.latencyRetryDelay}</span>
-                      <span className="mt-1 block min-h-10 text-xs leading-5 text-gray-500 dark:text-gray-400">{t.latencyRetryDelayDesc}</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="3000"
-                        step="50"
-                        value={latencyDetectionSettings.retryDelayMs}
-                        onChange={event => setLatencyRetryDelayMs(Number(event.target.value))}
-                        className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-                      />
-                    </label>
-                  </div>
-                </div>
-              </div>
+              <LatencySettingsSection />
 
               {/* Update Check Section */}
               <div>
@@ -720,68 +617,7 @@ export function SettingsPage() {
                 </div>
               </div>
 
-              {/* A2S Server Query Test */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-                  </svg>
-                  {t.a2sTest}
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{t.a2sTestDesc}</p>
-                <div className="flex gap-2 mb-3">
-                  <input
-                    type="text"
-                    value={a2sAddress}
-                    onChange={e => setA2sAddress(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleA2sQuery(); } }}
-                    placeholder={t.a2sTestPlaceholder}
-                    className="flex-1 px-4 py-2.5 border-2 border-gray-200 dark:border-gray-600 rounded-xl bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 transition-all font-mono"
-                  />
-                  <button
-                    onClick={handleA2sQuery}
-                    disabled={a2sQuerying || !parseServerAddress(a2sAddress)}
-                    className="px-5 py-2.5 bg-blue-500 text-white rounded-xl hover:bg-blue-600 transition-colors text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                  >
-                    {a2sQuerying && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-                    {a2sQuerying ? t.a2sTestQuerying : t.a2sTestQuery}
-                  </button>
-                </div>
-
-                {/* A2S Error */}
-                {a2sError && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-sm text-red-600 dark:text-red-400">
-                    {a2sError}
-                  </div>
-                )}
-
-                {/* A2S Result */}
-                {a2sResult && (
-                  <div className="p-4 bg-green-50 dark:bg-green-900/10 border border-green-200 dark:border-green-800 rounded-xl">
-                    <h4 className="text-sm font-semibold text-green-800 dark:text-green-300 mb-3">{t.a2sTestResult}</h4>
-                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sServerName}</div>
-                      <div className="text-gray-900 dark:text-white font-medium truncate">{a2sResult.name}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sMap}</div>
-                      <div className="text-gray-900 dark:text-white font-mono">{a2sResult.map_name}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sPlayers}</div>
-                      <div className="text-gray-900 dark:text-white">{a2sResult.real_players}/{a2sResult.max_players} ({a2sResult.bots} bots)</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sGame}</div>
-                      <div className="text-gray-900 dark:text-white">{a2sResult.game}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sServerType}</div>
-                      <div className="text-gray-900 dark:text-white">{a2sResult.server_type}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sEnvironment}</div>
-                      <div className="text-gray-900 dark:text-white">{a2sResult.environment}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sVac}</div>
-                      <div className={a2sResult.vac ? 'text-green-600 dark:text-green-400' : 'text-gray-500'}>{a2sResult.vac ? t.a2sYes : t.a2sNo}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sPassword}</div>
-                      <div className={a2sResult.password ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500'}>{a2sResult.password ? t.a2sYes : t.a2sNo}</div>
-                      <div className="text-gray-500 dark:text-gray-400">{t.a2sVersion}</div>
-                      <div className="text-gray-900 dark:text-white font-mono text-xs">{a2sResult.version}</div>
-                    </div>
-                  </div>
-                )}
-              </div>
+              <A2STestSection />
 
               {/* Notification Sound Settings */}
               <div>

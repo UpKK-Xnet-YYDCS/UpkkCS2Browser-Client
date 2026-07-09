@@ -79,7 +79,7 @@ fn read_cstring(data: &[u8], start: usize) -> (String, usize) {
 }
 
 fn clamp_a2s_timeout(timeout_ms: Option<u64>) -> Duration {
-    let ms = timeout_ms.unwrap_or(5_000).clamp(500, 5_000);
+    let ms = timeout_ms.unwrap_or(2_000).clamp(500, 5_000);
     Duration::from_millis(ms)
 }
 
@@ -110,7 +110,7 @@ fn a2s_query(ip: &str, port: &str, timeout_ms: Option<u64>) -> A2SQueryResult {
         }
     };
     
-    // Set timeout (5 seconds by default, bounded for UI probes)
+    // Set timeout (2 seconds by default, bounded for UI probes)
     let timeout = clamp_a2s_timeout(timeout_ms);
     if let Err(e) = socket.set_read_timeout(Some(timeout)) {
         result.error = Some(format!("Failed to set timeout: {}", e));

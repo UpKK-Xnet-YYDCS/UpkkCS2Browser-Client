@@ -4,6 +4,7 @@ export interface LocalLatencyTarget {
   key: string;
   ip: string;
   port: string;
+  priority?: number;
 }
 
 export interface LocalLatencySnapshot {
@@ -57,6 +58,7 @@ interface LatencyJob {
   address: string;
   target: LocalLatencyTarget;
   keys: string[];
+  priority: number;
 }
 
 interface LatencyListener {
@@ -67,6 +69,7 @@ interface LatencyListener {
 interface LatencyProbe {
   address: string;
   target: LocalLatencyTarget;
+  priority: number;
   listeners: LatencyListener[];
   started: boolean;
   promise: Promise<LocalLatencySnapshot>;
@@ -75,7 +78,7 @@ interface LatencyProbe {
 
 const DEFAULT_CONCURRENCY = 3;
 const DEFAULT_TTL_MS = 60_000;
-const DEFAULT_TIMEOUT_MS = 3_000;
+const DEFAULT_TIMEOUT_MS = 2_000;
 const DEFAULT_RETRY_COUNT = 1;
 const DEFAULT_RETRY_DELAY_MS = 300;
 
@@ -97,6 +100,11 @@ function normalizeRetryCount(value: number | undefined): number {
 function normalizeRetryDelayMs(value: number | undefined): number {
   if (!Number.isFinite(value) || value === undefined) return DEFAULT_RETRY_DELAY_MS;
   return Math.max(0, Math.min(3_000, Math.floor(value)));
+}
+
+function normalizePriority(value: number | undefined): number {
+  if (!Number.isFinite(value) || value === undefined) return 0;
+  return Math.max(0, Math.floor(value));
 }
 
 function defaultSleep(ms: number): Promise<void> {
@@ -183,6 +191,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
         address: probe.address,
         target: probe.target,
         keys: [],
+        priority: probe.priority,
       }).then(snapshot => {
         cache.set(probe.address, snapshot);
         notify(probe, snapshot);
@@ -199,6 +208,10 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     const existing = inFlight.get(job.address);
     if (existing) {
       existing.listeners.push({ keys: job.keys, onUpdate });
+      if (!existing.started) {
+        existing.priority = Math.min(existing.priority, job.priority);
+        queue.sort((a, b) => a.priority - b.priority);
+      }
       updateKeys(job.keys, { status: existing.started ? 'checking' : 'queued' }, onUpdate);
       return existing.promise;
     }
@@ -210,6 +223,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     const probe: LatencyProbe = {
       address: job.address,
       target: job.target,
+      priority: job.priority,
       listeners: [{ keys: job.keys, onUpdate }],
       started: false,
       promise,
@@ -218,6 +232,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     inFlight.set(job.address, probe);
     updateKeys(job.keys, { status: 'queued' }, onUpdate);
     queue.push(probe);
+    queue.sort((a, b) => a.priority - b.priority);
     pumpQueue();
     return promise;
   }
@@ -226,6 +241,9 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     if (!replacePending || queue.length === 0) return;
 
     const currentAddresses = new Set(grouped.keys());
+    const prioritizedAddresses = Array.from(grouped.values())
+      .sort((a, b) => a.priority - b.priority)
+      .map(job => job.address);
     const queuedByAddress = new Map(queue.map(probe => [probe.address, probe]));
     const superseded: LocalLatencySnapshot = {
       status: 'failed',
@@ -241,7 +259,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     }
 
     queue.length = 0;
-    for (const address of currentAddresses) {
+    for (const address of prioritizedAddresses) {
       const probe = queuedByAddress.get(address);
       if (probe && !probe.started && inFlight.get(address) === probe) {
         queue.push(probe);
@@ -273,11 +291,13 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
       const existing = grouped.get(address);
       if (existing) {
         existing.keys.push(target.key);
+        existing.priority = Math.min(existing.priority, normalizePriority(target.priority));
       } else {
         grouped.set(address, {
           address,
           target,
           keys: [target.key],
+          priority: normalizePriority(target.priority),
         });
       }
     }
@@ -288,7 +308,8 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
 
     const jobs: Array<Promise<LocalLatencySnapshot>> = [];
     const currentTime = now();
-    for (const job of grouped.values()) {
+    const prioritizedJobs = Array.from(grouped.values()).sort((a, b) => a.priority - b.priority);
+    for (const job of prioritizedJobs) {
       const cached = cache.get(job.address);
       if (cached?.updatedAt && currentTime - cached.updatedAt < ttlMs) {
         updateKeys(job.keys, cached, onUpdate);

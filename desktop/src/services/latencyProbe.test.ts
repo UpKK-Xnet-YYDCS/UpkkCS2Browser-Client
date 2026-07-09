@@ -9,11 +9,51 @@ import {
   type LatencyProbeSample,
 } from './latencyProbe.ts';
 
+function successSample(sequence: number, startedAt: number, completedAt: number, latencyMs: number): LatencyProbeSample {
+  return {
+    sequence,
+    startedAt,
+    completedAt,
+    status: 'success',
+    observedLatencyMs: completedAt - startedAt,
+    attempts: [{
+      sequence,
+      attempt: 1,
+      startedAt,
+      completedAt,
+      status: 'success',
+      elapsedMs: completedAt - startedAt,
+      latencyMs,
+    }],
+    latencyMs,
+  };
+}
+
+function failedSample(sequence: number, startedAt: number, completedAt: number, error: string): LatencyProbeSample {
+  return {
+    sequence,
+    startedAt,
+    completedAt,
+    status: 'failed',
+    observedLatencyMs: completedAt - startedAt,
+    attempts: [{
+      sequence,
+      attempt: 1,
+      startedAt,
+      completedAt,
+      status: 'failed',
+      elapsedMs: completedAt - startedAt,
+      error,
+    }],
+    error,
+  };
+}
+
 test('normalizes latency probe options with safe defaults', () => {
   assert.deepEqual(normalizeLatencyProbeOptions({}), {
     intervalMs: 1_000,
     durationMs: 120_000,
-    timeoutMs: 3_000,
+    timeoutMs: 2_000,
     retryCount: 1,
     retryDelayMs: 300,
   });
@@ -35,9 +75,9 @@ test('normalizes latency probe options with safe defaults', () => {
 
 test('calculates packet loss and RTT stability metrics from samples', () => {
   const samples: LatencyProbeSample[] = [
-    { sequence: 1, startedAt: 1_000, completedAt: 1_040, status: 'success', latencyMs: 40 },
-    { sequence: 2, startedAt: 6_000, completedAt: 6_000, status: 'failed', error: 'timeout' },
-    { sequence: 3, startedAt: 11_000, completedAt: 11_070, status: 'success', latencyMs: 70 },
+    successSample(1, 1_000, 1_040, 40),
+    failedSample(2, 6_000, 6_080, 'timeout'),
+    successSample(3, 11_000, 11_070, 70),
   ];
 
   const metrics = getLatencyProbeMetrics(samples);
@@ -46,17 +86,20 @@ test('calculates packet loss and RTT stability metrics from samples', () => {
   assert.equal(metrics.received, 2);
   assert.equal(metrics.lost, 1);
   assert.equal(metrics.packetLossPercent, 33.33);
+  assert.equal(metrics.attempts, 3);
+  assert.equal(metrics.failedAttempts, 1);
+  assert.equal(metrics.attemptLossPercent, 33.33);
   assert.equal(metrics.minLatencyMs, 40);
   assert.equal(metrics.avgLatencyMs, 55);
   assert.equal(metrics.maxLatencyMs, 70);
-  assert.equal(metrics.rttStabilityMs, 15);
+  assert.equal(metrics.rttStabilityMs, 17);
 });
 
 test('builds cumulative probe series for RTT, packet loss, and stability charts', () => {
   const samples: LatencyProbeSample[] = [
-    { sequence: 1, startedAt: 1_000, completedAt: 1_040, status: 'success', latencyMs: 40 },
-    { sequence: 2, startedAt: 2_000, completedAt: 2_000, status: 'failed', error: 'timeout' },
-    { sequence: 3, startedAt: 3_000, completedAt: 3_090, status: 'success', latencyMs: 90 },
+    successSample(1, 1_000, 1_040, 40),
+    failedSample(2, 2_000, 2_080, 'timeout'),
+    successSample(3, 3_000, 3_090, 90),
   ];
 
   assert.deepEqual(getLatencyProbeSeries(samples), [
@@ -75,7 +118,7 @@ test('builds cumulative probe series for RTT, packet loss, and stability charts'
       status: 'failed',
       latencyMs: undefined,
       packetLossPercent: 50,
-      rttStabilityMs: 0,
+      rttStabilityMs: 20,
       error: 'timeout',
     },
     {
@@ -84,7 +127,7 @@ test('builds cumulative probe series for RTT, packet loss, and stability charts'
       status: 'success',
       latencyMs: 90,
       packetLossPercent: 33.33,
-      rttStabilityMs: 25,
+      rttStabilityMs: 21.6,
       error: undefined,
     },
   ]);
@@ -119,4 +162,81 @@ test('runs realtime samples on the configured interval, retries failures, and st
   assert.equal(summary.metrics.sent, 3);
   assert.equal(summary.metrics.received, 3);
   assert.equal(summary.metrics.packetLossPercent, 0);
+  assert.equal(summary.metrics.attempts, 4);
+  assert.equal(summary.metrics.failedAttempts, 1);
+  assert.equal(summary.metrics.attemptLossPercent, 25);
+});
+
+test('counts only final failed samples as packet loss while attempt loss tracks retries', async () => {
+  let calls = 0;
+  const session = createLatencyProbeSession({
+    target: { ip: '10.0.3.2', port: '27015' },
+    options: { intervalMs: 3_000, durationMs: 5_000, retryCount: 2 },
+    now: () => calls * 100,
+    sleep: async () => undefined,
+    query: async () => {
+      calls += 1;
+      if (calls < 3) {
+        return { success: false, error: `timeout ${calls}` };
+      }
+      return { success: true, latency_ms: 45 };
+    },
+  });
+
+  const summary = await session.start();
+
+  assert.equal(summary.metrics.sent, 2);
+  assert.equal(summary.metrics.received, 2);
+  assert.equal(summary.metrics.packetLossPercent, 0);
+  assert.equal(summary.metrics.attempts, 4);
+  assert.equal(summary.metrics.failedAttempts, 2);
+  assert.equal(summary.metrics.attemptLossPercent, 50);
+});
+
+test('counts final failed probe samples as packet loss', async () => {
+  let calls = 0;
+  const session = createLatencyProbeSession({
+    target: { ip: '10.0.3.3', port: '27015' },
+    options: { intervalMs: 60_000, durationMs: 5_000, retryCount: 1 },
+    now: () => calls * 100,
+    sleep: async () => undefined,
+    query: async () => {
+      calls += 1;
+      return { success: false, error: 'timeout' };
+    },
+  });
+
+  const summary = await session.start();
+
+  assert.equal(summary.metrics.sent, 1);
+  assert.equal(summary.metrics.received, 0);
+  assert.equal(summary.metrics.lost, 1);
+  assert.equal(summary.metrics.packetLossPercent, 100);
+  assert.equal(summary.metrics.attempts, 2);
+  assert.equal(summary.metrics.failedAttempts, 2);
+  assert.equal(summary.metrics.attemptLossPercent, 100);
+});
+
+test('uses observed slow response time for jitter even when A2S RTT succeeds', () => {
+  const samples: LatencyProbeSample[] = [
+    successSample(1, 1_000, 1_040, 40),
+    {
+      ...successSample(2, 2_000, 2_500, 45),
+      attempts: [{
+        sequence: 2,
+        attempt: 1,
+        startedAt: 2_000,
+        completedAt: 2_500,
+        status: 'success',
+        elapsedMs: 500,
+        latencyMs: 45,
+      }],
+    },
+  ];
+
+  const metrics = getLatencyProbeMetrics(samples);
+
+  assert.equal(metrics.packetLossPercent, 0);
+  assert.equal(metrics.avgLatencyMs, 42.5);
+  assert.equal(metrics.rttStabilityMs, 230);
 });
