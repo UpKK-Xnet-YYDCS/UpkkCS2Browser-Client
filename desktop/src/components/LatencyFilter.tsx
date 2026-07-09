@@ -16,28 +16,36 @@ function displayFilterLabel(value: LatencyFilterValue, allLabel: string, unknown
 
 export function LatencyFilter({ value, onChange, label, allLabel, unknownLabel }: LatencyFilterProps) {
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-xl bg-gray-100 p-1 dark:bg-gray-800">
-      <span className="hidden whitespace-nowrap px-2 text-xs font-bold text-gray-500 dark:text-gray-400 sm:inline">
+    <div className="relative flex h-10 flex-shrink-0 items-center overflow-hidden rounded-xl border border-gray-200 bg-gray-100/90 shadow-sm transition-all hover:border-blue-300 hover:bg-white dark:border-gray-700 dark:bg-gray-800/90 dark:hover:border-blue-500/60 dark:hover:bg-gray-800">
+      <span className="whitespace-nowrap border-r border-gray-200 px-2.5 text-xs font-black text-gray-500 dark:border-gray-700 dark:text-gray-300">
         {label}
       </span>
-      <div className="flex min-w-0 gap-1 overflow-x-auto">
+      <select
+        value={value}
+        onChange={event => onChange(event.target.value as LatencyFilterValue)}
+        className="h-full w-[108px] appearance-none bg-transparent py-0 pl-2.5 pr-7 text-xs font-black tabular-nums text-gray-800 outline-none transition-colors hover:text-blue-600 focus:text-blue-600 dark:text-gray-100 dark:hover:text-blue-300 dark:focus:text-blue-300"
+        aria-label={label}
+        title={`${label}: ${displayFilterLabel(value, allLabel, unknownLabel)}`}
+      >
         {LATENCY_FILTERS.map(filter => (
-          <button
+          <option
             key={filter}
-            type="button"
-            onClick={() => onChange(filter)}
-            className={`h-8 flex-shrink-0 rounded-lg px-3 text-xs font-bold tabular-nums transition-all ${
-              value === filter
-                ? 'bg-white text-blue-600 shadow-sm dark:bg-gray-700 dark:text-blue-300'
-                : 'text-gray-500 hover:bg-white/70 hover:text-gray-700 dark:text-gray-300 dark:hover:bg-gray-700/70'
-            }`}
-            aria-pressed={value === filter}
-            aria-label={`${label}: ${displayFilterLabel(filter, allLabel, unknownLabel)}`}
+            value={filter}
+            className="bg-white text-gray-900 dark:bg-gray-800 dark:text-gray-100"
           >
             {displayFilterLabel(filter, allLabel, unknownLabel)}
-          </button>
+          </option>
         ))}
-      </div>
+      </select>
+      <svg
+        className="pointer-events-none absolute right-2 h-3.5 w-3.5 text-gray-400 dark:text-gray-500"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        aria-hidden="true"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 9l6 6 6-6" />
+      </svg>
     </div>
   );
 }

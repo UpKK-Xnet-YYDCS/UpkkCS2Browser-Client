@@ -8,6 +8,7 @@ import {
   applyLatencySnapshot,
   getLatencyFilterLabel,
   matchesLatencyFilter,
+  LATENCY_FILTERS,
   type LatencyFilter,
 } from './latencyDisplay.ts';
 import type { ServerStatus } from '../types/server.ts';
@@ -67,18 +68,22 @@ test('maps latency to green, yellow, amber, and red grades', () => {
 
 test('filters servers by local latency threshold', () => {
   const filters: Array<[LatencyFilter, boolean[]]> = [
-    ['all', [true, true, true, true, true]],
-    ['le80', [true, false, false, false, false]],
-    ['le150', [true, true, false, false, false]],
-    ['le250', [true, true, true, false, false]],
-    ['gt250', [false, false, false, true, false]],
-    ['unknown', [false, false, false, false, true]],
+    ['all', [true, true, true, true, true, true, true]],
+    ['le80', [true, false, false, false, false, false, false]],
+    ['le150', [true, true, false, false, false, false, false]],
+    ['le250', [true, true, true, false, false, false, false]],
+    ['le300', [true, true, true, true, false, false, false]],
+    ['le350', [true, true, true, true, true, false, false]],
+    ['ge350', [false, false, false, false, true, true, false]],
+    ['unknown', [false, false, false, false, false, false, true]],
   ];
   const servers = [
     server(60),
     server(120),
     server(220),
-    server(320),
+    server(280),
+    server(350),
+    server(360),
     server(undefined, 'failed'),
   ];
 
@@ -95,7 +100,7 @@ test('keeps pending or unmeasured servers visible while threshold latency filter
   const failed = server(undefined, 'failed');
   const unavailable = server(undefined, 'unavailable');
 
-  for (const filter of ['le80', 'le150', 'le250', 'gt250'] as LatencyFilter[]) {
+  for (const filter of ['le80', 'le150', 'le250', 'le300', 'le350', 'ge350'] as LatencyFilter[]) {
     assert.equal(matchesLatencyFilter(queued, filter), true);
     assert.equal(matchesLatencyFilter(checking, filter), true);
     assert.equal(matchesLatencyFilter(unmeasured, filter), true);
@@ -105,10 +110,13 @@ test('keeps pending or unmeasured servers visible while threshold latency filter
 });
 
 test('formats latency filter thresholds as compact pill labels', () => {
+  assert.deepEqual(LATENCY_FILTERS, ['all', 'le80', 'le150', 'le250', 'le300', 'le350', 'ge350', 'unknown']);
   assert.equal(getLatencyFilterLabel('le80'), '≤80 ms');
   assert.equal(getLatencyFilterLabel('le150'), '≤150 ms');
   assert.equal(getLatencyFilterLabel('le250'), '≤250 ms');
-  assert.equal(getLatencyFilterLabel('gt250'), '>250 ms');
+  assert.equal(getLatencyFilterLabel('le300'), '≤300 ms');
+  assert.equal(getLatencyFilterLabel('le350'), '≤350 ms');
+  assert.equal(getLatencyFilterLabel('ge350'), '≥350 ms');
 });
 
 test('builds stable local latency targets and applies snapshots', () => {

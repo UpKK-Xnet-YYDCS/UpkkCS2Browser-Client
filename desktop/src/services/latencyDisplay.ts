@@ -2,14 +2,14 @@ import type { ServerStatus } from '@/types';
 import type { LocalLatencySnapshot, LocalLatencyTarget } from './a2sLatency';
 
 export type LatencyGrade = 'green' | 'yellow' | 'amber' | 'red' | 'unknown';
-export type LatencyFilter = 'all' | 'le80' | 'le150' | 'le250' | 'gt250' | 'unknown';
+export type LatencyFilter = 'all' | 'le80' | 'le150' | 'le250' | 'le300' | 'le350' | 'ge350' | 'unknown';
 
 interface LatencyLabelInput {
   status?: ServerStatus['local_latency_status'];
   latencyMs?: number;
 }
 
-export const LATENCY_FILTERS: LatencyFilter[] = ['all', 'le80', 'le150', 'le250', 'gt250', 'unknown'];
+export const LATENCY_FILTERS: LatencyFilter[] = ['all', 'le80', 'le150', 'le250', 'le300', 'le350', 'ge350', 'unknown'];
 
 export function getLatencyGrade(latencyMs: number | undefined): LatencyGrade {
   if (!Number.isFinite(latencyMs)) return 'unknown';
@@ -92,7 +92,9 @@ export function matchesLatencyFilter(server: ServerStatus, filter: LatencyFilter
   if (filter === 'le80') return value <= 80;
   if (filter === 'le150') return value <= 150;
   if (filter === 'le250') return value <= 250;
-  if (filter === 'gt250') return value > 250;
+  if (filter === 'le300') return value <= 300;
+  if (filter === 'le350') return value <= 350;
+  if (filter === 'ge350') return value >= 350;
   return false;
 }
 
@@ -100,7 +102,9 @@ export function getLatencyFilterLabel(filter: LatencyFilter): string {
   if (filter === 'le80') return '≤80 ms';
   if (filter === 'le150') return '≤150 ms';
   if (filter === 'le250') return '≤250 ms';
-  if (filter === 'gt250') return '>250 ms';
+  if (filter === 'le300') return '≤300 ms';
+  if (filter === 'le350') return '≤350 ms';
+  if (filter === 'ge350') return '≥350 ms';
   if (filter === 'unknown') return '--';
   return 'All';
 }
