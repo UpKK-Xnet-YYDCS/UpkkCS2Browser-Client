@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
+import { Bot } from 'lucide-react';
 import { useI18n } from '@/hooks/useI18n';
 import type { Translations } from '@/store/i18n';
 import type { TabId } from '@/hooks/useTabNavigation';
 
-type TabLabelKey = keyof Pick<Translations, 'tabServers' | 'tabFavorites' | 'tabMonitor' | 'tabForum' | 'tabCheckIn' | 'tabSettings'>;
+type TabLabelKey = keyof Pick<Translations, 'tabServers' | 'tabAi' | 'tabFavorites' | 'tabMonitor' | 'tabForum' | 'tabCheckIn' | 'tabSettings'>;
 
 interface Tab {
   id: TabId;
@@ -54,6 +55,7 @@ const tabs: Tab[] = [
   { id: 'monitor', labelKey: 'tabMonitor', icon: <MonitorIcon /> },
   { id: 'forum', labelKey: 'tabForum', icon: <ForumIcon /> },
   { id: 'checkin', labelKey: 'tabCheckIn', icon: <CheckInIcon /> },
+  { id: 'ai', labelKey: 'tabAi', icon: <Bot className="w-5 h-5" aria-hidden="true" /> },
   { id: 'settings', labelKey: 'tabSettings', icon: <SettingsIcon /> },
 ];
 
@@ -66,13 +68,17 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
   const { t } = useI18n();
   
   return (
-    <div className="flex items-center gap-1 bg-gray-100/80 dark:bg-gray-800/80 backdrop-blur-sm p-1 rounded-xl">
+    <nav className="flex max-w-full min-w-0 items-center gap-1 overflow-x-auto bg-gray-100/80 p-1 dark:bg-gray-800/80 backdrop-blur-sm rounded-lg" aria-label="Primary">
       {tabs.map((tab) => (
         <button
           key={tab.id}
+          type="button"
           onClick={() => onTabChange(tab.id)}
+          title={t[tab.labelKey]}
+          aria-label={t[tab.labelKey]}
+          aria-current={activeTab === tab.id ? 'page' : undefined}
           className={`
-            flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200
+            h-9 shrink-0 flex items-center gap-2 px-2.5 xl:px-3 rounded-md text-sm font-medium whitespace-nowrap transition-all duration-200 focus-visible:ring-2 focus-visible:ring-blue-500
             ${activeTab === tab.id
               ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-md'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'
@@ -80,9 +86,9 @@ export function TabNavigation({ activeTab, onTabChange }: TabNavigationProps) {
           `}
         >
           {tab.icon}
-          <span>{t[tab.labelKey]}</span>
+          <span className={tab.id === 'ai' ? 'inline' : 'hidden xl:inline'}>{t[tab.labelKey]}</span>
         </button>
       ))}
-    </div>
+    </nav>
   );
 }

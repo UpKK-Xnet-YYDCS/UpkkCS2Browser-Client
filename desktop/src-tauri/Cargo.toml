@@ -28,7 +28,7 @@ codegen-units = 1
 strip = true
 
 [build-dependencies]
-tauri-build = { version = "2.6.3" }
+tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
 serde_json = "1.0"
@@ -44,10 +44,10 @@ tauri-plugin-dialog = "2"
 url = "2.5.8"
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "time"] }
 # Secure credential storage
-aes-gcm = "0.10"
-sha2 = "0.10"
-base64 = "0.22"
-rand = "0.8"
-machine-uid = "0.5"
+aes-gcm = "0.11.0"
+sha2 = "0.11.0"
+base64 = "0.23.0"
+rand = "0.10.2"
+machine-uid = "0.6.0"
 hex = "0.4"
 dirs = "6.0"

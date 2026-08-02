@@ -1,9 +1,9 @@
-import { useReducer, useCallback, useEffect, useRef, type ReactNode } from 'react';
+import { useReducer, useCallback, useEffect, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react';
 import type { ServerStatus, ServerRegion, ServerStats, GameType } from '@/types';
 import type { ViewMode } from '@/components';
 import type { CountryInfo } from '@/api';
 import * as api from '@/api';
-import { AppContext } from './appContext';
+import { AppContext, FavoritesContext } from './appContext';
 
 // State type
 interface AppState {
@@ -229,6 +229,10 @@ export interface AppContextType extends AppState {
 // Provider component
 export function AppProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
+  const stateRef = useRef(state);
+  useLayoutEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Request version counter to handle race conditions
   // When a new request is made, increment the counter
@@ -278,14 +282,15 @@ export function AppProvider({ children }: { children: ReactNode }) {
     const currentVersion = requestVersionRef.current;
     
     // Use provided filters or fall back to current state
-    const searchQuery = filters?.searchQuery ?? state.searchQuery;
-    const selectedCategory = filters?.selectedCategory !== undefined ? filters.selectedCategory : state.selectedCategory;
-    const selectedRegion = filters?.selectedRegion ?? state.selectedRegion;
-    const selectedGameType = filters?.selectedGameType ?? state.selectedGameType;
-    const selectedContinent = filters?.selectedContinent ?? state.selectedContinent;
-    const selectedGeoRegion = filters?.selectedGeoRegion ?? state.selectedGeoRegion;
-    const selectedCountry = filters?.selectedCountry ?? state.selectedCountry;
-    const perPage = filters?.perPage ?? state.perPage;
+    const currentState = stateRef.current;
+    const searchQuery = filters?.searchQuery ?? currentState.searchQuery;
+    const selectedCategory = filters?.selectedCategory !== undefined ? filters.selectedCategory : currentState.selectedCategory;
+    const selectedRegion = filters?.selectedRegion ?? currentState.selectedRegion;
+    const selectedGameType = filters?.selectedGameType ?? currentState.selectedGameType;
+    const selectedContinent = filters?.selectedContinent ?? currentState.selectedContinent;
+    const selectedGeoRegion = filters?.selectedGeoRegion ?? currentState.selectedGeoRegion;
+    const selectedCountry = filters?.selectedCountry ?? currentState.selectedCountry;
+    const perPage = filters?.perPage ?? currentState.perPage;
     
     // Build geo filter for server-side filtering
     const geoFilter: api.GeoFilterParams = {
@@ -437,7 +442,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       });
       dispatch({ type: 'SET_LOADING', payload: false });
     }
-  }, [state.searchQuery, state.selectedRegion, state.selectedCategory, state.selectedGameType, state.selectedContinent, state.selectedGeoRegion, state.selectedCountry, state.perPage]);
+  }, []);
 
   const fetchCategories = useCallback(async () => {
     try {
@@ -460,16 +465,17 @@ export function AppProvider({ children }: { children: ReactNode }) {
   // Fetch global filter metadata (country stats + map names) for dropdown population
   const fetchMetadata = useCallback(async () => {
     try {
+      const currentState = stateRef.current;
       const metadata = await api.getServerMetadata(
-        state.selectedRegion,
-        state.selectedGameType,
-        state.selectedCategory || undefined
+        currentState.selectedRegion,
+        currentState.selectedGameType,
+        currentState.selectedCategory || undefined
       );
       dispatch({ type: 'SET_METADATA', payload: { countries: metadata.countries || [], maps: metadata.maps || [] } });
     } catch (error) {
       console.error('Failed to fetch server metadata:', error);
     }
-  }, [state.selectedRegion, state.selectedGameType, state.selectedCategory]);
+  }, []);
 
   const setSearchQuery = useCallback((query: string) => {
     dispatch({ type: 'SET_SEARCH_QUERY', payload: query });
@@ -565,5 +571,18 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setCardMinWidth,
   };
 
-  return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
+  const favoritesValue = useMemo(() => ({
+    favorites: state.favorites,
+    addFavorite,
+    removeFavorite,
+    importFavorites,
+    reorderFavorites,
+    isFavorite,
+  }), [addFavorite, importFavorites, isFavorite, removeFavorite, reorderFavorites, state.favorites]);
+
+  return (
+    <AppContext.Provider value={value}>
+      <FavoritesContext.Provider value={favoritesValue}>{children}</FavoritesContext.Provider>
+    </AppContext.Provider>
+  );
 }

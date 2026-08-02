@@ -90,10 +90,35 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
   ]);
   const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
   const latencySchedulerRef = useRef(createDesktopA2SLatencyScheduler(latencySchedulerOptions));
+  const pendingUpdatesRef = useRef<Record<string, LocalLatencySnapshot>>({});
+  const updateFrameRef = useRef<number | null>(null);
 
   useEffect(() => {
     latencySchedulerRef.current = createDesktopA2SLatencyScheduler(latencySchedulerOptions);
   }, [latencySchedulerOptions]);
+
+  useEffect(() => () => {
+    if (updateFrameRef.current !== null) window.cancelAnimationFrame(updateFrameRef.current);
+  }, []);
+
+  const queueSnapshotUpdate = useCallback((key: string, snapshot: LocalLatencySnapshot) => {
+    pendingUpdatesRef.current[key] = snapshot;
+    if (updateFrameRef.current !== null) return;
+    updateFrameRef.current = window.requestAnimationFrame(() => {
+      updateFrameRef.current = null;
+      const updates = pendingUpdatesRef.current;
+      pendingUpdatesRef.current = {};
+      setLatencyByKey(previous => {
+        let next = previous;
+        for (const [updateKey, update] of Object.entries(updates)) {
+          if (isSameLatencySnapshot(previous[updateKey], update)) continue;
+          if (next === previous) next = { ...previous };
+          next[updateKey] = update;
+        }
+        return next;
+      });
+    });
+  }, []);
 
   const measureServers = useCallback((servers: ServerStatus[], options: MeasureServersOptions = {}) => {
     const targets = excludeForegroundTargets(
@@ -104,9 +129,7 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
 
     latencySchedulerRef.current.measure(targets, (key, snapshot) => {
       if (cancelled) return;
-      setLatencyByKey(prev => (
-        isSameLatencySnapshot(prev[key], snapshot) ? prev : { ...prev, [key]: snapshot }
-      ));
+      queueSnapshotUpdate(key, snapshot);
     }, options.mode ? { mode: options.mode } : undefined).catch(error => {
       console.error(`[${logPrefix}] Failed to measure local A2S latency:`, error);
     });
@@ -114,7 +137,7 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     return () => {
       cancelled = true;
     };
-  }, [logPrefix]);
+  }, [logPrefix, queueSnapshotUpdate]);
 
   return {
     latencyByKey,

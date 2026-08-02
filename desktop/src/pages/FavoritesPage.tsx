@@ -1,61 +1,33 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import * as api from '@/api';
-import { getApiToken, setApiToken, clearApiToken, clearResponseCache } from '@/api';
-import type { FavoriteServer, AuthStatus } from '@/api';
+import { clearResponseCache } from '@/api';
+import type { FavoriteServer } from '@/api';
 import type { ServerStatus } from '@/types';
 import { useTheme } from '@/hooks/useTheme';
 import { rgbaToCss } from '@/store/themeUtils';
 import { useI18n } from '@/hooks/useI18n';
-import { logInfo, logDebug } from '@/store/log';
 import { ServerCard } from '@/components/ServerCard';
 import { ServerListItem } from '@/components/ServerListItem';
 import { LatencyFilter, type LatencyFilterValue } from '@/components/LatencyFilter';
 import { ViewModeSwitch } from '@/components/ViewModeSwitch';
 import type { ViewMode } from '@/components/ViewModeSwitch';
-import { ServerDetailModal } from '@/components/ServerDetailModal';
 import {
   applyLatencySnapshot,
   getServerLatencyTarget,
   matchesLatencyFilter,
 } from '@/services/latencyDisplay';
 import { useLocalLatencyQueue } from '@/hooks/useLocalLatencyQueue';
+import { useCloudAuth } from '@/hooks/useCloudAuth';
 
-// LocalStorage keys for persisting auth state
-const AUTH_STORAGE_KEY = 'xproj_auth_status';
 // Default auto-refresh interval in seconds (same as server list)
 const DEFAULT_AUTO_REFRESH_INTERVAL = 60;
+const ServerDetailModal = lazy(() => import('@/components/ServerDetailModal').then(module => ({ default: module.ServerDetailModal })));
 // Delay after favorite toggle before refreshing list (ms)
 const FAVORITE_SYNC_DELAY_MS = 500;
 // Items per page options
 const PAGE_SIZE_OPTIONS = [12, 24, 48];
 // Default game server port
 const DEFAULT_SERVER_PORT = '27015';
-
-// Save auth status to localStorage
-function saveAuthToStorage(auth: AuthStatus) {
-  try {
-    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(auth));
-  } catch { /* ignore */ }
-}
-
-// Load auth status from localStorage
-function loadAuthFromStorage(): AuthStatus | null {
-  try {
-    const stored = localStorage.getItem(AUTH_STORAGE_KEY);
-    if (stored) {
-      return JSON.parse(stored);
-    }
-  } catch { /* ignore */ }
-  return null;
-}
-
-// Clear auth from localStorage
-function clearAuthStorage() {
-  try {
-    localStorage.removeItem(AUTH_STORAGE_KEY);
-  } catch { /* ignore */ }
-}
 
 // Steam icon component
 const SteamIcon = () => (
@@ -300,17 +272,14 @@ function AddFavoriteModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
 export function FavoritesPage() {
   const theme = useTheme();
   const { t } = useI18n();
-  // Initialize auth from localStorage (persisted across restarts)
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
-    return loadAuthFromStorage() || { logged_in: false };
-  });
+  const { authStatus, loginPending, login, logout, invalidate } = useCloudAuth();
   const [favorites, setFavorites] = useState<FavoriteServer[]>([]);
   const [totalFavorites, setTotalFavorites] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isManualRefresh, setIsManualRefresh] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [loginPending, setLoginPending] = useState(false);
   const [selectedServer, setSelectedServer] = useState<ServerStatus | null>(null);
+  const handleSelectServer = useCallback((server: ServerStatus) => setSelectedServer(server), []);
   const [showAddModal, setShowAddModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
@@ -329,7 +298,6 @@ export function FavoritesPage() {
     const saved = localStorage.getItem('favoritesViewMode');
     return (saved === 'list' ? 'list' : 'card') as ViewMode;
   });
-  const loginDetectedRef = useRef(false);
 
   // Auto-refresh countdown (same pattern as HomePage)
   const [refreshInterval] = useState(() => {
@@ -343,95 +311,6 @@ export function FavoritesPage() {
   const primaryColor = rgbaToCss(theme.colorRegions.primary);
   const cardBgColor = rgbaToCss(theme.colorRegions.sidebar);
   const textColor = rgbaToCss(theme.colorRegions.text);
-
-  // On mount: if we have an API token, verify it by fetching user info
-  useEffect(() => {
-    const verifyAuth = async () => {
-      const token = getApiToken();
-      if (!token) {
-        setAuthStatus({ logged_in: false });
-        return;
-      }
-      
-      try {
-        // Token exists - verify it by calling the API (token is auto-included by fetchApi)
-        const status = await api.checkAuthStatus();
-        if (status.logged_in) {
-          setAuthStatus(status);
-          saveAuthToStorage(status);
-        } else {
-          // Token expired or invalid
-          clearApiToken();
-          clearAuthStorage();
-          setAuthStatus({ logged_in: false });
-        }
-      } catch {
-        // Keep cached auth status if network fails
-      }
-    };
-    verifyAuth();
-  }, []);
-
-  // Listen for login-token-ready event from the Tauri backend
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    
-    const setupListener = async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const unlistenFn = await listen<string>('login-token-ready', async (event) => {
-          logInfo('Favorites', 'Token received from login WebView');
-          loginDetectedRef.current = true;
-          setLoginPending(false);
-          
-          try {
-            const data = JSON.parse(event.payload);
-            
-            if (data.error) {
-              console.error('[Favorites] Token generation failed:', data.error);
-              return;
-            }
-            
-            if (data.token) {
-              logInfo('Favorites', 'API token stored successfully');
-              setApiToken(data.token);
-              
-              const newAuth: AuthStatus = {
-                logged_in: true,
-                user: data.user ? {
-                  id: data.user.id,
-                  username: data.user.username || data.user.display_name || 'User',
-                  avatar: data.user.avatar_url,
-                  provider: data.user.provider || 'steam',
-                } : undefined
-              };
-              setAuthStatus(newAuth);
-              saveAuthToStorage(newAuth);
-              
-              // Fetch favorites using the token
-              try {
-                const result = await api.getAllFavorites();
-                if (result.favorites && Array.isArray(result.favorites)) {
-                  setFavorites(result.favorites);
-                  setTotalFavorites(result.total);
-                }
-              } catch (err) {
-                console.error('[Favorites] Failed to load favorites after login:', err);
-              }
-            }
-          } catch (parseErr) {
-            console.error('[Favorites] Failed to parse token data:', parseErr);
-          }
-        });
-        unlisten = unlistenFn;
-      } catch {
-        logDebug('Favorites', 'Could not set up Tauri event listener');
-      }
-    };
-    
-    setupListener();
-    return () => { if (unlisten) unlisten(); };
-  }, []);
 
   // Load favorites
   const loadFavorites = useCallback(async (showLoadingOverlay = false) => {
@@ -456,9 +335,7 @@ export function FavoritesPage() {
       console.error('[Favorites] Failed to load favorites:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       if (errMsg.includes('401') || errMsg.includes('Not logged in')) {
-        clearApiToken();
-        clearAuthStorage();
-        setAuthStatus({ logged_in: false });
+        void invalidate();
       } else {
         setError(errMsg);
       }
@@ -466,7 +343,7 @@ export function FavoritesPage() {
       setIsLoading(false);
       setIsManualRefresh(false);
     }
-  }, [authStatus.logged_in]);
+  }, [authStatus.logged_in, invalidate]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -556,54 +433,12 @@ export function FavoritesPage() {
 
   // Logout
   const handleLogout = async () => {
-    await api.logout();
-    setAuthStatus({ logged_in: false });
+    await logout();
     setFavorites([]);
-    clearAuthStorage();
   };
 
-  // Open provider login in WebView2 window
   const handleProviderLogin = async (provider: 'steam' | 'google' | 'discord' | 'upkk') => {
-    let loginUrl: string;
-    switch (provider) {
-      case 'google':
-        loginUrl = api.getGoogleLoginUrl();
-        break;
-      case 'discord':
-        loginUrl = api.getDiscordLoginUrl();
-        break;
-      case 'upkk':
-        loginUrl = api.getUpkkLoginUrl();
-        break;
-      default:
-        loginUrl = api.getSteamLoginUrl();
-    }
-    
-    logInfo('Favorites', `Opening ${provider} login: ${loginUrl}`);
-    setLoginPending(true);
-    loginDetectedRef.current = false;
-    
-    try {
-      await invoke('open_steam_login', { loginUrl });
-      logInfo('Favorites', `${provider} login window opened`);
-      
-      setTimeout(() => {
-        if (!loginDetectedRef.current) {
-          setLoginPending(false);
-        }
-      }, 300000);
-      
-    } catch (error) {
-      console.error(`[Favorites] Failed to open login window:`, error);
-      setLoginPending(false);
-      try {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        await open(loginUrl);
-      } catch (shellError) {
-        console.error('[Favorites] Shell open also failed:', shellError);
-        window.location.href = loginUrl;
-      }
-    }
+    await login(provider);
   };
 
   const favoriteRows = useMemo(() => {
@@ -980,7 +815,7 @@ export function FavoritesPage() {
                     <div key={`${fav.server_ip}:${fav.server_port}`} className="relative group">
                       <ServerCard
                         server={serverStatus}
-                        onClick={() => setSelectedServer(serverStatus)}
+                        onSelect={handleSelectServer}
                         onFavoriteChange={handleFavoriteChange}
                         hideCloudFavorite
                       />
@@ -1042,7 +877,7 @@ export function FavoritesPage() {
                       </div>
                       <ServerListItem
                         server={serverStatus}
-                        onClick={() => setSelectedServer(serverStatus)}
+                        onSelect={handleSelectServer}
                       />
                     </div>
                   );
@@ -1133,12 +968,14 @@ export function FavoritesPage() {
 
       {/* Modals */}
       {selectedServer && (
-        <ServerDetailModal
-          server={selectedServer}
-          onClose={() => setSelectedServer(null)}
-          isCloudFavorite={true}
-          onFavoriteRemoved={() => { setSelectedServer(null); loadFavorites(); }}
-        />
+        <Suspense fallback={null}>
+          <ServerDetailModal
+            server={selectedServer}
+            onClose={() => setSelectedServer(null)}
+            isCloudFavorite={true}
+            onFavoriteRemoved={() => { setSelectedServer(null); loadFavorites(); }}
+          />
+        </Suspense>
       )}
 
       {showAddModal && (

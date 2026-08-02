@@ -67,7 +67,7 @@ export function GameTypeFilter() {
           key={value}
           onClick={() => handleChange(value)}
           className={`
-            flex items-center gap-1.5 px-3 py-1.5 text-sm font-bold rounded-lg transition-all duration-200
+            flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-1.5 text-sm font-bold rounded-lg transition-all duration-200
             ${selectedGameType === value
               ? activeColor
               : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700'

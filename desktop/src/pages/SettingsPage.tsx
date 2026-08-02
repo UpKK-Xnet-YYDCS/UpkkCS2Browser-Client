@@ -11,6 +11,7 @@ import { useUpdateCheck } from '@/contexts/updateContext';
 import { APP_VERSION } from '@/services/update';
 import { relaunch } from '@tauri-apps/plugin-process';
 import { clearCredentials } from '@/services/secureStorage';
+import { clearPersistedCloudApiToken } from '@/services/cloudToken';
 import { A2STestSection } from '@/components/settings/A2STestSection';
 import { LatencySettingsSection } from '@/components/settings/LatencySettingsSection';
 import { getSteamClient, setSteamClient } from '@/services/steamClient';
@@ -221,6 +222,8 @@ export function SettingsPage() {
   const handleClearDataAndRestart = async () => {
     setIsClearing(true);
     try {
+      await clearPersistedCloudApiToken();
+
       // Clear all localStorage data
       localStorage.clear();
       

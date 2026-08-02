@@ -1,23 +1,26 @@
 import { useCallback, useMemo, lazy, Suspense } from 'react';
 import { AppProvider } from './store';
 import { UserProvider } from './store/user';
+import { CloudAuthProvider } from './store/cloudAuth';
 import { ThemeProvider } from './store/theme';
 import { useTheme } from './hooks/useTheme';
 import { rgbaToCss } from './store/themeUtils';
 import { I18nProvider } from './store/i18n';
 import { useI18n } from './hooks/useI18n';
 import { HomePage } from './pages/HomePage';
-import { MonitorPage } from './pages/MonitorPage';
-import { TabNavigation, useTabNavigation, SteamClientSwitch, LoginModal, UpdateProvider, UserStatusButton } from './components';
+import { TabNavigation, useTabNavigation, SteamClientSwitch, LoginModal, UpdateProvider, CloudUserStatusButton } from './components';
 import { ToastContainer } from './components/ToastNotification';
 import type { TabId } from './components';
+import { MonitorRuntimeProvider } from './store/monitorRuntime';
 import './index.css';
 
 // Lazy-loaded pages: split into separate chunks for faster initial load
 const FavoritesPage = lazy(() => import('./pages/FavoritesPage').then(m => ({ default: m.FavoritesPage })));
+const AIChatPage = lazy(() => import('./pages/AIChatPage').then(m => ({ default: m.AIChatPage })));
 const ForumPage = lazy(() => import('./pages/ForumPage').then(m => ({ default: m.ForumPage })));
 const CheckInPage = lazy(() => import('./pages/CheckInPage').then(m => ({ default: m.CheckInPage })));
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })));
+const MonitorPage = lazy(() => import('./pages/MonitorPage').then(m => ({ default: m.MonitorPage })));
 
 function AppContent() {
   const { activeTab, setActiveTab } = useTabNavigation('servers');
@@ -29,6 +32,8 @@ function AppContent() {
 
   const renderPage = () => {
     switch (activeTab) {
+      case 'ai':
+        return <AIChatPage />;
       case 'favorites':
         return <FavoritesPage />;
       case 'forum':
@@ -83,7 +88,7 @@ function AppContent() {
 
   return (
     <div 
-      className="min-h-screen flex flex-col relative"
+      className="min-h-screen min-w-0 overflow-x-hidden flex flex-col relative"
       style={backgroundStyle}
     >
       {/* Background overlay for opacity control */}
@@ -103,8 +108,8 @@ function AppContent() {
           }`}
           style={{ backgroundColor: headerColor }}
         >
-          <div className="max-w-7xl mx-auto px-4 py-3">
-            <div className="flex items-center justify-between gap-4">
+          <div className="max-w-7xl mx-auto px-2 py-2 sm:px-4 sm:py-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 sm:flex-nowrap sm:gap-4">
               {/* Logo */}
               <div className="flex items-center gap-3">
                 <div 
@@ -125,11 +130,13 @@ function AppContent() {
               </div>
 
               {/* Tab Navigation */}
-              <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+              <div className="order-3 w-full min-w-0 sm:order-none sm:flex sm:w-auto sm:flex-1 sm:justify-center">
+                <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
+              </div>
 
               {/* User Status & Steam Client Switch - Top Right */}
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <UserStatusButton />
+              <div className="order-2 flex flex-shrink-0 items-center gap-2 sm:order-none sm:gap-3">
+                <CloudUserStatusButton />
                 {language === 'zh-CN' && <SteamClientSwitch t={t} />}
               </div>
             </div>
@@ -137,11 +144,12 @@ function AppContent() {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* MonitorPage is always mounted (hidden when inactive) so monitoring timers survive tab switches */}
-          <div className={activeTab === 'monitor' ? 'flex-1 flex flex-col' : 'hidden'}>
-            <MonitorPage />
-          </div>
+        <main className="min-h-0 flex-1 flex flex-col overflow-hidden">
+          {activeTab === 'monitor' && (
+            <Suspense fallback={<div className="flex-1" />}>
+              <MonitorPage />
+            </Suspense>
+          )}
           {activeTab !== 'monitor' && (
             <Suspense fallback={<div className="flex-1" />}>
               {renderPage()}
@@ -164,11 +172,15 @@ function App() {
     <I18nProvider>
       <ThemeProvider>
         <UserProvider>
-          <AppProvider>
-            <UpdateProvider>
-              <AppContent />
-            </UpdateProvider>
-          </AppProvider>
+          <CloudAuthProvider>
+            <AppProvider>
+              <MonitorRuntimeProvider>
+                <UpdateProvider>
+                  <AppContent />
+                </UpdateProvider>
+              </MonitorRuntimeProvider>
+            </AppProvider>
+          </CloudAuthProvider>
         </UserProvider>
       </ThemeProvider>
     </I18nProvider>

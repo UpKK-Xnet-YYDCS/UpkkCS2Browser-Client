@@ -1,29 +1,23 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { useTheme } from '@/hooks/useTheme';
 import { rgbaToCss } from '@/store/themeUtils';
 import { useI18n } from '@/hooks/useI18n';
 import type { Translations } from '@/store/i18n';
-import { useAppStore } from '@/hooks/useAppStore';
-import { getApiToken, setApiToken, clearApiToken, checkAuthStatus, getSteamLoginUrl, getGoogleLoginUrl, getDiscordLoginUrl, getUpkkLoginUrl, getFavorites, type FavoriteServer, type AuthStatus } from '@/api';
-import { buildJoinUrl } from '@/services/steamClient';
-import { showToast } from '@/services/toast';
-import { isTauriAvailable, parseServerAddress, queryServerA2S } from '@/services/a2s';
+import { useFavoritesStore } from '@/hooks/useFavoritesStore';
+import { getFavorites, type FavoriteServer } from '@/api';
+import { useCloudAuth } from '@/hooks/useCloudAuth';
+import { parseServerAddress, queryServerA2S } from '@/services/a2s';
+import { useMonitorRuntime } from '@/hooks/useMonitorRuntime';
+import type { ServerStatus } from '@/types';
 import {
   type MonitorRule,
-  type MonitorStatus,
   type MatchedServer,
   type MonitorNotifySettings,
-  MONITOR_RULES_KEY,
-  loadMonitorRules,
-  loadMonitorRulesFromFile,
   saveMonitorRules,
-  getMonitorInterval,
   setMonitorInterval as saveMonitorInterval,
   loadNotifySettings,
   saveNotifySettings,
   createDefaultRule,
-  performMonitorCheck,
   sendDiscordWebhook,
   sendDesktopNotification,
   sendServerChanNotification,
@@ -32,11 +26,10 @@ import {
   MESSAGE_PLACEHOLDERS,
   DEFAULT_MESSAGE_TEMPLATE,
   DEFAULT_ALERT_TITLE,
-  getMonitorEnabled,
-  setMonitorEnabled,
 } from '@/services/monitor';
 
-const LOGIN_TIMEOUT_MS = 300000;
+const JoinServerConfirmModal = lazy(() => import('@/components/JoinServerConfirmModal').then(module => ({ default: module.JoinServerConfirmModal })));
+
 
 // ============== Icons ==============
 
@@ -168,6 +161,7 @@ interface RuleEditorProps {
 }
 
 function RuleEditor({ rule, onSave, onCancel, t }: RuleEditorProps) {
+  const { isLoggedIn } = useCloudAuth();
   const [editRule, setEditRule] = useState<MonitorRule>({ ...rule });
   const [mapInput, setMapInput] = useState('');
   const [favoriteServers, setFavoriteServers] = useState<FavoriteServer[]>([]);
@@ -176,31 +170,31 @@ function RuleEditor({ rule, onSave, onCancel, t }: RuleEditorProps) {
   const [serverSearch, setServerSearch] = useState('');
   const [serverPage, setServerPage] = useState(1);
   const SERVERS_PER_PAGE = 10;
-  const { favorites: localFavorites } = useAppStore();
+  const { favorites: localFavorites } = useFavoritesStore();
   // Resolved server names for local-only favorites via A2S query
   const [localServerNames, setLocalServerNames] = useState<Record<string, string>>({});
 
   // Load cloud favorites on mount
   const loadFavorites = useCallback(() => {
-    if (favoritesLoaded || loadingFavorites) return;
+    if (!isLoggedIn || favoritesLoaded || loadingFavorites) return;
     setLoadingFavorites(true);
-    getFavorites(1, 200)
+    getFavorites(1, 100)
       .then(res => {
         setFavoriteServers(res.favorites || []);
         setFavoritesLoaded(true);
       })
       .catch(() => { setFavoritesLoaded(true); })
       .finally(() => setLoadingFavorites(false));
-  }, [favoritesLoaded, loadingFavorites]);
+  }, [favoritesLoaded, isLoggedIn, loadingFavorites]);
 
   // Always load favorites
   useEffect(() => {
-    if (!favoritesLoaded) {
+    if (isLoggedIn && !favoritesLoaded) {
       const timer = window.setTimeout(() => loadFavorites(), 0);
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [favoritesLoaded, loadFavorites]);
+  }, [favoritesLoaded, isLoggedIn, loadFavorites]);
 
   // Resolve server names for local-only favorites via A2S queries
   useEffect(() => {
@@ -567,254 +561,29 @@ function RuleEditor({ rule, onSave, onCancel, t }: RuleEditorProps) {
 export function MonitorPage() {
   const theme = useTheme();
   const { t } = useI18n();
-  const [rules, setRules] = useState<MonitorRule[]>(() => loadMonitorRules());
-  const [interval, setInterval_] = useState(() => getMonitorInterval());
-  const [isEnabled, setIsEnabled] = useState(() => {
-    const savedRules = loadMonitorRules();
-    const hasEnabledRules = savedRules.some(r => r.enabled && r.mapPatterns.length > 0);
-    // Resume monitoring if it was running before (e.g. page refresh via right-click)
-    if (getMonitorEnabled() && hasEnabledRules) {
-      return true;
-    }
-    return false;
-  });
-  const [status, setStatus] = useState<MonitorStatus>({
-    isRunning: false,
-    lastCheckTime: null,
-    nextCheckTime: null,
-    matchedServers: [],
-    checkCount: 0,
-    errorCount: 0,
-    lastError: null,
-  });
-  const [currentMatches, setCurrentMatches] = useState<MatchedServer[]>([]);
+  const {
+    rules,
+    setRules,
+    interval,
+    setInterval: setInterval_,
+    isEnabled,
+    setIsEnabled,
+    status,
+    setStatus,
+    currentMatches,
+    countdown,
+    setCountdown,
+  } = useMonitorRuntime();
   const [editingRule, setEditingRule] = useState<MonitorRule | null>(null);
   const [showStartPrompt, setShowStartPrompt] = useState(false);
-  const [countdown, setCountdown] = useState(0);
   const [notifySettings, setNotifySettings_] = useState<MonitorNotifySettings>(() => loadNotifySettings());
   const [desktopTestResult, setDesktopTestResult] = useState<string | null>(null);
   const [discordTestResult, setDiscordTestResult] = useState<string | null>(null);
   const [serverChanTestResult, setServerChanTestResult] = useState<string | null>(null);
   const [customWebhookTestResult, setCustomWebhookTestResult] = useState<string | null>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Ref to hold latest rules so the monitor loop doesn't restart when rules change
-  const rulesRef = useRef(rules);
-
-  useEffect(() => {
-    rulesRef.current = rules;
-  }, [rules]);
-
-  // Persist monitor enabled state to localStorage so it survives page refreshes
-  useEffect(() => {
-    setMonitorEnabled(isEnabled);
-  }, [isEnabled]);
-
-  // Load monitor rules from file-based storage on mount (authoritative source).
-  // localStorage serves as a fast synchronous cache for initial render,
-  // but file storage is the reliable persistent source across app restarts.
-  useEffect(() => {
-    loadMonitorRulesFromFile().then(fileRules => {
-      if (fileRules !== null) {
-        setRules(fileRules);
-        // Sync localStorage cache with file data
-        try { localStorage.setItem(MONITOR_RULES_KEY, JSON.stringify(fileRules)); } catch { /* ignore */ }
-      }
-    });
-  }, []);
-
-  // Auth state — initialize optimistically from token to avoid login screen flash
-  const [authStatus, setAuthStatus] = useState<AuthStatus>(() => {
-    const token = getApiToken();
-    return token ? { logged_in: true } : { logged_in: false };
-  });
-  const [loginPending, setLoginPending] = useState(false);
-  const loginDetectedRef = useRef(false);
-  const isLoggedIn = authStatus.logged_in;
-
-  // Verify auth on mount (non-blocking — won't flash login if token exists)
-  useEffect(() => {
-    const verifyAuth = async () => {
-      const token = getApiToken();
-      if (!token) {
-        setAuthStatus({ logged_in: false });
-        return;
-      }
-      try {
-        const status = await checkAuthStatus();
-        if (status.logged_in) {
-          setAuthStatus(status);
-        } else {
-          clearApiToken();
-          setAuthStatus({ logged_in: false });
-        }
-      } catch {
-        // Keep going if network fails but token exists
-        setAuthStatus({ logged_in: true });
-      }
-    };
-    verifyAuth();
-  }, []);
-
-  // Listen for login-token-ready event from Tauri backend
-  useEffect(() => {
-    let unlisten: (() => void) | null = null;
-    const setupListener = async () => {
-      try {
-        const { listen } = await import('@tauri-apps/api/event');
-        const unlistenFn = await listen<string>('login-token-ready', async (event) => {
-          loginDetectedRef.current = true;
-          setLoginPending(false);
-          try {
-            const data = JSON.parse(event.payload);
-            if (data.error) return;
-            if (data.token) {
-              setApiToken(data.token);
-              const newAuth: AuthStatus = {
-                logged_in: true,
-                user: data.user ? {
-                  id: data.user.id,
-                  username: data.user.username || data.user.display_name || 'User',
-                  avatar: data.user.avatar_url,
-                  provider: data.user.provider || 'steam',
-                } : undefined,
-              };
-              setAuthStatus(newAuth);
-            }
-          } catch { /* ignore parse error */ }
-        });
-        unlisten = unlistenFn;
-      } catch { /* not in Tauri */ }
-    };
-    setupListener();
-    return () => { if (unlisten) unlisten(); };
-  }, []);
-
-  // Open provider login
-  const handleProviderLogin = async (provider: 'steam' | 'google' | 'discord' | 'upkk') => {
-    let loginUrl: string;
-    switch (provider) {
-      case 'google': loginUrl = getGoogleLoginUrl(); break;
-      case 'discord': loginUrl = getDiscordLoginUrl(); break;
-      case 'upkk': loginUrl = getUpkkLoginUrl(); break;
-      default: loginUrl = getSteamLoginUrl();
-    }
-    setLoginPending(true);
-    loginDetectedRef.current = false;
-    try {
-      await invoke('open_steam_login', { loginUrl });
-      setTimeout(() => {
-        if (!loginDetectedRef.current) setLoginPending(false);
-      }, LOGIN_TIMEOUT_MS);
-    } catch {
-      setLoginPending(false);
-      try {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        await open(loginUrl);
-      } catch {
-        window.location.href = loginUrl;
-      }
-    }
-  };
-
-  // Perform a single check
-  const runCheck = useCallback(async () => {
-    const currentRules = rulesRef.current;
-    if (currentRules.length === 0) return;
-    
-    setStatus(prev => ({ ...prev, isRunning: true }));
-    const { matched, currentMatches: curMatches, autoJoined, error } = await performMonitorCheck(currentRules);
-    
-    // Update real-time matched servers (newest first)
-    setCurrentMatches(curMatches.reverse());
-    
-    setStatus(prev => ({
-      ...prev,
-      isRunning: false,
-      lastCheckTime: new Date().toISOString(),
-      checkCount: prev.checkCount + 1,
-      errorCount: error ? prev.errorCount + 1 : prev.errorCount,
-      lastError: error,
-      matchedServers: matched.length > 0
-        ? [...matched, ...prev.matchedServers].slice(0, 30) // Keep last 30 notification history
-        : prev.matchedServers,
-    }));
-
-    // If auto-join triggered, stop monitoring to avoid joining multiple servers
-    if (autoJoined) {
-      setIsEnabled(false);
-      setCountdown(0);
-      showToast(
-        `▶ ${t.monitorAutoJoin}`,
-        `${autoJoined.serverName} — ${autoJoined.mapName}`,
-        'info',
-        8000
-      );
-    }
-  }, [t]);
-
-  // Ref to hold latest runCheck so the monitor loop doesn't restart when runCheck changes
-  const runCheckRef = useRef(runCheck);
-
-  useEffect(() => {
-    runCheckRef.current = runCheck;
-  }, [runCheck]);
-
-  // Auto-monitor loop — only restarts when isEnabled or interval changes,
-  // not when rules/runCheck change (uses refs to access latest values)
-  useEffect(() => {
-    if (!isEnabled || rulesRef.current.filter(r => r.enabled).length === 0) {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-      if (countdownRef.current) {
-        clearTimeout(countdownRef.current);
-        countdownRef.current = null;
-      }
-      return;
-    }
-
-    let cancelled = false;
-
-    const scheduleNext = () => {
-      if (cancelled) return;
-      setCountdown(interval);
-      // Countdown ticker
-      const tick = () => {
-        if (cancelled) return;
-        setCountdown(prev => {
-          if (prev <= 1) return 0;
-          countdownRef.current = setTimeout(tick, 1000);
-          return prev - 1;
-        });
-      };
-      countdownRef.current = setTimeout(tick, 1000);
-
-      timerRef.current = setTimeout(() => {
-        if (cancelled) return;
-        runCheckRef.current().then(() => {
-          if (!cancelled) scheduleNext();
-        });
-      }, interval * 1000);
-    };
-
-    // Initial check with a small delay to avoid synchronous setState in effect
-    const initialTimer = setTimeout(() => {
-      if (!cancelled) {
-        runCheckRef.current().then(() => {
-          if (!cancelled) scheduleNext();
-        });
-      }
-    }, 100);
-
-    return () => {
-      cancelled = true;
-      clearTimeout(initialTimer);
-      if (timerRef.current) clearTimeout(timerRef.current);
-      if (countdownRef.current) clearTimeout(countdownRef.current);
-    };
-  }, [isEnabled, interval]);
+  const [joinTarget, setJoinTarget] = useState<ServerStatus | null>(null);
+  const { isLoggedIn, loginPending, login } = useCloudAuth();
+  const handleProviderLogin = login;
 
   // Toggle monitoring
   const toggleMonitor = () => {
@@ -1230,20 +999,7 @@ export function MonitorPage() {
                         </div>
                       </div>
                       <button
-                        onClick={async () => {
-                          const [ip, port] = match.serverKey.split(':');
-                          const steamUrl = buildJoinUrl(ip, port);
-                          try {
-                            if (isTauriAvailable()) {
-                              const { open } = await import('@tauri-apps/plugin-shell');
-                              await open(steamUrl);
-                            } else {
-                              window.location.href = steamUrl;
-                            }
-                          } catch {
-                            window.location.href = steamUrl;
-                          }
-                        }}
+                        onClick={() => setJoinTarget(matchedServerToStatus(match))}
                         className="flex-shrink-0 px-3 py-1.5 bg-green-500 hover:bg-green-600 text-white text-xs font-semibold rounded-lg transition-colors shadow"
                       >
                         ▶ {t.monitorJoinServer}
@@ -1769,6 +1525,12 @@ export function MonitorPage() {
         </div>
       )}
 
+      {joinTarget && (
+        <Suspense fallback={null}>
+          <JoinServerConfirmModal server={joinTarget} onClose={() => setJoinTarget(null)} />
+        </Suspense>
+      )}
+
       {/* Floating Start/Stop Monitor Button */}
       <button
         onClick={toggleMonitor}
@@ -1800,4 +1562,19 @@ export function MonitorPage() {
       </button>
     </div>
   );
+}
+
+function matchedServerToStatus(match: MatchedServer): ServerStatus {
+  const parsed = parseServerAddress(match.serverKey);
+  return {
+    name: match.serverName,
+    ip: parsed?.ip ?? match.serverKey,
+    port: parsed?.port ?? '',
+    map_name: match.mapName,
+    players: match.players,
+    real_players: match.players,
+    max_players: match.maxPlayers,
+    online: true,
+    is_online: true,
+  } as ServerStatus;
 }

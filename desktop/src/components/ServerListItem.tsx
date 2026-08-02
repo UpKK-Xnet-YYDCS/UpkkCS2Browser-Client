@@ -1,14 +1,14 @@
-import { useState, useRef, useEffect, memo } from 'react';
+import { lazy, Suspense, useState, useRef, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import type { ServerStatus } from '@/types';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useFavoritesStore } from '@/hooks/useFavoritesStore';
 import { useI18n } from '@/hooks/useI18n';
-import { buildJoinUrl } from '@/services/steamClient';
-import { AutoJoinModal } from './AutoJoinModal';
 import { LocalA2SLatencyBadge } from './LocalA2SLatencyBadge';
-import { LatencyProbeModal } from './LatencyProbeModal';
-import { logInfo } from '@/store/log';
 import { isServerOnline } from '@/utils/serverStatus';
+
+const AutoJoinModal = lazy(() => import('./AutoJoinModal').then(module => ({ default: module.AutoJoinModal })));
+const LatencyProbeModal = lazy(() => import('./LatencyProbeModal').then(module => ({ default: module.LatencyProbeModal })));
+const JoinServerConfirmModal = lazy(() => import('./JoinServerConfirmModal').then(module => ({ default: module.JoinServerConfirmModal })));
 
 // Simple inline SVG icons
 const Icons = {
@@ -48,14 +48,16 @@ const Icons = {
 interface ServerListItemProps {
   server: ServerStatus;
   onClick?: () => void;
+  onSelect?: (server: ServerStatus) => void;
 }
 
-function ServerListItemInner({ server, onClick }: ServerListItemProps) {
-  const { isFavorite, addFavorite, removeFavorite } = useAppStore();
+function ServerListItemInner({ server, onClick, onSelect }: ServerListItemProps) {
+  const { isFavorite, addFavorite, removeFavorite } = useFavoritesStore();
   const { t } = useI18n();
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
   const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
   const [autoJoinTarget, setAutoJoinTarget] = useState<ServerStatus | null>(null);
+  const [joinTarget, setJoinTarget] = useState<ServerStatus | null>(null);
   const [showMultiServerDropdown, setShowMultiServerDropdown] = useState(false);
   const multiServerRef = useRef<HTMLDivElement>(null);
   const multiServerBtnRef = useRef<HTMLButtonElement>(null);
@@ -118,7 +120,7 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
 
   const handleAutoJoinAlternate = (ip: string, port: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    setAutoJoinTarget({ ...server, ip, port: String(port) } as ServerStatus);
+    setAutoJoinTarget({ ...server, ip, port: String(port), display_address: ip } as ServerStatus);
     setShowAutoJoinModal(true);
     setShowMultiServerDropdown(false);
   };
@@ -140,17 +142,23 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
 
   const handleConnect = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // 使用 baseAddress（优先域名）构建连接URL，与网页端行为一致
-    const steamUrl = buildJoinUrl(baseAddress, serverPort, server.game_id ?? server.GameID, server.game);
-    logInfo('Join', `${server.name} → ${steamUrl}`);
-    window.open(steamUrl, '_blank');
+    setJoinTarget(server);
   };
 
   const handleConnectAlternate = (ip: string, port: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const steamUrl = buildJoinUrl(ip, port, server.game_id ?? server.GameID, server.game);
-    logInfo('Join', `${server.name} (alt) → ${steamUrl}`);
-    window.open(steamUrl, '_blank');
+    const alternate = alternates?.find(item => item.ip === ip && String(item.port) === String(port));
+    setJoinTarget({
+      ...server,
+      ip,
+      port: String(port),
+      display_address: ip,
+      players: alternate?.real_players ?? server.players,
+      real_players: alternate?.real_players ?? server.real_players,
+      max_players: alternate?.max_players ?? server.max_players,
+      country_code: alternate?.country_code ?? server.country_code,
+      country_name: alternate?.country_name ?? server.country_name,
+    } as ServerStatus);
     setShowMultiServerDropdown(false);
   };
 
@@ -174,7 +182,7 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
   return (
     <div 
       className="group flex items-center gap-4 p-3 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all duration-200 cursor-pointer"
-      onClick={onClick}
+      onClick={onSelect ? () => onSelect(server) : onClick}
     >
       {/* Status indicator */}
       <div className="flex-shrink-0">
@@ -361,17 +369,31 @@ function ServerListItemInner({ server, onClick }: ServerListItemProps) {
 
       {/* Auto-Join Modal */}
       {showAutoJoinModal && (
-        <AutoJoinModal
-          server={autoJoinTarget || server}
-          onClose={() => { setShowAutoJoinModal(false); setAutoJoinTarget(null); }}
-        />
+        <Suspense fallback={null}>
+          <AutoJoinModal
+            server={autoJoinTarget || server}
+            onClose={() => { setShowAutoJoinModal(false); setAutoJoinTarget(null); }}
+          />
+        </Suspense>
       )}
 
       {showLatencyProbeModal && (
-        <LatencyProbeModal
-          server={server}
-          onClose={() => setShowLatencyProbeModal(false)}
-        />
+        <Suspense fallback={null}>
+          <LatencyProbeModal
+            server={server}
+            onClose={() => setShowLatencyProbeModal(false)}
+          />
+        </Suspense>
+      )}
+
+      {joinTarget && (
+        <Suspense fallback={null}>
+          <JoinServerConfirmModal
+            server={joinTarget}
+            latencyMs={joinTarget.local_latency_ms}
+            onClose={() => setJoinTarget(null)}
+          />
+        </Suspense>
       )}
     </div>
   );
@@ -408,6 +430,7 @@ export const ServerListItem = memo(ServerListItemInner, (prev, next) => {
     ps.local_latency_ms === ns.local_latency_ms &&
     ps.local_latency_error === ns.local_latency_error &&
     ps.local_latency_updated_at === ns.local_latency_updated_at &&
-    prev.onClick === next.onClick
+    prev.onClick === next.onClick &&
+    prev.onSelect === next.onSelect
   );
 });

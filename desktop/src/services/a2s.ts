@@ -6,13 +6,13 @@
  */
 
 import { invoke } from '@tauri-apps/api/core';
-import { createLocalLatencyScheduler } from './a2sLatency';
+import { createLocalLatencyScheduler } from './a2sLatency.ts';
 export {
   createLocalLatencyScheduler,
   type LocalLatencySnapshot,
   type LocalLatencyStatus,
   type LocalLatencyTarget,
-} from './a2sLatency';
+} from './a2sLatency.ts';
 
 // A2S query result from Tauri backend
 export interface A2SQueryResult {
@@ -71,6 +71,9 @@ function isIPv4(host: string): boolean {
  */
 function isDomainName(host: string): boolean {
   if (!host || host.length > 253) return false;
+  // A dotted numeric host is an IPv4 literal, not a domain. Reject malformed
+  // IPv4 values instead of accidentally accepting them through domain syntax.
+  if (host.includes('.') && /^[\d.]+$/.test(host)) return false;
   // Basic domain name validation: alphanumeric, hyphens, dots
   return /^[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?)*$/.test(host);
 }

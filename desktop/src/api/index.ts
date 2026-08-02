@@ -8,6 +8,8 @@ import type {
   GameType
 } from '@/types';
 import { logInfo, logWarn, logError, logDebug } from '@/store/log';
+import { getCloudApiToken, setCloudApiTokenInMemory } from '@/services/cloudToken';
+import { normalizeCloudAuthResponse, type CloudAuthStatus, type CloudUserInfo } from '@/services/cloudAuthData';
 
 // Compile-time User-Agent for HTTP POST requests (configurable via XPROJ_HTTP_USER_AGENT env var)
 // Default: 'XProj-Desktop-HTTP/<version> (+https://servers.upkk.com)' where <version> is read from version.txt
@@ -35,28 +37,16 @@ export const getApiBaseUrl = (): string => {
   return getBaseUrl();
 };
 
-// API token storage key
-const API_TOKEN_KEY = 'xproj_api_token';
-
-// Get stored API token
 export const getApiToken = (): string | null => {
-  try {
-    return localStorage.getItem(API_TOKEN_KEY);
-  } catch { return null; }
+  return getCloudApiToken();
 };
 
-// Set API token
 export const setApiToken = (token: string) => {
-  try {
-    localStorage.setItem(API_TOKEN_KEY, token);
-  } catch { /* ignore */ }
+  setCloudApiTokenInMemory(token);
 };
 
-// Clear API token
 export const clearApiToken = () => {
-  try {
-    localStorage.removeItem(API_TOKEN_KEY);
-  } catch { /* ignore */ }
+  setCloudApiTokenInMemory(null);
 };
 
 // Custom error class that carries HTTP status code for structured error handling
@@ -641,26 +631,12 @@ export const getServerPlayerHistory = async (
 
 // ============== User Authentication ==============
 
-export interface UserInfo {
-  id: number;
-  steam_id?: string;
-  username: string;
-  avatar?: string;
-  provider: 'steam' | 'google' | 'discord' | 'upkk';
-}
-
-export interface AuthStatus {
-  logged_in: boolean;
-  user?: UserInfo;
-}
+export type UserInfo = CloudUserInfo;
+export type AuthStatus = CloudAuthStatus;
 
 // Check login status
 export const checkAuthStatus = async (): Promise<AuthStatus> => {
-  try {
-    return await fetchApi('/api/auth/user');
-  } catch {
-    return { logged_in: false };
-  }
+  return normalizeCloudAuthResponse(await fetchApi<unknown>('/api/auth/user'));
 };
 
 // Get login URL for Steam (opens in browser)

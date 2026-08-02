@@ -1,4 +1,4 @@
-import { useAppStore } from '@/hooks/useAppStore';
+import { useFavoritesStore } from '@/hooks/useFavoritesStore';
 import { useI18n } from '@/hooks/useI18n';
 
 // Star icon
@@ -15,7 +15,7 @@ interface FavoriteFilterProps {
 }
 
 export function FavoriteFilter({ showFavoritesOnly, onToggle, favoriteCount }: FavoriteFilterProps) {
-  const { favorites } = useAppStore();
+  const { favorites } = useFavoritesStore();
   const { t } = useI18n();
   
   return (

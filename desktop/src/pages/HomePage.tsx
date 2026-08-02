@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef, useCallback, type CSSProperties } from 'react';
+import { lazy, Suspense, useEffect, useState, useMemo, useRef, useCallback, type CSSProperties } from 'react';
 import {
   CARD_MIN_WIDTH_DEFAULT,
   CARD_MIN_WIDTH_MAX,
@@ -10,8 +10,6 @@ import { useI18n } from '@/hooks/useI18n';
 import { 
   ServerCard, 
   ServerListItem,
-  ServerDetailModal,
-  AddServerModal,
   ServerCardSkeleton,
   ServerListItemSkeleton,
   SearchBar, 
@@ -42,6 +40,9 @@ import { useLocalLatencyQueue } from '@/hooks/useLocalLatencyQueue';
 import { clearResponseCache } from '@/api';
 import { showToast } from '@/services/toast';
 import { isServerOnline } from '@/utils/serverStatus';
+
+const ServerDetailModal = lazy(() => import('@/components/ServerDetailModal').then(module => ({ default: module.ServerDetailModal })));
+const AddServerModal = lazy(() => import('@/components/AddServerModal').then(module => ({ default: module.AddServerModal })));
 
 // Default auto-refresh interval in seconds
 const DEFAULT_AUTO_REFRESH_INTERVAL = 60;
@@ -95,6 +96,37 @@ const CountdownProgressBar = ({ secondsRemaining, totalSeconds, isLoading }: Cou
     </div>
   );
 };
+
+interface AutoRefreshCountdownProps {
+  interval: number;
+  isLoading: boolean;
+  onRefresh: () => void;
+}
+
+function AutoRefreshCountdown({ interval, isLoading, onRefresh }: AutoRefreshCountdownProps) {
+  const [remaining, setRemaining] = useState(interval);
+  const refreshRef = useRef(onRefresh);
+
+  useEffect(() => {
+    refreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  useEffect(() => {
+    if (interval <= 0) return undefined;
+    const timer = window.setInterval(() => {
+      setRemaining(current => {
+        if (current <= 1) {
+          refreshRef.current();
+          return interval;
+        }
+        return current - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [interval]);
+
+  return <CountdownProgressBar secondsRemaining={remaining} totalSeconds={interval} isLoading={isLoading} />;
+}
 
 interface CardSizeControlProps {
   value: number;
@@ -273,6 +305,7 @@ export function HomePage() {
   }) as CSSProperties, [cardMinWidth]);
 
   const [selectedServer, setSelectedServer] = useState<ServerStatus | null>(null);
+  const handleSelectServer = useCallback((server: ServerStatus) => setSelectedServer(server), []);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const [showAddServerModal, setShowAddServerModal] = useState(false);
   const [showAddLocalServerModal, setShowAddLocalServerModal] = useState(false);
@@ -301,13 +334,8 @@ export function HomePage() {
     const saved = localStorage.getItem('autoRefreshInterval');
     return saved ? parseInt(saved, 10) : DEFAULT_AUTO_REFRESH_INTERVAL;
   });
-  const [countdown, setCountdown] = useState(() => {
-    const saved = localStorage.getItem('autoRefreshInterval');
-    return saved ? parseInt(saved, 10) : DEFAULT_AUTO_REFRESH_INTERVAL;
-  });
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [countdownResetToken, setCountdownResetToken] = useState(0);
   const currentPageRef = useRef(currentPage);
-  const resetSignalRef = useRef(0); // Increment to signal countdown reset
   
   // Keep refs for filter values so auto-refresh can use latest values
   const filtersRef = useRef({ searchQuery, selectedRegion, selectedGameType, selectedCategory, selectedContinent, selectedGeoRegion, selectedCountry, perPage });
@@ -602,54 +630,20 @@ export function HomePage() {
     });
   }, [favPage, perPage, favorites.length, reorderFavorites]);
 
-  // Auto-refresh with countdown - uses refs to get latest filter values
-  useEffect(() => {
-    if (refreshInterval <= 0) return;
-
-    // Clear existing interval
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
-
-    let lastResetSignal = resetSignalRef.current;
-    
-    // Start countdown timer (updates every second)
-    countdownRef.current = setInterval(() => {
-      // Check if reset was signaled
-      if (resetSignalRef.current !== lastResetSignal) {
-        lastResetSignal = resetSignalRef.current;
-        setCountdown(refreshInterval);
-        return;
-      }
-      
-      setCountdown(prev => {
-        if (prev <= 1) {
-          // Silent auto-refresh: fetch fresh data without disrupting UX
-          // No cache clearing needed — silent mode bypasses cache read and writes fresh data
-          const currentFilters = filtersRef.current;
-          fetchServers(currentPageRef.current, {
-            searchQuery: currentFilters.searchQuery,
-            selectedCategory: currentFilters.selectedCategory,
-            selectedRegion: currentFilters.selectedRegion,
-            selectedGameType: currentFilters.selectedGameType,
-            selectedContinent: currentFilters.selectedContinent,
-            selectedGeoRegion: currentFilters.selectedGeoRegion,
-            selectedCountry: currentFilters.selectedCountry,
-            perPage: currentFilters.perPage,
-          }, { silent: true });
-          fetchStats();
-          return refreshInterval; // Reset countdown
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
-    };
-  }, [refreshInterval, fetchServers, fetchStats]);
+  const handleAutoRefresh = useCallback(() => {
+    const currentFilters = filtersRef.current;
+    void fetchServers(currentPageRef.current, {
+      searchQuery: currentFilters.searchQuery,
+      selectedCategory: currentFilters.selectedCategory,
+      selectedRegion: currentFilters.selectedRegion,
+      selectedGameType: currentFilters.selectedGameType,
+      selectedContinent: currentFilters.selectedContinent,
+      selectedGeoRegion: currentFilters.selectedGeoRegion,
+      selectedCountry: currentFilters.selectedCountry,
+      perPage: currentFilters.perPage,
+    }, { silent: true });
+    void fetchStats();
+  }, [fetchServers, fetchStats]);
 
   // Initial data fetch
   useEffect(() => {
@@ -693,8 +687,7 @@ export function HomePage() {
         selectedCountry,
         perPage,
       });
-      // Signal countdown reset via ref (interval will pick this up)
-      resetSignalRef.current += 1;
+      setCountdownResetToken(token => token + 1);
       
       if (metadataChanged) {
         fetchMetadata();
@@ -713,8 +706,7 @@ export function HomePage() {
       fetchServers(currentPage); // Preserve current page on manual refresh
     }
     fetchStats();
-    // Signal countdown reset via ref (interval will pick this up)
-    resetSignalRef.current += 1;
+    setCountdownResetToken(token => token + 1);
   };
   
   // Reset isManualRefresh when loading completes
@@ -800,13 +792,13 @@ export function HomePage() {
   }, [importFavorites, showFavoritesOnly, fetchFavServers]);
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-50 dark:bg-gray-900">
+    <div className="flex-1 min-w-0 flex flex-col bg-gray-50 dark:bg-gray-900">
       {/* Toolbar */}
       <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto px-4 py-3 space-y-3">
+        <div className="max-w-7xl mx-auto px-3 py-3 space-y-3 sm:px-4">
           {/* Row 1: Game Type, Region, ViewMode, Stats */}
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
               <GameTypeFilter />
               <RegionFilter />
               <ViewModeSwitch viewMode={viewMode} onViewModeChange={setViewMode} />
@@ -817,8 +809,8 @@ export function HomePage() {
             <StatsBar />
           </div>
           {/* Row 2: Search bar + Continent/Country + Favorites + Refresh controls */}
-          <div className="flex items-center gap-3">
-            <div className="flex-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
+            <div className="w-full min-w-0 sm:flex-1 sm:min-w-56">
               {showFavoritesOnly ? (
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
@@ -911,10 +903,11 @@ export function HomePage() {
               </>
             )}
             {refreshInterval > 0 && (
-              <CountdownProgressBar 
-                secondsRemaining={countdown} 
-                totalSeconds={refreshInterval}
+              <AutoRefreshCountdown
+                key={`${refreshInterval}:${countdownResetToken}`}
+                interval={refreshInterval}
                 isLoading={isLoading && isManualRefresh}
+                onRefresh={handleAutoRefresh}
               />
             )}
             <button
@@ -1128,7 +1121,7 @@ export function HomePage() {
                       <div key={`${server.ip || server.Addr}:${server.port || server.Port}-${index}`} className="relative group">
                         <ServerCard 
                           server={server}
-                          onClick={() => setSelectedServer(server)}
+                          onSelect={handleSelectServer}
                         />
                         {/* Reorder buttons */}
                         <div className="absolute top-2 left-2 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
@@ -1158,7 +1151,7 @@ export function HomePage() {
                       <ServerCard 
                         key={`${server.ip || server.Addr}:${server.port || server.Port}-${index}`} 
                         server={server}
-                        onClick={() => setSelectedServer(server)}
+                        onSelect={handleSelectServer}
                       />
                     );
                   })}
@@ -1194,14 +1187,14 @@ export function HomePage() {
                         </div>
                         <ServerListItem 
                           server={server}
-                          onClick={() => setSelectedServer(server)}
+                          onSelect={handleSelectServer}
                         />
                       </div>
                     ) : (
                       <ServerListItem 
                         key={`${server.ip || server.Addr}:${server.port || server.Port}-${index}`} 
                         server={server}
-                        onClick={() => setSelectedServer(server)}
+                        onSelect={handleSelectServer}
                       />
                     );
                   })}
@@ -1226,15 +1219,19 @@ export function HomePage() {
 
       {/* Server Detail Modal */}
       {selectedServer && (
-        <ServerDetailModal 
-          server={selectedServer} 
-          onClose={() => setSelectedServer(null)} 
-        />
+        <Suspense fallback={null}>
+          <ServerDetailModal
+            server={selectedServer}
+            onClose={() => setSelectedServer(null)}
+          />
+        </Suspense>
       )}
 
       {/* Add Server Modal */}
       {showAddServerModal && (
-        <AddServerModal onClose={() => setShowAddServerModal(false)} />
+        <Suspense fallback={null}>
+          <AddServerModal onClose={() => setShowAddServerModal(false)} />
+        </Suspense>
       )}
 
       {/* Add Local Server Modal */}

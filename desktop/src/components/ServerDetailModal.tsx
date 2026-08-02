@@ -1,14 +1,16 @@
-import { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import type { ServerStatus, Player } from '@/types';
-import { getServerPlayers, getServerDetail, removeFavorite as apiRemoveFavorite, addFavorite as apiAddFavorite, checkFavorite as apiCheckFavorite, getApiToken } from '@/api';
+import { getServerPlayers, getServerDetail, removeFavorite as apiRemoveFavorite, addFavorite as apiAddFavorite, checkFavorite as apiCheckFavorite } from '@/api';
 import { useI18n } from '@/hooks/useI18n';
-import { buildJoinUrl } from '@/services/steamClient';
-import { AutoJoinModal } from './AutoJoinModal';
-import { LatencyProbeModal } from './LatencyProbeModal';
-import { PlayerHistoryChart } from './PlayerHistoryChart';
-import { MapHistory } from './MapHistory';
-import { QueryRecords } from './QueryRecords';
+import { useCloudAuth } from '@/hooks/useCloudAuth';
 import { formatServerDate, getLastResponseTimestamp, getOfflineDuration, isServerOnline } from '@/utils/serverStatus';
+
+const AutoJoinModal = lazy(() => import('./AutoJoinModal').then(module => ({ default: module.AutoJoinModal })));
+const JoinServerConfirmModal = lazy(() => import('./JoinServerConfirmModal').then(module => ({ default: module.JoinServerConfirmModal })));
+const LatencyProbeModal = lazy(() => import('./LatencyProbeModal').then(module => ({ default: module.LatencyProbeModal })));
+const PlayerHistoryChart = lazy(() => import('./PlayerHistoryChart').then(module => ({ default: module.PlayerHistoryChart })));
+const MapHistory = lazy(() => import('./MapHistory').then(module => ({ default: module.MapHistory })));
+const QueryRecords = lazy(() => import('./QueryRecords').then(module => ({ default: module.QueryRecords })));
 
 interface ServerDetailModalProps {
   server: ServerStatus;
@@ -76,11 +78,13 @@ function formatDuration(seconds: number): string {
 }
 
 export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavoriteRemoved }: ServerDetailModalProps) {
+  const { isLoggedIn } = useCloudAuth();
   const [players, setPlayers] = useState<Player[]>([]);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(() => Boolean(getApiToken()));
+  const [isAuthenticated, setIsAuthenticated] = useState(isLoggedIn);
   const [copied, setCopied] = useState(false);
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
+  const [showJoinConfirm, setShowJoinConfirm] = useState(false);
   const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
   const [showRemoveConfirm, setShowRemoveConfirm] = useState(false);
   const [removing, setRemoving] = useState(false);
@@ -142,9 +146,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
 
   useEffect(() => {
     const timers: number[] = [];
-    // Check if user has API token (authenticated)
-    const token = getApiToken();
-    if (token) {
+    if (isLoggedIn) {
       // Check cloud favorite status if not already known
       if (cloudFavState === null && serverIp && serverPort) {
         apiCheckFavorite(String(serverIp), String(serverPort))
@@ -169,26 +171,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
     };
-  }, [cloudFavState, detailVersion, fetchPlayers, serverIp, serverPlayers, serverPort]);
-
-  const handleConnect = async () => {
-    // 使用 buildJoinUrl 函数获取正确的协议（steam:// 或 steamchina://）
-    const steamUrl = buildJoinUrl(serverIp, serverPort, server.game_id ?? server.GameID, server.game);
-    // Try Tauri shell:open first, fallback to window.location
-    try {
-      const isTauri = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
-      if (isTauri) {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        await open(steamUrl);
-      } else {
-        window.location.href = steamUrl;
-      }
-    } catch (error) {
-      console.error('Failed to open Steam:', error);
-      // Fallback to direct link
-      window.location.href = steamUrl;
-    }
-  };
+  }, [cloudFavState, detailVersion, fetchPlayers, isLoggedIn, serverIp, serverPlayers, serverPort]);
 
   const handleCopyAddress = () => {
     navigator.clipboard.writeText(displayAddress);
@@ -467,7 +450,9 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
           {/* Player History Chart */}
           {(server.ID || (serverIp && serverPort)) && (
             <div className="mb-6">
-              <PlayerHistoryChart serverId={server.ID ? String(server.ID) : `${serverIp}:${serverPort}`} />
+              <Suspense fallback={<div className="h-32" />}>
+                <PlayerHistoryChart serverId={server.ID ? String(server.ID) : `${serverIp}:${serverPort}`} />
+              </Suspense>
             </div>
           )}
 
@@ -481,7 +466,9 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
                   </svg>
                   <h3 className="font-semibold text-gray-900 dark:text-white">{t.serverDetailMapHistory}</h3>
                 </div>
-                <MapHistory serverAddress={`${serverIp}:${serverPort}`} />
+                <Suspense fallback={<div className="h-20" />}>
+                  <MapHistory serverAddress={`${serverIp}:${serverPort}`} />
+                </Suspense>
               </div>
             </div>
           )}
@@ -501,7 +488,9 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
                     {t.queryRecordsNodeNotice}
                   </p>
                 </div>
-                <QueryRecords serverAddress={`${serverIp}:${serverPort}`} />
+                <Suspense fallback={<div className="h-24" />}>
+                  <QueryRecords serverAddress={`${serverIp}:${serverPort}`} />
+                </Suspense>
               </div>
             </div>
           )}
@@ -562,7 +551,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
             <AutoJoinIcon />
           </button>
           <button
-            onClick={handleConnect}
+            onClick={() => setShowJoinConfirm(true)}
             className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
           >
             <PlayIcon />
@@ -584,17 +573,31 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
 
       {/* Auto-Join Modal */}
       {showAutoJoinModal && (
-        <AutoJoinModal
-          server={server}
-          onClose={() => setShowAutoJoinModal(false)}
-        />
+        <Suspense fallback={null}>
+          <AutoJoinModal
+            server={server}
+            onClose={() => setShowAutoJoinModal(false)}
+          />
+        </Suspense>
+      )}
+
+      {showJoinConfirm && (
+        <Suspense fallback={null}>
+          <JoinServerConfirmModal
+            server={server}
+            latencyMs={server.local_latency_ms}
+            onClose={() => setShowJoinConfirm(false)}
+          />
+        </Suspense>
       )}
 
       {showLatencyProbeModal && (
-        <LatencyProbeModal
-          server={server}
-          onClose={() => setShowLatencyProbeModal(false)}
-        />
+        <Suspense fallback={null}>
+          <LatencyProbeModal
+            server={server}
+            onClose={() => setShowLatencyProbeModal(false)}
+          />
+        </Suspense>
       )}
 
       {/* Remove Favorite Confirmation */}

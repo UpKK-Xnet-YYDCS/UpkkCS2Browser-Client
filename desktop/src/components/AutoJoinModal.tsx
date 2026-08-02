@@ -5,11 +5,13 @@ import { refreshServer } from '@/api';
 import { buildJoinUrl } from '@/services/steamClient';
 import { useI18n } from '@/hooks/useI18n';
 import { isTauriAvailable, queryServerA2S } from '@/services/a2s';
+import { createSequentialPoller, type SequentialPoller } from '@/services/sequentialPoller';
 import { logInfo, logWarn, logError, logDebug } from '@/store/log';
 
 interface AutoJoinModalProps {
   server: ServerStatus;
   onClose: () => void;
+  autoStart?: boolean;
 }
 
 // Icons
@@ -36,7 +38,7 @@ const MAX_CHECK_INTERVAL = 300; // maximum 300 seconds (5 minutes)
 // Default max players for CS2/CSGO servers
 const DEFAULT_MAX_PLAYERS = 64;
 
-export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
+export function AutoJoinModal({ server, onClose, autoStart = false }: AutoJoinModalProps) {
   const { t } = useI18n();
   
   // Get server data with fallbacks for API format differences
@@ -65,9 +67,10 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
   const [currentMaxPlayers, setCurrentMaxPlayers] = useState(serverMaxPlayers);
   
   // Refs for intervals
-  const checkIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollerRef = useRef<SequentialPoller | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isMonitoringRef = useRef(false);
+  const autoStartedRef = useRef(false);
 
   // Update ref when state changes
   useEffect(() => {
@@ -80,10 +83,8 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     setIsMonitoring(false);
     setStatusText('');
     
-    if (checkIntervalRef.current) {
-      clearInterval(checkIntervalRef.current);
-      checkIntervalRef.current = null;
-    }
+    pollerRef.current?.stop();
+    pollerRef.current = null;
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
@@ -93,7 +94,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (checkIntervalRef.current) clearInterval(checkIntervalRef.current);
+      pollerRef.current?.stop();
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     };
   }, []);
@@ -199,7 +200,7 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
   }, [serverIp, serverPort, baseAddress, minSlots, onClose, t, checkInterval, server.game_id, server.GameID, server.game, server.name, doStopMonitoring]);
 
   // Start monitoring
-  const startMonitoring = useCallback(async () => {
+  const startMonitoring = useCallback(() => {
     // Save settings to localStorage
     localStorage.setItem('autoJoinMinSlots', String(minSlots));
     localStorage.setItem('autoJoinCheckInterval', String(checkInterval));
@@ -208,14 +209,9 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     setIsMonitoring(true);
     setCountdown(checkInterval);
     
-    // Check immediately before installing the interval so auto-join uses the freshest local A2S result.
-    const shouldContinue = await checkServer();
-    if (!shouldContinue || !isMonitoringRef.current) return;
-    
-    // Set up check interval (convert seconds to milliseconds)
-    checkIntervalRef.current = setInterval(() => {
-      void checkServer();
-    }, checkInterval * 1000);
+    pollerRef.current?.stop();
+    pollerRef.current = createSequentialPoller(checkServer, checkInterval * 1000);
+    pollerRef.current.start();
     
     // Set up countdown interval
     countdownIntervalRef.current = setInterval(() => {
@@ -223,12 +219,18 @@ export function AutoJoinModal({ server, onClose }: AutoJoinModalProps) {
     }, 1000);
   }, [minSlots, checkInterval, checkServer]);
 
+  useEffect(() => {
+    if (!autoStart || autoStartedRef.current) return;
+    autoStartedRef.current = true;
+    startMonitoring();
+  }, [autoStart, startMonitoring]);
+
   // Toggle monitoring
   const handleToggle = () => {
     if (isMonitoring) {
       doStopMonitoring();
     } else {
-      void startMonitoring();
+      startMonitoring();
     }
   };
 

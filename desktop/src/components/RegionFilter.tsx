@@ -51,7 +51,7 @@ export function RegionFilter() {
           key={value}
           onClick={() => handleChange(value)}
           className={`
-            flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200
+            flex shrink-0 items-center gap-2 whitespace-nowrap px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200
             ${selectedRegion === value
               ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-md'
               : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 hover:bg-white/50 dark:hover:bg-gray-700/50'

@@ -17,6 +17,36 @@ export interface CredentialResponse {
   securecode?: string;
 }
 
+export interface ApiTokenResponse {
+  success: boolean;
+  message: string;
+  token?: string;
+}
+
+export async function saveApiToken(token: string): Promise<ApiTokenResponse> {
+  try {
+    return await invoke<ApiTokenResponse>('save_api_token', { token });
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function loadApiToken(): Promise<ApiTokenResponse> {
+  try {
+    return await invoke<ApiTokenResponse>('load_api_token');
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+export async function clearApiToken(): Promise<ApiTokenResponse> {
+  try {
+    return await invoke<ApiTokenResponse>('clear_api_token');
+  } catch (error) {
+    return { success: false, message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 /**
  * Save credentials securely with device binding
  * The credentials are encrypted using AES-256-GCM with a key derived from

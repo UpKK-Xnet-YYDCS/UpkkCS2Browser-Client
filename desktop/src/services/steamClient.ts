@@ -1,4 +1,7 @@
+import type { ServerStatus } from '@/types';
+
 export type SteamClient = 'steam' | 'steamchina';
+export type JoinUrlOpener = (url: string) => Promise<void>;
 
 // CS2/CSGO AppIDs
 const CS_APP_IDS = [730, 740, 4465480];
@@ -6,7 +9,7 @@ const CS_APP_IDS = [730, 740, 4465480];
 const CS_GAME_NAMES_LOWER = ['counter-strike 2', 'counter-strike: global offensive'];
 
 export const getSteamProtocol = (): string => {
-  const client = localStorage.getItem('steamClient') as SteamClient || 'steam';
+  const client = readSteamClient();
   return client === 'steamchina' ? 'steamchina' : 'steam';
 };
 
@@ -53,11 +56,36 @@ export const buildJoinUrl = (address: string, port: number | string, gameId?: nu
   return `${protocol}://rungame/${appId}/76561202255233023/+connect ${address}:${port}`;
 };
 
+export async function openServerOnce(server: ServerStatus, opener: JoinUrlOpener = defaultJoinUrlOpener): Promise<string> {
+  const ip = String(server.ip || server.Addr || '').trim();
+  const port = String(server.port || server.Port || '').trim();
+  if (!ip || !port) throw new Error('Server address is incomplete');
+  const displayAddress = String(server.display_address || ip).trim();
+  const address = displayAddress.includes(':') ? displayAddress.split(':')[0] : displayAddress;
+  const url = buildJoinUrl(address, port, server.game_id ?? server.GameID, server.game);
+  await opener(url);
+  return url;
+}
+
+async function defaultJoinUrlOpener(url: string): Promise<void> {
+  if (typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window) {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+    return;
+  }
+  if (typeof window !== 'undefined') window.location.href = url;
+}
+
 export const getSteamClient = (): SteamClient => {
-  const saved = localStorage.getItem('steamClient') as SteamClient;
-  return (saved === 'steam' || saved === 'steamchina') ? saved : 'steam';
+  return readSteamClient();
 };
 
 export const setSteamClient = (client: SteamClient) => {
-  localStorage.setItem('steamClient', client);
+  if (typeof window !== 'undefined') window.localStorage.setItem('steamClient', client);
 };
+
+function readSteamClient(): SteamClient {
+  if (typeof window === 'undefined') return 'steam';
+  const saved = window.localStorage.getItem('steamClient') as SteamClient | null;
+  return saved === 'steamchina' ? 'steamchina' : 'steam';
+}

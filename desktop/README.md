@@ -7,7 +7,9 @@
 - 🚀 **高性能**: 基于 Tauri (Rust) 构建，内存占用低，启动速度快
 - 🎨 **现代化UI**: 使用 React 19 + Tailwind CSS 4，支持暗色模式
 - 🔌 **API对接**: 与 XProj 后端 API 完全对接
-- ⭐ **收藏功能**: 本地收藏喜爱的服务器
+- ⭐ **收藏功能**: 本地收藏与登录后的云端收藏共享
+- **AI**: 原生流式服务器问答，可只读参考当前账号的云端收藏偏好
+- **本地工具**: 本机 A2S 延迟测试、活跃候选延迟排序，以及确认后单次加入或自动排队加入
 - 🔍 **搜索功能**: 支持服务器名称、地图、IP搜索
 - 🌍 **区域筛选**: 按地区筛选服务器
 - 📦 **轻量安装包**: 约 10MB (vs Electron 150MB+)
@@ -17,15 +19,15 @@
 - **桌面框架**: [Tauri 2.x](https://tauri.app/) (Rust)
 - **前端框架**: React 19 + TypeScript
 - **样式**: Tailwind CSS 4
-- **构建工具**: Vite 7
+- **构建工具**: Vite 8
 - **状态管理**: React Context + useReducer (无外部依赖)
-- **HTTP请求**: 原生 Fetch API (无外部依赖)
+- **HTTP请求**: Tauri HTTP 插件，浏览器开发模式回退原生 Fetch API
 
 ## 开发
 
 ### 环境要求
 
-- Node.js 20+
+- Node.js 24, 25, or 26
 - Rust (通过 [rustup](https://rustup.rs/) 安装)
 - Windows: Microsoft Visual Studio C++ Build Tools
 - Linux: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev`
@@ -56,6 +58,42 @@ npm run build
 # 构建桌面应用
 npm run tauri:build
 ```
+
+### 平台构建脚本
+
+Windows 可以双击 `windows.bat`，或在 PowerShell 中执行：
+
+```powershell
+.\windows.bat
+# 重复构建时跳过依赖安装和检查
+.\windows.bat -SkipInstall -SkipChecks
+```
+
+脚本会调用 `build-windows.ps1`，默认生成 `msi` 和 `nsis` 安装包。
+
+macOS 在终端执行：
+
+```bash
+chmod +x build-mac.sh
+./build-mac.sh
+# 重复构建时跳过依赖安装和检查
+SKIP_INSTALL=1 SKIP_CHECKS=1 ./build-mac.sh
+```
+
+macOS 脚本默认生成当前机器架构的 `.app` 和 `.dmg`，也可以使用
+`./build-mac.sh --bundles=app` 只生成应用包。
+
+### 质量基线
+
+从仓库根目录运行统一前端检查：
+
+```bash
+bash scripts/frontend-check.sh desktop
+```
+
+该命令依次执行锁定依赖安装、ESLint、TypeScript 类型检查、单元测试、
+Vite 生产构建和高危生产依赖审计。单独的 `npm run lint`、`npm run
+typecheck`、`npm test` 和 `npm run build` 仅用于开发阶段快速反馈。
 
 构建产物位于 `src-tauri/target/release/bundle/`:
 - Windows: `.msi` 和 `.exe` 安装包
@@ -116,20 +154,31 @@ https://update-software.upkk.com/xproj-server-clients/update.json
 
 应用使用以下位置存储用户数据：
 
-### 登录凭据存储
+### 云端账号与社区登录
 
-登录凭据使用 **AES-256-GCM 加密** 存储在系统应用数据目录中：
+顶部账号状态、AI、云端收藏和地图监控共用 Steam、Upkk、Google 或
+Discord OAuth 云端账号。OAuth Bearer token 只在运行期保存在内存中，持久化时写入
+设备绑定的 `api-token.enc`；升级后首次启动会自动导入旧版 `xproj_api_token`
+localStorage 值并立即删除明文键。浏览器预览模式不持久化云端登录。
+
+论坛与签到继续使用 SteamID64/secure code 社区登录，只有进入对应功能时才会请求。
+
+### 安全凭据存储
+
+云端 API token 与社区登录凭据使用 **AES-256-GCM 加密**，分别存储在系统应用数据目录的
+`api-token.enc` 和 `credentials.enc`：
 
 | 操作系统 | 存储路径 |
 |---------|---------|
-| Windows | `%APPDATA%\com.upkk.server-browser\credentials.enc` |
-| Linux | `~/.local/share/com.upkk.server-browser/credentials.enc` |
-| macOS | `~/Library/Application Support/com.upkk.server-browser/credentials.enc` |
+| Windows | `%APPDATA%\com.upkk.server-browser\{api-token,credentials}.enc` |
+| Linux | `~/.local/share/com.upkk.server-browser/{api-token,credentials}.enc` |
+| macOS | `~/Library/Application Support/com.upkk.server-browser/{api-token,credentials}.enc` |
 
 **安全特性**：
 - 🔐 **AES-256-GCM 加密**: 凭据使用 AES-256-GCM 算法加密存储
 - 🖥️ **设备绑定**: 加密密钥与设备唯一标识符绑定，凭据文件复制到其他设备后无法解密
 - 🔄 **自动登录**: 启动时自动使用保存的凭据登录
+- **明文迁移**: 旧版云端 token 只导入一次，成功加密后删除 localStorage 明文
 
 ### 应用设置存储
 
@@ -158,6 +207,7 @@ https://update-software.upkk.com/xproj-server-clients/update.json
 - localStorage 数据
 - sessionStorage 数据
 - IndexedDB 数据
+- 加密的云端 API token 与社区登录凭据
 
 > ⚠️ 注意：清除数据后需要重新登录。
 

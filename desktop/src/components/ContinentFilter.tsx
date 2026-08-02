@@ -71,7 +71,7 @@ export function ContinentFilter() {
   const selectClass = "text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-700 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500";
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
       <select
         value={selectedContinent}
         onChange={(e) => setSelectedContinent(e.target.value)}

@@ -34,6 +34,7 @@ export interface Translations {
   
   // Tabs
   tabServers: string;
+  tabAi: string;
   tabFavorites: string;
   tabForum: string;
   tabCheckIn: string;
@@ -672,6 +673,7 @@ const en: Translations = {
   appSubtitle: 'Game Server Browser',
   
   tabServers: 'Servers',
+  tabAi: 'AI',
   tabFavorites: 'Cloud Favorites',
   tabForum: 'Forum',
   tabCheckIn: 'Check-in',
@@ -1287,6 +1289,7 @@ const ja: Translations = {
   appSubtitle: 'ゲームサーバーブラウザ',
   
   tabServers: 'サーバー',
+  tabAi: 'AI',
   tabFavorites: 'クラウドお気に入り',
   tabForum: 'フォーラム',
   tabCheckIn: 'チェックイン',
@@ -1902,6 +1905,7 @@ const zhCN: Translations = {
   appSubtitle: '游戏服务器浏览器',
   
   tabServers: '服务器',
+  tabAi: 'AI',
   tabFavorites: '云端收藏',
   tabForum: '论坛',
   tabCheckIn: '签到',
@@ -2517,6 +2521,7 @@ const zhTW: Translations = {
   appSubtitle: '遊戲伺服器瀏覽器',
   
   tabServers: '伺服器',
+  tabAi: 'AI',
   tabFavorites: '雲端收藏',
   tabForum: '論壇',
   tabCheckIn: '簽到',
@@ -3132,6 +3137,7 @@ const ko: Translations = {
   appSubtitle: '게임 서버 브라우저',
   
   tabServers: '서버',
+  tabAi: 'AI',
   tabFavorites: '클라우드 즐겨찾기',
   tabForum: '포럼',
   tabCheckIn: '출석체크',
