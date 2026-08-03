@@ -7,6 +7,7 @@ import { useI18n } from '@/hooks/useI18n';
 import { isTauriAvailable, queryServerA2S } from '@/services/a2s';
 import { createSequentialPoller, type SequentialPoller } from '@/services/sequentialPoller';
 import { logInfo, logWarn, logError, logDebug } from '@/store/log';
+import { openExternalUrl } from '@/services/desktopRuntime';
 
 interface AutoJoinModalProps {
   server: ServerStatus;
@@ -164,8 +165,7 @@ export function AutoJoinModal({ server, onClose, autoStart = false }: AutoJoinMo
           logInfo('AutoJoin', `Joining ${server.name} → ${steamUrl}`);
           try {
             if (isTauriAvailable()) {
-              const { open } = await import('@tauri-apps/plugin-shell');
-              await open(steamUrl);
+              await openExternalUrl(steamUrl);
             } else {
               window.location.href = steamUrl;
             }

@@ -5,7 +5,7 @@ import { CloudAuthProvider } from './store/cloudAuth';
 import { ThemeProvider } from './store/theme';
 import { useTheme } from './hooks/useTheme';
 import { rgbaToCss } from './store/themeUtils';
-import { I18nProvider } from './store/i18n';
+import { I18nProvider } from './store/i18nProvider';
 import { useI18n } from './hooks/useI18n';
 import { HomePage } from './pages/HomePage';
 import { TabNavigation, useTabNavigation, SteamClientSwitch, LoginModal, UpdateProvider, CloudUserStatusButton } from './components';

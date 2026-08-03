@@ -1,0 +1,12 @@
+{
+  "initialAssets": {
+    "rawBytes": 655360,
+    "gzipBytes": 174080
+  },
+  "allAssets": {
+    "rawBytes": 1126400,
+    "gzipBytes": 307200
+  },
+  "maxJavaScriptChunkGzipBytes": 86016,
+  "maxCssGzipBytes": 20480
+}

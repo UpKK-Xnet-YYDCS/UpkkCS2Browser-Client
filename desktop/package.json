@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "node ./node_modules/typescript-7/bin/tsc -b && vite build",
+    "build": "node ./node_modules/typescript-7/bin/tsc -b && vite build && npm run check:performance",
+    "check:architecture": "node scripts/check-architecture.mjs",
+    "check:performance": "node scripts/check-performance.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "node --test \"src/**/*.test.ts\"",

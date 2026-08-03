@@ -1,7 +1,7 @@
 import { lazy, Suspense, useState, useRef, useEffect, memo } from 'react';
 import { createPortal } from 'react-dom';
 import type { ServerStatus } from '@/types';
-import { useFavoritesStore } from '@/hooks/useFavoritesStore';
+import { useFavoriteActions, useIsFavorite } from '@/hooks/useFavoriteAddress';
 import { useI18n } from '@/hooks/useI18n';
 import { LocalA2SLatencyBadge } from './LocalA2SLatencyBadge';
 import { isServerOnline } from '@/utils/serverStatus';
@@ -52,7 +52,7 @@ interface ServerListItemProps {
 }
 
 function ServerListItemInner({ server, onClick, onSelect }: ServerListItemProps) {
-  const { isFavorite, addFavorite, removeFavorite } = useFavoritesStore();
+  const { addFavorite, removeFavorite } = useFavoriteActions();
   const { t } = useI18n();
   const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
   const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
@@ -99,7 +99,7 @@ function ServerListItemInner({ server, onClick, onSelect }: ServerListItemProps)
   
   // Use baseAddress (from display_address) to keep domain names consistent in favorites
   const favoriteAddr = serverPort ? `${baseAddress}:${serverPort}` : baseAddress;
-  const favorite = isFavorite(favoriteAddr);
+  const favorite = useIsFavorite(favoriteAddr);
   
   const playerPercent = serverMaxPlayers > 0 
     ? Math.round((serverPlayers / serverMaxPlayers) * 100) 
@@ -399,38 +399,4 @@ function ServerListItemInner({ server, onClick, onSelect }: ServerListItemProps)
   );
 }
 
-// Memoize ServerListItem to prevent unnecessary re-renders when parent updates.
-export const ServerListItem = memo(ServerListItemInner, (prev, next) => {
-  const ps = prev.server;
-  const ns = next.server;
-  return (
-    ps.ip === ns.ip &&
-    ps.port === ns.port &&
-    ps.players === ns.players &&
-    ps.max_players === ns.max_players &&
-    ps.bots === ns.bots &&
-    ps.map_name === ns.map_name &&
-    ps.name === ns.name &&
-    ps.comments === ns.comments &&
-    ps.Online === ns.Online &&
-    ps.online === ns.online &&
-    ps.is_online === ns.is_online &&
-    ps.success === ns.success &&
-    ps.server_offline === ns.server_offline &&
-    ps.offline === ns.offline &&
-    ps.offline_threshold_minutes === ns.offline_threshold_minutes &&
-    ps.last_seen === ns.last_seen &&
-    ps.last_updated === ns.last_updated &&
-    ps.updated_at === ns.updated_at &&
-    ps.last_seen_relative === ns.last_seen_relative &&
-    ps.last_updated_relative === ns.last_updated_relative &&
-    ps.updated_at_relative === ns.updated_at_relative &&
-    ps.game === ns.game &&
-    ps.local_latency_status === ns.local_latency_status &&
-    ps.local_latency_ms === ns.local_latency_ms &&
-    ps.local_latency_error === ns.local_latency_error &&
-    ps.local_latency_updated_at === ns.local_latency_updated_at &&
-    prev.onClick === next.onClick &&
-    prev.onSelect === next.onSelect
-  );
-});
+export const ServerListItem = memo(ServerListItemInner);

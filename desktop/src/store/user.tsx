@@ -7,6 +7,7 @@ import {
   hasStoredCredentials 
 } from '@/services/secureStorage';
 import { logInfo, logDebug, logWarn } from '@/store/log';
+import { getDesktopHttpFetch } from '@/services/desktopRuntime';
 import { UserContext } from './userContext';
 
 const FORUM_URL = 'https://bbs.upkk.com';
@@ -185,7 +186,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       // Try using Tauri HTTP plugin first (bypasses CORS restrictions)
       try {
         logDebug('Login', '尝试使用 Tauri HTTP 插件...');
-        const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+        const tauriFetch = await getDesktopHttpFetch();
         const response = await tauriFetch(`${FORUM_URL}${LOGIN_ENDPOINT}`, {
           method: 'POST',
           headers: {

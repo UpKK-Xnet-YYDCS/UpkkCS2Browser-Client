@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions, useServerDataStore, useServerFiltersStore } from '@/hooks/useAppSlices';
 
 // Tag icon
 const TagIcon = () => (
@@ -9,12 +9,9 @@ const TagIcon = () => (
 );
 
 export function CategoryFilter() {
-  const { 
-    categories, 
-    selectedCategory, 
-    setSelectedCategory, 
-    fetchCategories,
-  } = useAppStore();
+  const { categories } = useServerDataStore();
+  const { selectedCategory } = useServerFiltersStore();
+  const { setSelectedCategory, fetchCategories } = useAppActions();
 
   // Load categories on mount
   useEffect(() => {

@@ -1,0 +1,18 @@
+{
+  "maxProductionFileLines": 400,
+  "oversizedFileLineLimits": {
+    "src/store/i18n.tsx": 3732,
+    "src/pages/MonitorPage.tsx": 1084,
+    "src/pages/HomePage.tsx": 1028,
+    "src/pages/SettingsPage.tsx": 833,
+    "src/pages/FavoritesPage.tsx": 680,
+    "src/api/index.ts": 876,
+    "src/services/monitor.ts": 781,
+    "src/store/index.tsx": 670,
+    "src/components/ServerDetailModal.tsx": 630,
+    "src/components/ServerCard.tsx": 506,
+    "src/pages/AIChatPage.tsx": 537,
+    "src/components/MapHistory.tsx": 506,
+    "src/components/ServerListItem.tsx": 402
+  }
+}

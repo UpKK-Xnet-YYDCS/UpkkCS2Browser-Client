@@ -1,4 +1,5 @@
 import { useI18n } from '@/hooks/useI18n';
+import { openExternalUrl } from '@/services/desktopRuntime';
 
 interface AddServerModalProps {
   onClose: () => void;
@@ -31,8 +32,7 @@ export function AddServerModal({ onClose }: AddServerModalProps) {
   const handleOpenWebsite = async () => {
     try {
       // Always use shell:open to open in system default browser (not built-in webview)
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(ADD_SERVER_URL);
+      await openExternalUrl(ADD_SERVER_URL);
     } catch (error) {
       console.error('Failed to open website via shell:', error);
       // Fallback for non-Tauri environment (web browser)

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions, useServerFiltersStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 import type { GameType } from '@/types';
 
@@ -27,7 +27,8 @@ const AllGamesIcon = () => (
 );
 
 export function GameTypeFilter() {
-  const { selectedGameType, setSelectedGameType } = useAppStore();
+  const { selectedGameType } = useServerFiltersStore();
+  const { setSelectedGameType } = useAppActions();
   const { t } = useI18n();
 
   const gameTypes: { value: GameType; label: string; icon: ReactNode; color: string; activeColor: string }[] = [

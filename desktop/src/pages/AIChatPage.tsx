@@ -1,6 +1,7 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
-import { Bot, LogIn, Menu, RotateCcw, Send, Settings2, Square } from 'lucide-react';
+import { Bot, Menu, RotateCcw, Send, Settings2, Square } from 'lucide-react';
 import { AIChatSessionSidebar } from '@/components/AIChatSessionSidebar';
+import { CloudLoginPanel } from '@/components/CloudLoginPanel';
 import { AIMessageList } from '@/components/AIMessageList';
 import { AILocalTools } from '@/components/AILocalTools';
 import { useCloudAuth } from '@/hooks/useCloudAuth';
@@ -50,9 +51,9 @@ interface SessionStatus {
 }
 
 export function AIChatPage() {
-  const { language, t } = useI18n();
+  const { language } = useI18n();
   const labels = useMemo(() => getAIChatLabels(language), [language]);
-  const { isLoggedIn, isReady, loginPending, error: authError, login, invalidate } = useCloudAuth();
+  const { isLoggedIn, isReady, invalidate } = useCloudAuth();
   const [sessionState, setSessionState] = useState<AIChatSessionState>(() => (
     loadAIChatSessionState(getChatStorage(), labels.untitledChat)
   ));
@@ -397,22 +398,11 @@ export function AIChatPage() {
   if (!isReady) return <div className="grid flex-1 place-items-center text-sm text-gray-500">{labels.loading}</div>;
   if (!isLoggedIn) {
     return (
-      <div className="grid flex-1 place-items-center bg-gray-50 p-5 dark:bg-gray-900">
-        <section className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-6 text-center shadow-sm dark:border-gray-700 dark:bg-gray-800">
-          <Bot className="mx-auto mb-4 h-10 w-10 text-emerald-600" />
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">{labels.loginTitle}</h1>
-          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">{labels.loginBody}</p>
-          <div className="mt-5 grid grid-cols-2 gap-2">
-            {(['steam', 'upkk', 'google', 'discord'] as const).map(provider => (
-              <button key={provider} type="button" disabled={loginPending} onClick={() => void login(provider)} className="flex items-center justify-center gap-2 rounded-md border border-gray-200 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700">
-                <LogIn className="h-4 w-4" />
-                {provider === 'steam' ? t.loginWithSteam : provider === 'upkk' ? t.loginWithUpkk : provider === 'google' ? t.loginWithGoogle : t.loginWithDiscord}
-              </button>
-            ))}
-          </div>
-          {authError && <p className="mt-3 text-xs text-red-600 dark:text-red-400">{authError}</p>}
-        </section>
-      </div>
+      <CloudLoginPanel
+        icon={<Bot className="h-9 w-9" aria-hidden="true" />}
+        title={labels.loginTitle}
+        description={labels.loginBody}
+      />
     );
   }
 

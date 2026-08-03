@@ -184,6 +184,13 @@ test('reuses fresh latency cache entries without issuing another UDP query', asy
 
   assert.equal(calls, 1);
   assert.deepEqual(seen.map((snapshot) => snapshot.latencyMs), [42, 42]);
+
+  now += 60_001;
+  await scheduler.measure([target], (_key, snapshot) => {
+    if (snapshot.status === 'success') seen.push(snapshot);
+  });
+  assert.equal(calls, 2);
+  assert.deepEqual(seen.map((snapshot) => snapshot.latencyMs), [42, 42, 42]);
 });
 
 test('keeps the concurrency limit across overlapping measurement batches', async () => {

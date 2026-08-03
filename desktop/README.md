@@ -85,15 +85,35 @@ macOS 脚本默认生成当前机器架构的 `.app` 和 `.dmg`，也可以使�
 
 ### 质量基线
 
-从仓库根目录运行统一前端检查：
+从仓库根目录运行完整 Desktop 检查：
 
 ```bash
-bash scripts/frontend-check.sh desktop
+bash scripts/desktop-check.sh
 ```
 
 该命令依次执行锁定依赖安装、ESLint、TypeScript 类型检查、单元测试、
-Vite 生产构建和高危生产依赖审计。单独的 `npm run lint`、`npm run
-typecheck`、`npm test` 和 `npm run build` 仅用于开发阶段快速反馈。
+架构检查、Vite 生产构建、包体检查、高危生产依赖审计，以及 Rust 的
+格式、编译、测试和 Clippy 检查。单项命令仅用于开发阶段快速反馈。
+
+架构与性能门禁也可以在 `desktop/` 中单独运行：
+
+```bash
+npm run check:architecture
+npm run check:performance # 需要先生成 dist/
+```
+
+`check:architecture` 规定只有 `src/services/` 可以直接导入 Tauri，新增生产
+文件最多 400 行，并锁定历史超大文件不得增长。`check:performance` 强制以下
+生产资源预算：
+
+| 指标 | raw 上限 | gzip 上限 |
+|------|---------:|----------:|
+| 初始资源 | 640 KiB | 170 KiB |
+| 全部资源 | 1100 KiB | 300 KiB |
+
+单个 JavaScript chunk 的 gzip 上限为 84 KiB，全部 CSS 的 gzip 上限为
+20 KiB。预算配置分别位于 `architecture-budget.json` 和
+`performance-budget.json`。
 
 构建产物位于 `src-tauri/target/release/bundle/`:
 - Windows: `.msi` 和 `.exe` 安装包
@@ -161,6 +181,12 @@ Discord OAuth 云端账号。OAuth Bearer token 只在运行期保存在内存�
 设备绑定的 `api-token.enc`；升级后首次启动会自动导入旧版 `xproj_api_token`
 localStorage 值并立即删除明文键。浏览器预览模式不持久化云端登录。
 
+云端收藏和 AI 使用同一套登录界面与登录状态。关闭 OAuth 登录窗口会立即结束本次
+登录等待并恢复登录按钮，不需要等待超时。
+
+顶部功能导航默认仅显示图标；可在“设置 > 外观 > 顶部导航文字”中切换为图标加文字，
+该偏好保存在本机。
+
 论坛与签到继续使用 SteamID64/secure code 社区登录，只有进入对应功能时才会请求。
 
 ### 安全凭据存储
@@ -188,6 +214,7 @@ localStorage 值并立即删除明文键。浏览器预览模式不持久化云�
 |-------|------|
 | `xproj-desktop-state` | 应用状态 (收藏服务器、API地址、区域筛选、游戏类型、视图模式、每页数量) |
 | `upkk-theme-settings` | 主题设置 (暗色模式、颜色配置、背景图片、毛玻璃效果) |
+| `xproj-navigation-label-mode` | 顶部导航显示模式 (`icons` 或 `labels`，默认 `icons`) |
 | `xproj-remember-me` | 记住登录状态选项 |
 | `xproj-user-session` | 用户会话信息 |
 | `autoRefreshInterval` | 自动刷新间隔 |

@@ -1,4 +1,4 @@
-import { useAppStore } from '@/hooks/useAppStore';
+import { useServerDataStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 
 const ServerIcon = () => (
@@ -14,7 +14,7 @@ const UsersIcon = () => (
 );
 
 export function StatsBar() {
-  const { stats, totalServers, isLoading } = useAppStore();
+  const { stats, totalServers, isLoading } = useServerDataStore();
   const { t } = useI18n();
 
   return (

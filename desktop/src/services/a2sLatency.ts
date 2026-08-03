@@ -1,3 +1,5 @@
+import { BoundedLruMap } from './boundedLru.ts';
+
 export type LocalLatencyStatus = 'queued' | 'checking' | 'success' | 'failed' | 'unavailable';
 
 export interface LocalLatencyTarget {
@@ -131,7 +133,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
   const now = options.now ?? (() => Date.now());
   const sleep = options.sleep ?? defaultSleep;
   const isAvailable = options.isAvailable ?? (() => true);
-  const cache = new Map<string, LocalLatencySnapshot>();
+  const cache = new BoundedLruMap<string, LocalLatencySnapshot>(512);
   const inFlight = new Map<string, LatencyProbe>();
   const queue: LatencyProbe[] = [];
   let activeCount = 0;

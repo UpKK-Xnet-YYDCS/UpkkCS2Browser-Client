@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions, useServerFiltersStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 
 // Simple inline SVG icons
@@ -16,7 +16,8 @@ const XIcon = () => (
 );
 
 export function SearchBar() {
-  const { searchQuery, setSearchQuery } = useAppStore();
+  const { searchQuery } = useServerFiltersStore();
+  const { setSearchQuery } = useAppActions();
   const { t } = useI18n();
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);

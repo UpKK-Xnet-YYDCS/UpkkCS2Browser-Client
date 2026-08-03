@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { XPROJ_USER_AGENT } from '@/api';
 import { useUserStore } from '@/hooks/useUserStore';
 import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logDebug } from '@/store/log';
+import { getDesktopHttpFetch, invokeDesktop, openExternalUrl } from '@/services/desktopRuntime';
 
 const FORUM_URL = 'https://bbs.upkk.com';
 const CHECK_IN_ENDPOINT = '/plugin.php?id=xnet_core_api:xproj_sign';
@@ -59,7 +59,7 @@ export function CheckInPage() {
 
       // Try using Tauri HTTP plugin first (can handle cookies properly)
       try {
-        const { fetch: tauriFetch } = await import('@tauri-apps/plugin-http');
+        const tauriFetch = await getDesktopHttpFetch();
         const response = await tauriFetch(`${FORUM_URL}${CHECK_IN_ENDPOINT}`, {
           method: 'POST',
           headers: {
@@ -118,14 +118,13 @@ export function CheckInPage() {
   const handleOpenForum = async () => {
     try {
       // Use Tauri to open forum in WebView2 window
-      await invoke('open_forum_window');
+      await invokeDesktop('open_forum_window');
       logInfo('CheckIn', 'Forum opened in WebView2 window');
     } catch (error) {
       console.error('[CheckIn] Failed to open forum via Tauri:', error);
       // Fallback to shell:open
       try {
-        const { open } = await import('@tauri-apps/plugin-shell');
-        await open(FORUM_URL);
+        await openExternalUrl(FORUM_URL);
       } catch {
         window.location.href = FORUM_URL;
       }

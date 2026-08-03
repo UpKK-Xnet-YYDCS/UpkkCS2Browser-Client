@@ -39,6 +39,16 @@ export interface QueryServerA2SOptions {
   timeoutMs?: number;
 }
 
+export interface A2SQueryTarget {
+  ip: string;
+  port: string;
+  timeoutMs?: number;
+}
+
+export interface QueryServersA2SOptions extends QueryServerA2SOptions {
+  concurrency?: number;
+}
+
 export interface DesktopA2SLatencySchedulerOptions {
   workerCount?: number;
   timeoutMs?: number;
@@ -144,6 +154,37 @@ export async function queryServerA2S(ip: string, port: string, options: QuerySer
     const errMsg = error instanceof Error ? error.message : String(error);
     console.error('[A2S] Query failed:', errMsg);
     return emptyA2SResult(ip, port, errMsg);
+  }
+}
+
+/** Query multiple servers through one IPC call while preserving input order. */
+export async function queryServersA2S(
+  targets: A2SQueryTarget[],
+  options: QueryServersA2SOptions = {},
+): Promise<A2SQueryResult[]> {
+  const normalizedTargets = targets.map(target => ({
+    ip: target.ip,
+    port: target.port,
+    timeoutMs: target.timeoutMs ?? options.timeoutMs,
+  }));
+  if (normalizedTargets.length === 0) return [];
+  if (!isTauriAvailable()) {
+    return normalizedTargets.map(target => emptyA2SResult(
+      target.ip,
+      target.port,
+      'Tauri runtime not available — A2S query requires the desktop app',
+    ));
+  }
+
+  try {
+    return await invoke<A2SQueryResult[]>('query_servers_a2s', {
+      targets: normalizedTargets,
+      concurrency: options.concurrency,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[A2S] Batch query failed:', message);
+    return normalizedTargets.map(target => emptyA2SResult(target.ip, target.port, message));
   }
 }
 

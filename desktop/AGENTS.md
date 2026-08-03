@@ -1,50 +1,54 @@
-# Desktop Frontend Conventions
+# Desktop Engineering Conventions
 
-本文件适用于 `desktop/`，覆盖 React/Vite 前端和 Tauri 集成边界。用户在当前任务中的明确要求优先。
+本文件适用于 `desktop/` 的 React/Vite 前端、Tauri IPC 与 Rust 实现。用户在当前任务中的明确要求优先。
 
-## 技术栈与边界
+## 行为兼容
 
-- 前端使用 React、TypeScript strict mode、Vite、Tailwind CSS 和 Tauri 2。版本与命令以 `package.json`、`tsconfig*.json`、`vite.config.ts` 和 `src-tauri/Cargo.toml` 为准。
-- `src/pages/` 负责页面组合，`src/components/` 负责 UI 与局部交互，`src/hooks/` 负责可复用状态编排，`src/services/` 负责 Tauri/网络/存储等外部能力，`src/store/` 负责全局状态，`src/types/` 负责共享契约。
-- 页面和展示组件不得直接散落 Tauri `invoke`、插件调用、网络协议或持久化细节；这些能力通过 service/hook 边界接入，并为浏览器开发模式定义明确的不可用或降级行为。
-- API 响应、服务器状态和本地存储数据必须先标准化为共享类型，再进入 UI；避免页面各自维护同一字段的兼容逻辑。
+- 性能和结构优化默认不得改变 UI、功能、文案、API 契约、IPC 参数、存储键、持久化格式、服务器排序、监控规则、通知与自动加入顺序。
+- 优化前先建立可复现基线并测量目标路径；交付时记录同一场景的前后数据。不能用主观感受替代数据。
+- 只做由 profile、trace、计时、包体报告或明确复杂度问题支持的优化。没有证据时不得增加 `memo`、缓存、并发或抽象层。
 
-## 拆分与可维护性
+## 前端边界
 
-- 新增生产 `.ts` / `.tsx` 文件目标不超过 400 行；修改超过约 800 行的文件时，优先抽出本次涉及的服务、hook、区块组件或纯转换逻辑。
-- 页面只组合数据和功能区块。大型表格、图表、弹窗、设置分组和队列逻辑应各自成为可测试组件或 hook。
-- 纯计算、标准化、过滤、重试和调度逻辑不得依赖 React，使用 Node 内置测试运行器增加 `*.test.ts` 防回归用例。
-- 保留稳定的 barrel/public export；内部拆分不应迫使无关调用方了解目录实现。
-- Tauri 命令参数、返回值和错误必须强类型且可诊断；不要静默吞掉插件或 IPC 错误。
+- `src/pages/` 负责页面组合，`src/components/` 负责 UI 与局部交互，`src/hooks/` 负责状态编排，`src/services/` 负责 Tauri、网络、协议和持久化能力，`src/store/` 负责共享状态，`src/types/` 负责共享契约。
+- `src/services/` 是唯一允许直接导入 `@tauri-apps/*` 的目录。页面、组件、hook、store 和 API 模块必须通过 service 调用桌面能力，并保留浏览器预览模式的既有降级行为。
+- API 响应和服务器数据进入 UI 前必须标准化。刷新时复用未变化实体引用，列表使用稳定业务标识作为 key。
+- 全局 Context 按变化频率和消费者拆分；组件只订阅需要的 slice。actions 必须保持稳定引用。高频、实体级状态优先提供细粒度订阅，禁止让单项变化广播整个列表。
+- `memo` 和自定义比较器必须有 profiler 数据或明确的高频热路径依据。比较器必须覆盖全部影响渲染的 props，不能用手工白名单掩盖状态变化。
 
-## UI 与运行时
+## 缓存与并发
 
-- 复用现有组件、主题和 store 模式；交互控件覆盖 loading、empty、error、disabled、focus 和键盘操作状态。
-- 浏览器开发模式与 Tauri WebView 的能力差异必须显式检测。不得假设 `window.__TAURI_INTERNALS__`、通知、shell、HTTP 或安全存储插件始终存在。
-- 高频刷新、探测和批处理必须有并发上限、超时、取消或过期结果淘汰；避免组件卸载后写状态和无界队列。
-- 敏感凭据只通过现有安全存储服务处理，不写入日志、普通 `localStorage` 或测试 fixture。
+- 每个内存缓存必须声明容量上限、TTL 和隔离维度；清理、失效和错误结果策略必须可测试。禁止无界 `Map`、数组队列或永久 Promise 缓存。
+- 批量网络、A2S、分页和探测必须声明并发上限、超时以及取消或过期结果处理。上限必须在入口校验，不能只依赖调用方自律。
+- 并行化只能改变执行时间，不能改变输入输出对应关系、服务器顺序、规则顺序、通知顺序或持久化顺序。顺序保证和失败占位必须有测试。
 
-## 强制基线
+## Rust 与 IPC
 
-所有 `desktop/src/`、前端配置或依赖变更必须从仓库根目录运行：
+- `lib.rs` 只负责插件和命令装配。A2S、窗口、文件存储和安全存储分别由独立模块拥有。
+- Tauri 异步命令不得直接执行同步 UDP、文件、加密或其他阻塞 I/O。使用有上限的调度，并通过 `tokio::task::spawn_blocking` 或等价受控阻塞任务执行。
+- IPC 参数、结果与错误保持强类型。新增批量命令时保留已有单项命令，除非迁移计划明确允许破坏兼容。
+- 协议解析只读取实际接收长度，所有截断、畸形、challenge 和失败路径都必须返回可诊断结果，不能 panic。
+
+## 文件与测试
+
+- 新增生产 `.ts`、`.tsx`、`.rs` 文件最多 400 行。`architecture-budget.json` 中的历史超大文件不得增长；文件缩短时必须在同一改动中下调或移除预算。
+- 修改大型页面或模块时，优先抽出本次涉及的纯逻辑、service、hook 或独立功能区块。拆分必须保持同步语言包加载和现有交互时序。
+- 纯计算、标准化、匹配、缓存和调度逻辑不得依赖 React，并使用 Node 内置测试运行器覆盖等价性、边界与顺序。
+- Rust 测试至少覆盖正常、challenge、截断、畸形数据，以及批处理并发限制、失败占位和结果顺序。
+- 不新增运行时依赖来完成可由现有工具链实现的性能优化或检查。
+
+## 强制交付基线
+
+所有 `desktop/` 代码、配置、依赖或检查脚本变更必须从仓库根目录运行：
 
 ```bash
-bash scripts/frontend-check.sh desktop
+bash scripts/desktop-check.sh
 ```
 
-CI 入口为 `.github/workflows/frontends-check.yml`。统一检查顺序固定为：
-
-1. `npm ci`
-2. `npm run lint`
-3. `npm run typecheck`
-4. `npm test`
-5. `npm run build`
-6. `npm audit --omit=dev --audit-level=high`
-
-单项脚本只用于快速开发和故障定位，不能替代交付前统一基线。修改 `src-tauri/` Rust 代码时还必须运行 `cargo fmt --check`、`cargo check`、`cargo test` 和 `cargo clippy -- -D warnings`；平台安装包仍由现有 Tauri build workflow 验证。
+该入口依次执行锁定 npm 安装、lint、类型检查、前端测试、架构门禁、生产构建、包体门禁、生产依赖审计，以及 Rust 的 `fmt --check`、`check --locked`、`test --locked` 和 `clippy --locked -- -D warnings`。单项命令只用于快速反馈，不能替代交付基线。
 
 ## 交付要求
 
-- 新增依赖使用 npm 更新 `package.json` 与 `package-lock.json`，不手工编辑锁文件。
-- 行为或配置变化同步更新测试、类型、README、版本/更新说明中受影响部分。
+- 行为或配置变化同步更新测试、类型、README 和相关契约。
+- 平台安装包继续由 Tauri build workflow 验证。启动时间、轮询耗时、构建耗时和安装包大小只做同场景报告，不作为不稳定 CI 门禁。
 - 不提交 `dist/`、`src-tauri/target/`、真实凭据、日志或本地临时文件。

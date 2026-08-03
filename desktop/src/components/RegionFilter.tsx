@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions, useServerFiltersStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 import type { ServerRegion } from '@/types';
 
@@ -36,7 +36,8 @@ const regionConfigs: RegionConfig[] = [
 ];
 
 export function RegionFilter() {
-  const { selectedRegion, setSelectedRegion } = useAppStore();
+  const { selectedRegion } = useServerFiltersStore();
+  const { setSelectedRegion } = useAppActions();
   const { t } = useI18n();
 
   const handleChange = (region: ServerRegion) => {

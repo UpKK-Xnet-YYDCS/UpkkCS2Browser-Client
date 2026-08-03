@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from 'react';
 import * as api from '@/api';
-import { CloudAuthContext, type CloudLoginProvider } from '@/contexts/cloudAuthContext';
+import { CloudAuthContext } from '@/contexts/cloudAuthContext';
 import {
   clearPersistedCloudApiToken,
   initializeCloudApiToken,
@@ -10,6 +9,9 @@ import {
 } from '@/services/cloudToken';
 import type { AuthStatus, UserInfo } from '@/api';
 import { logDebug, logError, logInfo } from '@/store/log';
+import { invokeDesktop, listenDesktopEvent, openExternalUrl } from '@/services/desktopRuntime';
+import { reduceCloudLoginAttempt } from '@/services/cloudLoginAttempt';
+import type { CloudLoginProvider } from '@/types/cloudAuth';
 
 const CLOUD_USER_CACHE_KEY = 'xproj_cloud_auth_user';
 const LOGIN_TIMEOUT_MS = 300_000;
@@ -62,10 +64,18 @@ function loginUrl(provider: CloudLoginProvider): string {
 export function CloudAuthProvider({ children }: { children: ReactNode }) {
   const [authStatus, setAuthStatus] = useState<AuthStatus>(loadCachedAuth);
   const [isReady, setIsReady] = useState(false);
-  const [loginPending, setLoginPending] = useState(false);
+  const [pendingProvider, dispatchLoginAttempt] = useReducer(reduceCloudLoginAttempt, null);
   const [error, setError] = useState<string | null>(null);
   const loginCompletedRef = useRef(false);
   const timeoutRef = useRef<number | null>(null);
+
+  const finishLoginAttempt = useCallback(() => {
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    dispatchLoginAttempt({ type: 'finished' });
+  }, []);
 
   const setAuthenticated = useCallback((status: AuthStatus) => {
     setAuthStatus(status);
@@ -108,15 +118,15 @@ export function CloudAuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!isTauriRuntime()) return undefined;
     let disposed = false;
-    let unlisten: (() => void) | undefined;
+    const unlisteners: Array<() => void> = [];
 
-    void import('@tauri-apps/api/event').then(({ listen }) => listen<string>(
-      'login-token-ready',
-      async ({ payload }) => {
+    void Promise.allSettled([
+      listenDesktopEvent<string>('login-token-ready', async (payload) => {
         if (disposed) return;
         try {
           const data = JSON.parse(payload) as { token?: string; user?: unknown; error?: string };
           if (data.error || !data.token) throw new Error(data.error || 'OAuth callback did not include a token');
+          loginCompletedRef.current = true;
           await persistCloudApiToken(data.token);
           const callbackUser = normalizeCallbackUser(data.user);
           setAuthenticated({ logged_in: true, user: callbackUser });
@@ -127,26 +137,38 @@ export function CloudAuthProvider({ children }: { children: ReactNode }) {
           } catch (reason) {
             logDebug('CloudAuth', `Post-login verification deferred: ${String(reason)}`);
           }
-          loginCompletedRef.current = true;
-          setLoginPending(false);
+          finishLoginAttempt();
           setError(null);
           api.clearResponseCache();
           logInfo('CloudAuth', 'Cloud account login completed');
         } catch (reason) {
-          setLoginPending(false);
+          finishLoginAttempt();
           setError(reason instanceof Error ? reason.message : String(reason));
           logError('CloudAuth', `OAuth callback failed: ${String(reason)}`);
         }
-      },
-    )).then((dispose) => { unlisten = dispose; }).catch((reason) => {
-      logDebug('CloudAuth', `OAuth event listener unavailable: ${String(reason)}`);
+      }),
+      listenDesktopEvent('login-window-closed', () => {
+        if (disposed || loginCompletedRef.current) return;
+        finishLoginAttempt();
+        logDebug('CloudAuth', 'Cloud account login window closed before completion');
+      }),
+    ]).then((results) => {
+      for (const result of results) {
+        if (result.status === 'rejected') {
+          logDebug('CloudAuth', `OAuth event listener unavailable: ${String(result.reason)}`);
+        } else if (disposed) {
+          result.value();
+        } else {
+          unlisteners.push(result.value);
+        }
+      }
     });
 
     return () => {
       disposed = true;
-      unlisten?.();
+      unlisteners.forEach(unlisten => unlisten());
     };
-  }, [invalidate, setAuthenticated]);
+  }, [finishLoginAttempt, invalidate, setAuthenticated]);
 
   useEffect(() => () => {
     if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
@@ -162,38 +184,38 @@ export function CloudAuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    setLoginPending(true);
+    dispatchLoginAttempt({ type: 'started', provider });
     try {
-      await invoke('open_steam_login', { loginUrl: url });
+      await invokeDesktop('open_steam_login', { loginUrl: url });
       if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
       timeoutRef.current = window.setTimeout(() => {
-        if (!loginCompletedRef.current) setLoginPending(false);
+        if (!loginCompletedRef.current) finishLoginAttempt();
       }, LOGIN_TIMEOUT_MS);
     } catch (reason) {
-      setLoginPending(false);
+      finishLoginAttempt();
       setError(reason instanceof Error ? reason.message : String(reason));
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(url);
+      await openExternalUrl(url);
     }
-  }, []);
+  }, [finishLoginAttempt]);
 
   const logout = useCallback(async () => {
     await api.logout();
     await invalidate();
-    setLoginPending(false);
+    finishLoginAttempt();
     setError(null);
-  }, [invalidate]);
+  }, [finishLoginAttempt, invalidate]);
 
   const value = useMemo(() => ({
     authStatus,
     isLoggedIn: authStatus.logged_in,
     isReady,
-    loginPending,
+    loginPending: pendingProvider !== null,
+    pendingProvider,
     error,
     login,
     logout,
     invalidate,
-  }), [authStatus, error, invalidate, isReady, login, loginPending, logout]);
+  }), [authStatus, error, invalidate, isReady, login, logout, pendingProvider]);
 
   return <CloudAuthContext.Provider value={value}>{children}</CloudAuthContext.Provider>;
 }

@@ -1,4 +1,4 @@
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions, useServerDataStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 
 // Chevron icons
@@ -22,7 +22,8 @@ interface PaginationProps {
 }
 
 export function Pagination({ overrideCurrentPage, overrideTotalPages, overrideTotalServers, onPageChange }: PaginationProps = {}) {
-  const { currentPage: storePage, totalPages: storeTotal, totalServers: storeServers, fetchServers, isLoading } = useAppStore();
+  const { currentPage: storePage, totalPages: storeTotal, totalServers: storeServers, isLoading } = useServerDataStore();
+  const { fetchServers } = useAppActions();
   const { t } = useI18n();
 
   const currentPage = overrideCurrentPage ?? storePage;

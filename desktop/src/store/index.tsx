@@ -3,7 +3,21 @@ import type { ServerStatus, ServerRegion, ServerStats, GameType } from '@/types'
 import type { ViewMode } from '@/components';
 import type { CountryInfo } from '@/api';
 import * as api from '@/api';
-import { AppContext, FavoritesContext } from './appContext';
+import { reconcileServerEntities } from '@/services/serverEntities';
+import { FavoriteAddressSubscriptions } from '@/services/favoriteAddresses';
+import {
+  AppActionsContext,
+  AppContext,
+  AppPreferencesContext,
+  FavoriteAddressContext,
+  FavoritesContext,
+  ServerDataContext,
+  ServerFiltersContext,
+  type AppActionsStore,
+  type AppPreferencesStore,
+  type ServerDataStore,
+  type ServerFiltersStore,
+} from './appContext';
 
 // State type
 interface AppState {
@@ -148,7 +162,7 @@ function appReducer(state: AppState, action: Action): AppState {
     case 'SET_SERVERS':
       return {
         ...state,
-        servers: action.payload.servers,
+        servers: reconcileServerEntities(state.servers, action.payload.servers),
         totalServers: action.payload.total,
         currentPage: action.payload.page,
         totalPages: action.payload.totalPages,
@@ -526,10 +540,6 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'REORDER_FAVORITES', payload: { from, to } });
   }, []);
 
-  const isFavorite = useCallback((addr: string) => {
-    return state.favorites.includes(addr);
-  }, [state.favorites]);
-
   const clearError = useCallback(() => {
     dispatch({ type: 'SET_ERROR', payload: null });
   }, []);
@@ -546,8 +556,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SET_CARD_MIN_WIDTH', payload: width });
   }, []);
 
-  const value: AppContextType = {
-    ...state,
+  const favoriteSet = useMemo(() => new Set(state.favorites), [state.favorites]);
+  const isFavorite = useCallback((addr: string) => favoriteSet.has(addr), [favoriteSet]);
+  const favoriteSetRef = useRef(favoriteSet);
+  const favoriteSubscriptionsRef = useRef(new FavoriteAddressSubscriptions());
+  useLayoutEffect(() => {
+    const previous = favoriteSetRef.current;
+    favoriteSetRef.current = favoriteSet;
+    favoriteSubscriptionsRef.current.notifyChanges(previous, favoriteSet);
+  }, [favoriteSet]);
+  const subscribeFavorite = useCallback((address: string, listener: () => void) =>
+    favoriteSubscriptionsRef.current.subscribe(address, listener), []);
+  const isFavoriteSnapshot = useCallback((addr: string) => favoriteSetRef.current.has(addr), []);
+
+  const actionsValue = useMemo<AppActionsStore>(() => ({
     fetchServers,
     fetchCategories,
     fetchStats,
@@ -560,16 +582,58 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setSelectedCountry,
     setSelectedCategory,
     setApiBaseUrl,
+    clearError,
+    setViewMode,
+    setPerPage,
+    setCardMinWidth,
+  }), [
+    clearError, fetchCategories, fetchMetadata, fetchServers, fetchStats, setApiBaseUrl,
+    setCardMinWidth, setPerPage, setSearchQuery, setSelectedCategory, setSelectedContinent,
+    setSelectedCountry, setSelectedGameType, setSelectedGeoRegion, setSelectedRegion, setViewMode,
+  ]);
+  const serverDataValue = useMemo<ServerDataStore>(() => ({
+    servers: state.servers,
+    totalServers: state.totalServers,
+    currentPage: state.currentPage,
+    totalPages: state.totalPages,
+    isLoading: state.isLoading,
+    error: state.error,
+    categories: state.categories,
+    stats: state.stats,
+    metadataCountries: state.metadataCountries,
+    metadataMaps: state.metadataMaps,
+  }), [
+    state.categories, state.currentPage, state.error, state.isLoading, state.metadataCountries,
+    state.metadataMaps, state.servers, state.stats, state.totalPages, state.totalServers,
+  ]);
+  const filtersValue = useMemo<ServerFiltersStore>(() => ({
+    searchQuery: state.searchQuery,
+    selectedCategory: state.selectedCategory,
+    selectedRegion: state.selectedRegion,
+    selectedGameType: state.selectedGameType,
+    selectedContinent: state.selectedContinent,
+    selectedGeoRegion: state.selectedGeoRegion,
+    selectedCountry: state.selectedCountry,
+  }), [
+    state.searchQuery, state.selectedCategory, state.selectedContinent, state.selectedCountry,
+    state.selectedGameType, state.selectedGeoRegion, state.selectedRegion,
+  ]);
+  const preferencesValue = useMemo<AppPreferencesStore>(() => ({
+    apiBaseUrl: state.apiBaseUrl,
+    viewMode: state.viewMode,
+    perPage: state.perPage,
+    cardMinWidth: state.cardMinWidth,
+  }), [state.apiBaseUrl, state.cardMinWidth, state.perPage, state.viewMode]);
+
+  const value = useMemo<AppContextType>(() => ({
+    ...state,
+    ...actionsValue,
     addFavorite,
     removeFavorite,
     importFavorites,
     reorderFavorites,
     isFavorite,
-    clearError,
-    setViewMode,
-    setPerPage,
-    setCardMinWidth,
-  };
+  }), [actionsValue, addFavorite, importFavorites, isFavorite, removeFavorite, reorderFavorites, state]);
 
   const favoritesValue = useMemo(() => ({
     favorites: state.favorites,
@@ -579,10 +643,28 @@ export function AppProvider({ children }: { children: ReactNode }) {
     reorderFavorites,
     isFavorite,
   }), [addFavorite, importFavorites, isFavorite, removeFavorite, reorderFavorites, state.favorites]);
+  const favoriteAddressValue = useMemo(() => ({
+    subscribe: subscribeFavorite,
+    isFavorite: isFavoriteSnapshot,
+    addFavorite,
+    removeFavorite,
+  }), [addFavorite, isFavoriteSnapshot, removeFavorite, subscribeFavorite]);
 
   return (
     <AppContext.Provider value={value}>
-      <FavoritesContext.Provider value={favoritesValue}>{children}</FavoritesContext.Provider>
+      <AppActionsContext.Provider value={actionsValue}>
+        <ServerDataContext.Provider value={serverDataValue}>
+          <ServerFiltersContext.Provider value={filtersValue}>
+            <AppPreferencesContext.Provider value={preferencesValue}>
+              <FavoritesContext.Provider value={favoritesValue}>
+                <FavoriteAddressContext.Provider value={favoriteAddressValue}>
+                  {children}
+                </FavoriteAddressContext.Provider>
+              </FavoritesContext.Provider>
+            </AppPreferencesContext.Provider>
+          </ServerFiltersContext.Provider>
+        </ServerDataContext.Provider>
+      </AppActionsContext.Provider>
     </AppContext.Provider>
   );
 }

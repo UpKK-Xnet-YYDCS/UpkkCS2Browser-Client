@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions, useServerDataStore, useServerFiltersStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 
 // Continent → sub-region mapping
@@ -48,7 +48,9 @@ const continentOptions = [
 const countryPriority = ['US', 'CN'];
 
 export function ContinentFilter() {
-  const { metadataCountries, selectedContinent, selectedGeoRegion, selectedCountry, setSelectedContinent, setSelectedGeoRegion, setSelectedCountry } = useAppStore();
+  const { metadataCountries } = useServerDataStore();
+  const { selectedContinent, selectedGeoRegion, selectedCountry } = useServerFiltersStore();
+  const { setSelectedContinent, setSelectedGeoRegion, setSelectedCountry } = useAppActions();
   const { t } = useI18n();
 
   const geoRegionOptions = selectedContinent !== 'all' ? continentGeoRegions[selectedContinent] || [] : [];

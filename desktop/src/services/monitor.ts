@@ -9,8 +9,12 @@
  */
 
 import { showToast } from '@/services/toast';
-import { parseServerAddress, queryServerA2S, isTauriAvailable } from '@/services/a2s';
+import { isTauriAvailable } from '@/services/a2s';
 import { buildJoinUrl } from '@/services/steamClient';
+import { compileMapPattern, queryMonitorServers } from './monitorQuery.ts';
+import { dispatchMonitorNotificationsInOrder } from './monitorNotifications.ts';
+export { compileMapPattern, matchMapPattern, queryMonitorServers } from './monitorQuery.ts';
+export type { MonitorServerInfo } from './monitorQuery.ts';
 
 // ============== Types ==============
 
@@ -61,17 +65,6 @@ export interface MatchedServer {
   matchedPattern: string;
   matchedAt: string;
   autoJoin?: boolean; // whether to auto-join this server
-}
-
-// Unified server info used by performMonitorCheck
-interface MonitorServerInfo {
-  key: string;
-  name: string;
-  mapName: string;
-  players: number;
-  maxPlayers: number;
-  isOnline: boolean;
-  gameName: string;
 }
 
 // ============== Storage Keys ==============
@@ -261,30 +254,6 @@ export function setMonitorEnabled(enabled: boolean): void {
   try {
     localStorage.setItem(MONITOR_ENABLED_KEY, String(enabled));
   } catch { /* ignore */ }
-}
-
-// ============== Pattern Matching ==============
-
-/**
- * Match a map name against a pattern (supports * wildcard, case-insensitive)
- */
-export function matchMapPattern(mapName: string, pattern: string): boolean {
-  if (!mapName || !pattern) return false;
-  const lowerMap = mapName.toLowerCase();
-  const lowerPattern = pattern.toLowerCase().trim();
-  
-  if (lowerPattern === '*') return true;
-  
-  // Convert wildcard pattern to regex
-  const escaped = lowerPattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const regexStr = '^' + escaped.replace(/\*/g, '.*') + '$';
-  try {
-    const regex = new RegExp(regexStr);
-    return regex.test(lowerMap);
-  } catch {
-    // Fallback to simple includes check
-    return lowerMap.includes(lowerPattern.replace(/\*/g, ''));
-  }
 }
 
 // ============== Notification Functions ==============
@@ -653,48 +622,7 @@ export async function performMonitorCheck(
       return { matched: [], currentMatches: [], autoJoined: null, error: null };
     }
 
-    // Query ALL selected servers via local A2S protocol
-    const allServers: MonitorServerInfo[] = [];
-    for (const addr of allSelectedKeys) {
-      const parsed = parseServerAddress(addr);
-      if (!parsed) continue;
-      try {
-        const result = await queryServerA2S(parsed.ip, parsed.port);
-        if (result.success) {
-          allServers.push({
-            key: addr,
-            name: result.name || addr,
-            mapName: result.map_name || '',
-            players: result.real_players ?? result.players ?? 0,
-            maxPlayers: result.max_players ?? 0,
-            isOnline: true,
-            gameName: result.game || '',
-          });
-        } else {
-          // Server offline or query failed
-          allServers.push({
-            key: addr,
-            name: addr,
-            mapName: '',
-            players: 0,
-            maxPlayers: 0,
-            isOnline: false,
-            gameName: '',
-          });
-        }
-      } catch (queryErr) {
-        console.error(`[Monitor] A2S query failed for ${addr}:`, queryErr);
-        allServers.push({
-          key: addr,
-          name: addr,
-          mapName: '',
-          players: 0,
-          maxPlayers: 0,
-          isOnline: false,
-          gameName: '',
-        });
-      }
-    }
+    const allServers = await queryMonitorServers(allSelectedKeys);
 
     if (allServers.length === 0) {
       return { matched: [], currentMatches: [], autoJoined: null, error: null };
@@ -704,8 +632,15 @@ export async function performMonitorCheck(
     const currentMatches: MatchedServer[] = [];
     let autoJoined: MatchedServer | null = null;
 
-    for (const rule of enabledRules) {
-      const serversToCheck = allServers.filter(s => rule.selectedServers.includes(s.key));
+    const preparedRules = enabledRules.map(rule => ({
+      rule,
+      selectedServers: new Set(rule.selectedServers),
+      patterns: rule.mapPatterns.map(pattern => ({ pattern, matches: compileMapPattern(pattern) })),
+    }));
+
+    for (const prepared of preparedRules) {
+      const { rule } = prepared;
+      const serversToCheck = allServers.filter(server => prepared.selectedServers.has(server.key));
 
       for (const server of serversToCheck) {
         const serverKey = server.key;
@@ -719,8 +654,8 @@ export async function performMonitorCheck(
 
         // Check map patterns
         let patternMatched = false;
-        for (const pattern of rule.mapPatterns) {
-          if (matchMapPattern(mapName, pattern)) {
+        for (const { pattern, matches } of prepared.patterns) {
+          if (matches(mapName)) {
             patternMatched = true;
 
             const matchEntry: MatchedServer = {
@@ -758,43 +693,28 @@ export async function performMonitorCheck(
             const customMsg = formatNotificationMessage(notifySettings.customMessageTemplate, matchEntry);
             const resolvedAlertTitle = notifySettings.alertTitle || undefined;
 
-            if (notifySettings.notifyDesktop) {
-              try {
+            await dispatchMonitorNotificationsInOrder([matchEntry], {
+              desktop: notifySettings.notifyDesktop,
+              discord: notifySettings.notifyDiscord && Boolean(notifySettings.discordWebhookUrl),
+              serverChan: notifySettings.notifyServerChan && Boolean(notifySettings.serverChanKey),
+              customWebhook: notifySettings.notifyCustomWebhook && Boolean(notifySettings.customWebhookUrl),
+            }, {
+              desktop: async () => {
                 const desktopTitle = resolvedAlertTitle
                   ? formatNotificationMessage(resolvedAlertTitle, matchEntry)
                   : `🎮 ${serverName}`;
-                await sendDesktopNotification(
-                  desktopTitle,
-                  customMsg
-                );
-              } catch (notifyErr) {
-                console.error('[Monitor] Desktop notification failed:', notifyErr);
-              }
-            }
-
-            if (notifySettings.notifyDiscord && notifySettings.discordWebhookUrl) {
-              try {
-                await sendDiscordWebhook(notifySettings.discordWebhookUrl, matchEntry, resolvedAlertTitle);
-              } catch (notifyErr) {
-                console.error('[Monitor] Discord notification failed:', notifyErr);
-              }
-            }
-
-            if (notifySettings.notifyServerChan && notifySettings.serverChanKey) {
-              try {
-                await sendServerChanNotification(notifySettings.serverChanKey, matchEntry, resolvedAlertTitle);
-              } catch (notifyErr) {
-                console.error('[Monitor] ServerChan notification failed:', notifyErr);
-              }
-            }
-
-            if (notifySettings.notifyCustomWebhook && notifySettings.customWebhookUrl) {
-              try {
-                await sendCustomWebhook(notifySettings.customWebhookUrl, matchEntry, customMsg);
-              } catch (notifyErr) {
-                console.error('[Monitor] Custom webhook notification failed:', notifyErr);
-              }
-            }
+                await sendDesktopNotification(desktopTitle, customMsg);
+              },
+              discord: async () => sendDiscordWebhook(
+                notifySettings.discordWebhookUrl, matchEntry, resolvedAlertTitle,
+              ),
+              serverChan: async () => sendServerChanNotification(
+                notifySettings.serverChanKey, matchEntry, resolvedAlertTitle,
+              ),
+              customWebhook: async () => sendCustomWebhook(
+                notifySettings.customWebhookUrl, matchEntry, customMsg,
+              ),
+            });
 
             // Auto-join: open Steam to connect to the FIRST matched server only
             if (rule.autoJoin && !autoJoined) {

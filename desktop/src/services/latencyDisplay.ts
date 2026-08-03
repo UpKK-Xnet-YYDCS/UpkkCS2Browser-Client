@@ -64,12 +64,22 @@ export function getServerLatencyTarget(server: ServerStatus): LocalLatencyTarget
 export function applyLatencySnapshot(server: ServerStatus, snapshot?: LocalLatencySnapshot): ServerStatus {
   if (!snapshot) return server;
 
+  const updatedAt = snapshot.updatedAt ? new Date(snapshot.updatedAt).toISOString() : undefined;
+  if (
+    server.local_latency_status === snapshot.status &&
+    server.local_latency_ms === snapshot.latencyMs &&
+    server.local_latency_error === snapshot.error &&
+    server.local_latency_updated_at === updatedAt
+  ) {
+    return server;
+  }
+
   return {
     ...server,
     local_latency_status: snapshot.status,
     local_latency_ms: snapshot.latencyMs,
     local_latency_error: snapshot.error,
-    local_latency_updated_at: snapshot.updatedAt ? new Date(snapshot.updatedAt).toISOString() : undefined,
+    local_latency_updated_at: updatedAt,
   };
 }
 

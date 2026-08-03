@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { useI18n } from '@/hooks/useI18n';
 import { useUserStore } from '@/hooks/useUserStore';
+import { openExternalUrl } from '@/services/desktopRuntime';
 
 const UserIcon = () => (
   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -61,8 +62,7 @@ export function LoginModal() {
 
   const handleOpenSecureCodePage = async () => {
     try {
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(SECURE_CODE_URL);
+      await openExternalUrl(SECURE_CODE_URL);
     } catch {
       window.open(SECURE_CODE_URL, '_blank');
     }

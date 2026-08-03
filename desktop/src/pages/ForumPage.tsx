@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { invoke } from '@tauri-apps/api/core';
 import { useUserStore } from '@/hooks/useUserStore';
 import { useI18n } from '@/hooks/useI18n';
 import { logInfo, logDebug } from '@/store/log';
+import { invokeDesktop, openExternalUrl } from '@/services/desktopRuntime';
 
 const FORUM_URL = 'https://bbs.upkk.com';
 
@@ -46,14 +46,14 @@ export function ForumPage() {
       if (isLoggedIn && user) {
         // Use POST login with uid and auth
         logInfo('Forum', `Opening forum with POST login for user: ${user.username}`);
-        await invoke('open_forum_with_login', { 
+        await invokeDesktop('open_forum_with_login', {
           uid: String(user.uid), 
           auth: user.user_auth 
         });
       } else {
         // Open forum without login
         logInfo('Forum', 'Opening forum without login');
-        await invoke('open_forum_window');
+        await invokeDesktop('open_forum_window');
       }
       
       logInfo('Forum', 'Forum window opened successfully');
@@ -115,8 +115,7 @@ export function ForumPage() {
     try {
       // Use Tauri shell:open to open in system browser
       // Note: External browser can't do POST, so we just open the base forum URL
-      const { open } = await import('@tauri-apps/plugin-shell');
-      await open(FORUM_URL);
+      await openExternalUrl(FORUM_URL);
       logInfo('Forum', `Opened in system browser via Tauri shell: ${FORUM_URL}`);
     } catch (error) {
       console.error('[Forum] Failed to open via Tauri shell, falling back:', error);

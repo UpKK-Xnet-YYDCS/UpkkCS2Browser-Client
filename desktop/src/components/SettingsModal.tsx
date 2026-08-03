@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions } from '@/hooks/useAppSlices';
 import { useTheme } from '@/hooks/useTheme';
 import type { ColorRegion } from '@/store/theme';
 import { colorRegionLabels } from '@/store/themeUtils';
@@ -51,7 +51,7 @@ export function SettingsModal() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'colors'>('general');
   const [apiUrl, setApiUrl] = useState(getApiBaseUrl());
-  const { setApiBaseUrl, fetchServers } = useAppStore();
+  const { setApiBaseUrl, fetchServers } = useAppActions();
   const theme = useTheme();
   const fileInputRef = useRef<HTMLInputElement>(null);
 

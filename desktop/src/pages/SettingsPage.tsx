@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
-import { useAppStore } from '@/hooks/useAppStore';
+import { useAppActions } from '@/hooks/useAppSlices';
 import { useTheme } from '@/hooks/useTheme';
 import type { ColorRegion } from '@/store/theme';
 import { useI18n } from '@/hooks/useI18n';
@@ -9,13 +9,13 @@ import { getApiBaseUrl, XPROJ_USER_AGENT, getPrefetchPages, setPrefetchPages, ge
 import { RGBAColorPicker } from '@/components/RGBAColorPicker';
 import { useUpdateCheck } from '@/contexts/updateContext';
 import { APP_VERSION } from '@/services/update';
-import { relaunch } from '@tauri-apps/plugin-process';
+import { relaunchDesktopApp } from '@/services/desktopRuntime';
 import { clearCredentials } from '@/services/secureStorage';
 import { clearPersistedCloudApiToken } from '@/services/cloudToken';
 import { A2STestSection } from '@/components/settings/A2STestSection';
 import { LatencySettingsSection } from '@/components/settings/LatencySettingsSection';
 import { getSteamClient, setSteamClient } from '@/services/steamClient';
-import { subscribeLog, getLogEntries, clearLogs, type LogEntry } from '@/store/log';
+import { subscribeLog, getLogEntries } from '@/store/log';
 import {
   type NotificationSound,
   isNotificationSoundEnabled,
@@ -24,54 +24,20 @@ import {
   setNotificationSound,
   playNotificationSound,
 } from '@/services/toast';
-
-const SunIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-  </svg>
-);
-
-const MoonIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-  </svg>
-);
-
-const ImageIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-  </svg>
-);
-
-const PaletteIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
-  </svg>
-);
-
-const RefreshIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-  </svg>
-);
-
-const TrashIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-  </svg>
-);
-
-const XMarkIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-);
-
-const UpdateIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-  </svg>
-);
+import { ClearDataModal } from '@/components/settings/ClearDataModal';
+import { OperationLogPanel } from '@/components/settings/OperationLogPanel';
+import { NavigationLabelSetting } from '@/components/settings/NavigationLabelSetting';
+import {
+  SunIcon,
+  MoonIcon,
+  ImageIcon,
+  PaletteIcon,
+  RefreshIcon,
+  TrashIcon,
+  UpdateIcon,
+  GlobeIcon,
+  LogIcon,
+} from '@/components/settings/SettingsIcons';
 
 // Color region order for display
 const colorRegionOrder: ColorRegion[] = ['primary', 'secondary', 'accent', 'header', 'sidebar', 'background', 'text'];
@@ -80,37 +46,6 @@ const colorRegionOrder: ColorRegion[] = ['primary', 'secondary', 'accent', 'head
 const DEFAULT_AUTO_REFRESH_INTERVAL = 60;
 
 // Globe/Language icon
-const GlobeIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-  </svg>
-);
-
-const LogIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01" />
-  </svg>
-);
-
-const formatLogTime = (ts: number) => {
-  const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-};
-
-const levelColor: Record<string, string> = {
-  info:  'text-blue-600 dark:text-blue-400',
-  warn:  'text-yellow-600 dark:text-yellow-400',
-  error: 'text-red-600 dark:text-red-400',
-  debug: 'text-gray-500 dark:text-gray-400',
-};
-
-const levelBg: Record<string, string> = {
-  info:  'bg-blue-50 dark:bg-blue-900/20',
-  warn:  'bg-yellow-50 dark:bg-yellow-900/20',
-  error: 'bg-red-50 dark:bg-red-900/20',
-  debug: 'bg-gray-50 dark:bg-gray-800/40',
-};
-
 export function SettingsPage() {
   const [activeTab, setActiveTab] = useState<'general' | 'appearance' | 'colors' | 'logs'>('general');
   const logEntries = useSyncExternalStore(subscribeLog, getLogEntries);
@@ -129,7 +64,7 @@ export function SettingsPage() {
   const [soundEnabled, setSoundEnabled] = useState(isNotificationSoundEnabled);
   const [soundType, setSoundType] = useState<NotificationSound>(getNotificationSound);
   const [steamClient, setSteamClientState] = useState<'steam' | 'steamchina'>(getSteamClient);
-  const { setApiBaseUrl, fetchServers } = useAppStore();
+  const { setApiBaseUrl, fetchServers } = useAppActions();
   const theme = useTheme();
   const { t, language, setLanguage, isAuto } = useI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -252,7 +187,7 @@ export function SettingsPage() {
       await clearCredentials();
       
       // Restart the application
-      await relaunch();
+      await relaunchDesktopApp();
     } catch (error) {
       console.error('Failed to clear data and restart:', error);
       setIsClearing(false);
@@ -737,7 +672,6 @@ export function SettingsPage() {
             </div>
           ) : activeTab === 'appearance' ? (
             <div className="space-y-6">
-              {/* Dark Mode Toggle */}
               <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
                 <div className="flex items-center gap-3">
                   {theme.darkMode ? <MoonIcon /> : <SunIcon />}
@@ -759,8 +693,7 @@ export function SettingsPage() {
                   />
                 </button>
               </div>
-
-              {/* Glass Effect Toggle */}
+              <NavigationLabelSetting />
               <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
                 <div>
                   <p className="font-medium text-gray-900 dark:text-white">{t.glassEffect}</p>
@@ -877,58 +810,7 @@ export function SettingsPage() {
               </button>
             </div>
           ) : (
-            <div className="space-y-4">
-              {/* Logs Tab */}
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <LogIcon />
-                  <div>
-                    <h3 className="font-medium text-gray-900 dark:text-white">{t.operationLog}</h3>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{t.operationLogDesc}</p>
-                  </div>
-                </div>
-                {logEntries.length > 0 && (
-                  <button
-                    onClick={clearLogs}
-                    className="px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-gray-200 dark:border-gray-700"
-                  >
-                    <TrashIcon />
-                  </button>
-                )}
-              </div>
-
-              <div className="max-h-[420px] overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/50">
-                {logEntries.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
-                    <LogIcon />
-                    <p className="mt-2 text-sm">{t.logEmpty}</p>
-                  </div>
-                ) : (
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                    {(logEntries as LogEntry[]).map((entry) => (
-                      <div
-                        key={entry.id}
-                        className={`flex items-start gap-3 px-4 py-2.5 text-sm ${levelBg[entry.level] || ''}`}
-                      >
-                        <span className="shrink-0 text-xs text-gray-400 dark:text-gray-500 font-mono pt-0.5">
-                          {formatLogTime(entry.timestamp)}
-                        </span>
-                        <span className={`shrink-0 text-xs font-semibold uppercase pt-0.5 ${levelColor[entry.level] || ''}`}>
-                          {entry.level}
-                        </span>
-                        <span className="shrink-0 text-xs font-medium text-gray-600 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded px-1.5 py-0.5">
-                          {entry.tag}
-                        </span>
-                        <span className="text-gray-800 dark:text-gray-200 break-all font-mono text-xs leading-relaxed">
-                          {entry.message}
-                        </span>
-                      </div>
-                    ))}
-                    <div ref={logEndRef} />
-                  </div>
-                )}
-              </div>
-            </div>
+            <OperationLogPanel entries={logEntries} endRef={logEndRef} t={t} />
           )}
         </div>
 
@@ -939,78 +821,13 @@ export function SettingsPage() {
         </div>
       </div>
       
-      {/* Clear Data Confirmation Modal */}
-      {showClearConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-            {/* Header */}
-            <div className="flex items-center gap-3 p-5 bg-gradient-to-r from-red-500 to-orange-500">
-              <div className="w-10 h-10 bg-white/20 backdrop-blur-sm rounded-xl flex items-center justify-center text-white">
-                <TrashIcon />
-              </div>
-              <h2 className="text-lg font-bold text-white">{t.confirmClearData}</h2>
-            </div>
-            
-            {/* Content */}
-            <div className="p-5">
-              <p className="text-gray-700 dark:text-gray-300 mb-4">
-                {t.clearDataWarning}
-              </p>
-              <ul className="text-sm text-gray-600 dark:text-gray-400 space-y-2 mb-6">
-                <li className="flex items-center gap-2">
-                  <XMarkIcon className="w-4 h-4 text-red-500" />
-                  {t.clearLoginStatus}
-                </li>
-                <li className="flex items-center gap-2">
-                  <XMarkIcon className="w-4 h-4 text-red-500" />
-                  {t.clearThemeSettings}
-                </li>
-                <li className="flex items-center gap-2">
-                  <XMarkIcon className="w-4 h-4 text-red-500" />
-                  {t.clearFavorites}
-                </li>
-                <li className="flex items-center gap-2">
-                  <XMarkIcon className="w-4 h-4 text-red-500" />
-                  {t.clearCacheData}
-                </li>
-              </ul>
-              <p className="text-sm text-orange-600 dark:text-orange-400 font-medium">
-                {t.clearDataIrreversible}
-              </p>
-            </div>
-            
-            {/* Footer */}
-            <div className="flex justify-end gap-3 p-5 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700">
-              <button
-                onClick={() => setShowClearConfirm(false)}
-                disabled={isClearing}
-                className="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-700 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-600 transition-colors disabled:opacity-50"
-              >
-                {t.cancel}
-              </button>
-              <button
-                onClick={handleClearDataAndRestart}
-                disabled={isClearing}
-                className="px-5 py-2.5 text-sm font-medium text-white bg-gradient-to-r from-red-500 to-orange-500 rounded-xl hover:from-red-600 hover:to-orange-600 transition-all shadow-md hover:shadow-lg disabled:opacity-50 flex items-center gap-2"
-              >
-                {isClearing ? (
-                  <>
-                    <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    {t.clearing}
-                  </>
-                ) : (
-                  <>
-                    <TrashIcon />
-                    {t.confirmClearRestart}
-                  </>
-                )}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ClearDataModal
+        open={showClearConfirm}
+        isClearing={isClearing}
+        t={t}
+        onCancel={() => setShowClearConfirm(false)}
+        onConfirm={handleClearDataAndRestart}
+      />
     </div>
   );
 }

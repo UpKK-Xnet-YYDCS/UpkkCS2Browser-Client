@@ -10,15 +10,18 @@ import type {
 import { logInfo, logWarn, logError, logDebug } from '@/store/log';
 import { getCloudApiToken, setCloudApiTokenInMemory } from '@/services/cloudToken';
 import { normalizeCloudAuthResponse, type CloudAuthStatus, type CloudUserInfo } from '@/services/cloudAuthData';
+import { mapWithConcurrency } from '@/services/concurrency';
+import { getOptionalDesktopHttpFetch } from '@/services/desktopRuntime';
+import { CacheNamespace } from '@/services/cacheNamespace';
+import { TtlLruCache } from '@/services/ttlLruCache';
 
 // Compile-time User-Agent for HTTP POST requests (configurable via XPROJ_HTTP_USER_AGENT env var)
 // Default: 'XProj-Desktop-HTTP/<version> (+https://servers.upkk.com)' where <version> is read from version.txt
 export const XPROJ_USER_AGENT = __XPROJ_HTTP_USER_AGENT__;
 
-// Cache the base URL in a module-level variable for performance
 let cachedBaseUrl: string | null = null;
+const requestCacheNamespace = new CacheNamespace();
 
-// Get API base URL from cache or localStorage
 const getBaseUrl = (): string => {
   if (cachedBaseUrl === null) {
     cachedBaseUrl = localStorage.getItem('apiBaseUrl') || 'https://servers.upkk.com';
@@ -26,13 +29,12 @@ const getBaseUrl = (): string => {
   return cachedBaseUrl;
 };
 
-// Set API base URL (updates both cache and localStorage)
 export const setApiBaseUrl = (url: string) => {
+  if (url !== cachedBaseUrl) invalidateRequestCache();
   cachedBaseUrl = url;
   localStorage.setItem('apiBaseUrl', url);
 };
 
-// Get current API base URL
 export const getApiBaseUrl = (): string => {
   return getBaseUrl();
 };
@@ -43,10 +45,12 @@ export const getApiToken = (): string | null => {
 
 export const setApiToken = (token: string) => {
   setCloudApiTokenInMemory(token);
+  invalidateRequestCache();
 };
 
 export const clearApiToken = () => {
   setCloudApiTokenInMemory(null);
+  invalidateRequestCache();
 };
 
 // Custom error class that carries HTTP status code for structured error handling
@@ -57,27 +61,6 @@ class ApiError extends Error {
     this.status = status;
     this.name = 'ApiError';
   }
-}
-
-type TauriHttpFetch = typeof import('@tauri-apps/plugin-http').fetch;
-let tauriHttpFetchPromise: Promise<TauriHttpFetch | null> | null = null;
-
-function isModuleLoadError(error: unknown): boolean {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.includes('module') ||
-    message.includes('import') ||
-    message.includes('Cannot find') ||
-    message.includes('Failed to resolve');
-}
-
-async function getTauriHttpFetch(): Promise<TauriHttpFetch | null> {
-  tauriHttpFetchPromise ??= import('@tauri-apps/plugin-http')
-    .then((module) => module.fetch)
-    .catch((error) => {
-      if (isModuleLoadError(error)) return null;
-      throw error;
-    });
-  return tauriHttpFetchPromise;
 }
 
 // --- In-flight request deduplication ---
@@ -102,20 +85,24 @@ function getCacheTtlMs(): number {
   return DEFAULT_CACHE_TTL_MS;
 }
 
-interface CacheEntry { data: unknown; ts: number }
-const responseCache = new Map<string, CacheEntry>();
+const responseCache = new TtlLruCache<string, unknown>(128, getCacheTtlMs);
 
-function getCached<T>(key: string): T | undefined {
-  const entry = responseCache.get(key);
-  if (entry && Date.now() - entry.ts < getCacheTtlMs()) {
-    return entry.data as T;
-  }
-  if (entry) responseCache.delete(key);
-  return undefined;
+function requestCacheKey(endpoint: string): string {
+  return requestCacheNamespace.key(getBaseUrl(), Boolean(getApiToken()), endpoint);
 }
 
-function setCache(key: string, data: unknown): void {
-  responseCache.set(key, { data, ts: Date.now() });
+function invalidateRequestCache(): void {
+  requestCacheNamespace.invalidate();
+  inflightRequests.clear();
+  responseCache.clear();
+}
+
+function getCached<T>(endpoint: string): T | undefined {
+  return responseCache.get(requestCacheKey(endpoint)) as T | undefined;
+}
+
+function setCache(endpoint: string, data: unknown): void {
+  responseCache.set(requestCacheKey(endpoint), data);
 }
 
 /** Clear all cached API responses so the next request fetches fresh data. */
@@ -167,12 +154,7 @@ export async function refreshEndpoint<T>(endpoint: string, maxRetries = 3): Prom
  * This does NOT fetch — it only peeks into the response cache.
  */
 export function hasCachedResponse(endpoint: string): boolean {
-  const entry = responseCache.get(endpoint);
-  if (entry && Date.now() - entry.ts < getCacheTtlMs()) {
-    return true;
-  }
-  if (entry) responseCache.delete(endpoint); // expired
-  return false;
+  return responseCache.has(requestCacheKey(endpoint));
 }
 
 /**
@@ -330,7 +312,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   
   // Only deduplicate GET requests (safe to share)
   if (method === 'GET') {
-    const dedupeKey = endpoint;
+    const dedupeKey = requestCacheKey(endpoint);
     const inflight = inflightRequests.get(dedupeKey) as Promise<T> | undefined;
     if (inflight) return inflight;
     
@@ -363,7 +345,7 @@ async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise
   
   try {
     // Try using Tauri HTTP plugin first (bypasses CORS restrictions)
-    const tauriFetch = await getTauriHttpFetch();
+    const tauriFetch = await getOptionalDesktopHttpFetch();
     if (tauriFetch) {
       const response = await tauriFetch(url, {
         ...options,
@@ -671,7 +653,7 @@ export const logout = async (): Promise<void> => {
   const baseUrl = getBaseUrl();
   try {
     // Try Tauri HTTP plugin first
-    const tauriFetch = await getTauriHttpFetch();
+    const tauriFetch = await getOptionalDesktopHttpFetch();
     if (tauriFetch) {
       await tauriFetch(`${baseUrl}/auth/logout`, {
         headers: {
@@ -749,8 +731,8 @@ export const getAllFavorites = async (perPage = 100): Promise<FavoriteListRespon
   }
 
   // Fetch remaining pages in parallel
-  const remaining = Array.from({ length: totalPages - 1 }, (_, i) => getFavorites(i + 2, perPage));
-  const pages = await Promise.all(remaining);
+  const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2);
+  const pages = await mapWithConcurrency(remainingPages, 4, page => getFavorites(page, perPage));
 
   const allFavorites = [
     ...firstPage.favorites,
