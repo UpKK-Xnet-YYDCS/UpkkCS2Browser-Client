@@ -5,9 +5,9 @@ import {
   normalizeNavigationLabelMode,
 } from './navigationPreferences.ts';
 
-test('defaults top navigation to icons only', () => {
+test('defaults top navigation to labels', () => {
   assert.equal(normalizeNavigationLabelMode(null), DEFAULT_NAVIGATION_LABEL_MODE);
-  assert.equal(normalizeNavigationLabelMode('unexpected'), 'icons');
+  assert.equal(normalizeNavigationLabelMode('unexpected'), 'labels');
 });
 
 test('restores the explicit navigation labels preference', () => {

@@ -1,7 +1,7 @@
 export type NavigationLabelMode = 'icons' | 'labels';
 
 export const NAVIGATION_LABEL_MODE_KEY = 'xproj-navigation-label-mode';
-export const DEFAULT_NAVIGATION_LABEL_MODE: NavigationLabelMode = 'icons';
+export const DEFAULT_NAVIGATION_LABEL_MODE: NavigationLabelMode = 'labels';
 
 type NavigationPreferenceListener = () => void;
 

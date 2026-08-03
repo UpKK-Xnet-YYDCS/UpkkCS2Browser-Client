@@ -184,7 +184,7 @@ localStorage 值并立即删除明文键。浏览器预览模式不持久化云�
 云端收藏和 AI 使用同一套登录界面与登录状态。关闭 OAuth 登录窗口会立即结束本次
 登录等待并恢复登录按钮，不需要等待超时。
 
-顶部功能导航默认仅显示图标；可在“设置 > 外观 > 顶部导航文字”中切换为图标加文字，
+顶部功能导航默认显示图标和文字；可在“设置 > 外观 > 顶部导航文字”中切换为仅显示图标，
 该偏好保存在本机。
 
 论坛与签到继续使用 SteamID64/secure code 社区登录，只有进入对应功能时才会请求。
@@ -214,7 +214,7 @@ localStorage 值并立即删除明文键。浏览器预览模式不持久化云�
 |-------|------|
 | `xproj-desktop-state` | 应用状态 (收藏服务器、API地址、区域筛选、游戏类型、视图模式、每页数量) |
 | `upkk-theme-settings` | 主题设置 (暗色模式、颜色配置、背景图片、毛玻璃效果) |
-| `xproj-navigation-label-mode` | 顶部导航显示模式 (`icons` 或 `labels`，默认 `icons`) |
+| `xproj-navigation-label-mode` | 顶部导航显示模式 (`icons` 或 `labels`，默认 `labels`) |
 | `xproj-remember-me` | 记住登录状态选项 |
 | `xproj-user-session` | 用户会话信息 |
 | `autoRefreshInterval` | 自动刷新间隔 |
