@@ -5,6 +5,7 @@ import { useCanvasChart } from '@/hooks/useCanvasChart';
 
 const LATENCY_WARNING_MS = 500;
 const SUCCESS_RATE_WARNING = 90;
+const RECENT_RECORDS_PAGE_SIZE = 3;
 
 interface QueryRecordsProps {
   serverAddress: string; // e.g. "1.2.3.4:27015"
@@ -263,6 +264,7 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedRecord, setExpandedRecord] = useState<number | null>(null);
+  const [recordsPage, setRecordsPage] = useState(1);
   const { t } = useI18n();
   const isDark = useIsDarkMode();
 
@@ -270,6 +272,8 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
     const fetchData = async () => {
       setLoading(true);
       setError(null);
+      setRecordsPage(1);
+      setExpandedRecord(null);
       try {
         const response = await getA2SDebug(serverAddress);
         if (!response.success) {
@@ -286,6 +290,19 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
     };
     fetchData();
   }, [serverAddress]);
+
+  const recordsTotalPages = Math.max(1, Math.ceil(records.length / RECENT_RECORDS_PAGE_SIZE));
+  const safeRecordsPage = Math.min(recordsPage, recordsTotalPages);
+  const pagedRecords = records.slice(
+    (safeRecordsPage - 1) * RECENT_RECORDS_PAGE_SIZE,
+    safeRecordsPage * RECENT_RECORDS_PAGE_SIZE,
+  );
+
+  useEffect(() => {
+    if (recordsPage !== safeRecordsPage) {
+      setRecordsPage(safeRecordsPage);
+    }
+  }, [recordsPage, safeRecordsPage]);
 
   if (loading) {
     return (
@@ -389,7 +406,8 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
         <div>
           <div className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">{t.queryRecentRecords}</div>
           <div className="space-y-2">
-            {records.map((record, index) => {
+            {pagedRecords.map((record, pageIndex) => {
+              const index = (safeRecordsPage - 1) * RECENT_RECORDS_PAGE_SIZE + pageIndex;
               const time = new Date(record.timestamp * 1000).toLocaleString();
               const isExpanded = expandedRecord === index;
               const rowClass = record.success
@@ -439,6 +457,30 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
               );
             })}
           </div>
+
+          {recordsTotalPages > 1 && (
+            <div className="mt-3 flex items-center justify-center gap-2">
+              <button
+                type="button"
+                onClick={() => setRecordsPage((page) => Math.max(1, page - 1))}
+                disabled={safeRecordsPage === 1}
+                className="rounded-lg bg-gray-100 px-3 py-1 text-sm text-gray-600 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600"
+              >
+                {t.prevPage}
+              </button>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {safeRecordsPage} / {recordsTotalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setRecordsPage((page) => Math.min(recordsTotalPages, page + 1))}
+                disabled={safeRecordsPage === recordsTotalPages}
+                className="rounded-lg bg-gray-100 px-3 py-1 text-sm text-gray-600 transition-colors hover:bg-gray-200 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600"
+              >
+                {t.nextPage}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

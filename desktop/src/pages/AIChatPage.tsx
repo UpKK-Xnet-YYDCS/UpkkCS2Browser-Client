@@ -29,6 +29,7 @@ import {
 } from '@/services/aiChatSessions';
 import type { ServerStatus } from '@/types';
 import type { Language } from '@/store/i18n';
+import { estimateAIChatInputTokens, estimateAIChatOutputTokens } from '@/utils/aiTokens';
 import {
   detectDesktopToolIntent,
   formatLocalLatencyContext,
@@ -258,9 +259,26 @@ export function AIChatPage() {
     updateMessages(sessionId, current => current.map(message => {
       if (message.id !== id) return message;
       switch (event.type) {
-        case 'message': return { ...message, content: message.content + String(event.content ?? ''), pending: false };
-        case 'thinking': return { ...message, thinking: (message.thinking ?? '') + String(event.content ?? ''), thinkingOpen: true, pending: false };
-        case 'reset': return { ...message, content: '', thinking: '', thinkingOpen: false, pending: true };
+        case 'message': {
+          const content = message.content + String(event.content ?? '');
+          return {
+            ...message,
+            content,
+            pending: false,
+            tokenOutput: estimateAIChatOutputTokens(content, message.thinking ?? ''),
+          };
+        }
+        case 'thinking': {
+          const thinking = (message.thinking ?? '') + String(event.content ?? '');
+          return {
+            ...message,
+            thinking,
+            thinkingOpen: true,
+            pending: false,
+            tokenOutput: estimateAIChatOutputTokens(message.content, thinking),
+          };
+        }
+        case 'reset': return { ...message, content: '', thinking: '', thinkingOpen: false, pending: true, tokenOutput: 0 };
         case 'complete': return { ...message, pending: false, thinkingOpen: false };
         case 'retry': return { ...message, pending: true };
         default: return message;
@@ -352,7 +370,7 @@ export function AIChatPage() {
 
       appendPromptMessages(targetSessionId, message, [
         userMessage,
-        { id: assistantId, role: 'assistant', content: '', pending: true, thinkingOpen: true },
+        { id: assistantId, role: 'assistant', content: '', pending: true, thinkingOpen: true, tokenInput: estimateAIChatInputTokens([message, instructions.trim(), ...history.map(item => item.content)]), tokenOutput: 0 },
       ]);
 
       let context = '';

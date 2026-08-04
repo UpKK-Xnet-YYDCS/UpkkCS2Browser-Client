@@ -1,6 +1,7 @@
 import { Bot, ChevronDown, Sparkles, UserRound } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { AITokenMeter } from '@/components/AITokenMeter';
 import type { AIChatLabels } from '@/pages/aiLabels';
 import type { DesktopChatMessage } from '@/services/aiChatSessions';
 
@@ -17,6 +18,7 @@ interface AIMessageListProps {
 
 export function AIMessageList({ messages, labels, status, endRef, prompts, promptDisabled, onPrompt, setThinkingOpen }: AIMessageListProps) {
   const visibleMessages = messages.filter(message => message.id !== 'welcome');
+  const tokenLabels = { token: labels.token, tokenInput: labels.tokenInput, tokenOutput: labels.tokenOutput };
   return (
     <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6" aria-live="polite">
       {visibleMessages.length === 0 ? (
@@ -37,46 +39,73 @@ export function AIMessageList({ messages, labels, status, endRef, prompts, promp
         <div className="mx-auto w-full max-w-[820px] space-y-5">
           {visibleMessages.map((message) => {
             const content = message.content;
-            return <article key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <span className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${message.role === 'assistant' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300' : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'}`}>
-                {message.role === 'assistant' ? <Bot className="h-4 w-4" aria-hidden="true" /> : <UserRound className="h-4 w-4" aria-hidden="true" />}
-              </span>
-              <div className={`min-w-0 ${message.role === 'user' ? 'max-w-[min(680px,86%)] text-right' : 'max-w-[calc(100%_-_2.75rem)] flex-1'}`}>
-                {message.thinking && (
-                  <details
-                    open={message.thinkingOpen}
-                    onToggle={(event) => setThinkingOpen(message.id, event.currentTarget.open)}
-                    className="mb-2 rounded-md border border-amber-200 bg-amber-50/80 text-left dark:border-amber-900 dark:bg-amber-950/30"
-                  >
-                    <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
-                      <span className="flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" />{message.pending || !content ? labels.thinking : labels.thinkingDone}</span>
-                      <ChevronDown className="h-3.5 w-3.5" />
-                    </summary>
-                    <pre className="max-h-48 overflow-auto whitespace-pre-wrap border-t border-amber-200 px-3 py-2 text-xs text-gray-600 dark:border-amber-900 dark:text-gray-300">{message.thinking}</pre>
-                  </details>
-                )}
-                <div className={`inline-block max-w-full text-left text-sm leading-6 ${message.role === 'user' ? 'rounded-lg bg-gray-200/80 px-3.5 py-2.5 text-gray-900 dark:bg-gray-700 dark:text-white' : 'py-1 text-gray-800 dark:text-gray-100'}`}>
-                  {message.role === 'assistant' && content ? (
-                    <ReactMarkdown
-                      remarkPlugins={[remarkGfm]}
-                      urlTransform={safeMarkdownUrl}
-                      components={{
-                        a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-blue-400">{children}</a>,
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                        ul: ({ children }) => <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>,
-                        ol: ({ children }) => <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>,
-                        code: ({ children }) => <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-900">{children}</code>,
-                        pre: ({ children }) => <pre className="my-2 overflow-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100">{children}</pre>,
-                      }}
+            const showTokens = message.role === 'assistant' && (
+              message.pending
+              || typeof message.tokenInput === 'number'
+              || typeof message.tokenOutput === 'number'
+            );
+            const rowClass = message.role === 'user' ? 'flex gap-3 flex-row-reverse' : 'flex gap-3';
+            const avatarClass = message.role === 'assistant'
+              ? 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300'
+              : 'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300';
+            const bodyClass = message.role === 'user'
+              ? 'min-w-0 max-w-[min(680px,86%)] text-right'
+              : 'min-w-0 max-w-[calc(100%_-_2.75rem)] flex-1';
+            const bubbleClass = message.role === 'user'
+              ? 'inline-block max-w-full text-left text-sm leading-6 rounded-lg bg-gray-200/80 px-3.5 py-2.5 text-gray-900 dark:bg-gray-700 dark:text-white'
+              : 'inline-block max-w-full text-left text-sm leading-6 py-1 text-gray-800 dark:text-gray-100';
+            return (
+              <article key={message.id} className={rowClass}>
+                <span className={avatarClass}>
+                  {message.role === 'assistant' ? <Bot className="h-4 w-4" aria-hidden="true" /> : <UserRound className="h-4 w-4" aria-hidden="true" />}
+                </span>
+                <div className={bodyClass}>
+                  {message.thinking && (
+                    <details
+                      open={message.thinkingOpen}
+                      onToggle={(event) => setThinkingOpen(message.id, event.currentTarget.open)}
+                      className="mb-2 rounded-md border border-amber-200 bg-amber-50/80 text-left dark:border-amber-900 dark:bg-amber-950/30"
                     >
-                      {content}
-                    </ReactMarkdown>
-                  ) : (
-                    <p>{content || (message.pending ? labels.processing : labels.failed)}</p>
+                      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-xs font-medium text-amber-800 dark:text-amber-200">
+                        <span className="flex items-center gap-1.5"><Sparkles className="h-3.5 w-3.5" />{message.pending || !content ? labels.thinking : labels.thinkingDone}</span>
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      </summary>
+                      <pre className="max-h-48 overflow-auto whitespace-pre-wrap border-t border-amber-200 px-3 py-2 text-xs text-gray-600 dark:border-amber-900 dark:text-gray-300">{message.thinking}</pre>
+                    </details>
+                  )}
+                  <div className={bubbleClass}>
+                    {message.role === 'assistant' && content ? (
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        urlTransform={safeMarkdownUrl}
+                        components={{
+                          a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-blue-400">{children}</a>,
+                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+                          ul: ({ children }) => <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>,
+                          ol: ({ children }) => <ol className="mb-2 list-decimal pl-5 last:mb-0">{children}</ol>,
+                          code: ({ children }) => <code className="rounded bg-gray-100 px-1 py-0.5 text-xs dark:bg-gray-900">{children}</code>,
+                          pre: ({ children }) => <pre className="my-2 overflow-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100">{children}</pre>,
+                        }}
+                      >
+                        {content}
+                      </ReactMarkdown>
+                    ) : (
+                      <p>{content || (message.pending ? labels.processing : labels.failed)}</p>
+                    )}
+                  </div>
+                  {showTokens && (
+                    <div className="mt-1.5">
+                      <AITokenMeter
+                        inputTokens={message.tokenInput ?? 0}
+                        outputTokens={message.tokenOutput ?? 0}
+                        labels={tokenLabels}
+                        active={Boolean(message.pending)}
+                      />
+                    </div>
                   )}
                 </div>
-              </div>
-            </article>;
+              </article>
+            );
           })}
           {status && (
             <div className="ml-11 flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">

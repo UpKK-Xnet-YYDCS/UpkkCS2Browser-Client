@@ -10,6 +10,8 @@ export interface DesktopChatMessage {
   thinking?: string;
   thinkingOpen?: boolean;
   pending?: boolean;
+  tokenInput?: number;
+  tokenOutput?: number;
 }
 
 export interface AIChatSession {

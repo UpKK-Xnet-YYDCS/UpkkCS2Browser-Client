@@ -140,3 +140,38 @@ button, a, input, select, textarea {
   grid-template-columns: repeat(auto-fit, minmax(min(var(--server-card-min-width, 320px), 100%), 1fr));
   gap: 1rem;
 }
+
+
+/* AI chat Claude-style token meter */
+@keyframes ai-token-bolt-flash {
+  0%, 100% {
+    opacity: 0.55;
+    transform: scale(1) rotate(-10deg);
+    filter: drop-shadow(0 0 0 transparent);
+  }
+  35% {
+    opacity: 1;
+    transform: scale(1.18) rotate(4deg);
+    filter: drop-shadow(0 0 7px rgba(245, 158, 11, 0.85));
+  }
+  60% {
+    opacity: 0.85;
+    transform: scale(1.05) rotate(-4deg);
+    filter: drop-shadow(0 0 3px rgba(251, 191, 36, 0.45));
+  }
+}
+
+@keyframes ai-token-jump {
+  0% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-3px) scale(1.1); color: #f59e0b; }
+  100% { transform: translateY(0) scale(1); }
+}
+
+.ai-token-bolt {
+  animation: ai-token-bolt-flash 1.05s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.ai-token-jump {
+  animation: ai-token-jump 0.28s ease-out;
+}
