@@ -10,6 +10,23 @@ interface QueryRecordsProps {
   serverAddress: string; // e.g. "1.2.3.4:27015"
 }
 
+function formatQueryNodeLabel(isFromNode: boolean, nodeName: string, localLabel: string, remoteLabel: string): string {
+  const normalized = (nodeName || '').trim();
+  const isLocal = !isFromNode || normalized.toLowerCase() === 'local';
+  if (isLocal) return localLabel;
+  return remoteLabel + ': ' + (normalized || '-');
+}
+
+function formatLatencyMs(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0.0';
+  return value.toFixed(1);
+}
+
+/** Failure is binary for charting: any failed sample in the bucket => 100%, else 0%. */
+function failureFlag(point: Pick<A2SLatencyStatPoint, 'query_count' | 'success_count'>): 0 | 100 {
+  if (point.query_count <= 0) return 0;
+  return point.success_count < point.query_count ? 100 : 0;
+}
 
 function calculateStats(stats: A2SLatencyStatPoint[]) {
   let totalQueries = 0;
@@ -21,11 +38,11 @@ function calculateStats(stats: A2SLatencyStatPoint[]) {
   for (const s of stats) {
     totalQueries += s.query_count;
     totalSuccess += s.success_count;
-    if (s.avg_latency > 0) {
-      totalLatency += s.avg_latency * s.query_count;
-      latencyCount += s.query_count;
+    if (s.avg_latency > 0 && s.success_count > 0) {
+      totalLatency += s.avg_latency * s.success_count;
+      latencyCount += s.success_count;
     }
-    if (s.max_latency > maxLatency) {
+    if (s.success_count > 0 && s.max_latency > maxLatency) {
       maxLatency = s.max_latency;
     }
   }
@@ -45,12 +62,13 @@ interface LatencyChartProps {
     avgLatency: string;
     maxLatency: string;
     successRate: string;
-    packetLoss: string;
+    failure: string;
     totalQueries: string;
   };
+  isDark: boolean;
 }
 
-function LatencyChart({ stats, labels }: LatencyChartProps) {
+function LatencyChart({ stats, labels, isDark }: LatencyChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<{ point: A2SLatencyStatPoint; left: number; tooltipLeft: number } | null>(null);
 
@@ -62,11 +80,14 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
     const chartHeight = height - padding.top - padding.bottom;
 
     const avgData = stats.map(s => s.avg_latency);
-    const maxData = stats.map(s => s.max_latency);
+    const maxData = stats.map(s => (s.success_count > 0 ? s.max_latency : 0));
+    const failData = stats.map(s => failureFlag(s));
     const maxValue = Math.max(...maxData, ...avgData, 1);
 
-    // Grid lines
-    ctx.strokeStyle = '#e5e7eb';
+    const gridColor = isDark ? 'rgba(75, 85, 99, 0.55)' : '#e5e7eb';
+    const axisText = isDark ? '#9ca3af' : '#6b7280';
+
+    ctx.strokeStyle = gridColor;
     ctx.lineWidth = 1;
     const gridLines = 5;
     for (let i = 0; i <= gridLines; i++) {
@@ -76,16 +97,15 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
       ctx.lineTo(width - padding.right, y);
       ctx.stroke();
       const value = Math.round(maxValue - (maxValue / gridLines) * i);
-      ctx.fillStyle = '#6b7280';
+      ctx.fillStyle = axisText;
       ctx.font = '10px sans-serif';
       ctx.textAlign = 'right';
-      ctx.fillText(`${value}ms`, padding.left - 5, y + 4);
+      ctx.fillText(value + 'ms', padding.left - 5, y + 4);
     }
 
-    // X-axis labels
     const labelCount = Math.min(6, stats.length);
     const labelStep = Math.floor(stats.length / labelCount) || 1;
-    ctx.fillStyle = '#6b7280';
+    ctx.fillStyle = axisText;
     ctx.font = '10px sans-serif';
     ctx.textAlign = 'center';
     for (let i = 0; i < stats.length; i += labelStep) {
@@ -94,8 +114,7 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
       ctx.fillText(date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }), x, height - 8);
     }
 
-    // Draw line helper
-    const drawLine = (data: number[], color: string, fillColor: string) => {
+    const drawLatencyLine = (data: number[], color: string, fillColor: string) => {
       if (data.length < 2) return;
       ctx.beginPath();
       ctx.strokeStyle = color;
@@ -117,13 +136,31 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
       ctx.fill();
     };
 
-    // Draw max latency (behind)
-    drawLine(maxData, '#f59e0b', 'rgba(245, 158, 11, 0.1)');
-    // Draw avg latency (front)
-    drawLine(avgData, '#3b82f6', 'rgba(59, 130, 246, 0.15)');
-  }, [stats]);
+    const drawFailureMarkers = (data: number[]) => {
+      const xStep = chartWidth / (Math.max(data.length, 1) - 1 || 1);
+      for (let i = 0; i < data.length; i++) {
+        if (data[i] < 100) continue;
+        const x = padding.left + xStep * i;
+        ctx.beginPath();
+        ctx.strokeStyle = '#ef4444';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([]);
+        ctx.moveTo(x, padding.top + chartHeight);
+        ctx.lineTo(x, padding.top);
+        ctx.stroke();
 
-  // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
+        ctx.beginPath();
+        ctx.fillStyle = '#ef4444';
+        ctx.arc(x, padding.top + 3, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+
+    drawLatencyLine(maxData, '#f59e0b', isDark ? 'rgba(245, 158, 11, 0.12)' : 'rgba(245, 158, 11, 0.1)');
+    drawLatencyLine(avgData, '#3b82f6', isDark ? 'rgba(59, 130, 246, 0.18)' : 'rgba(59, 130, 246, 0.15)');
+    drawFailureMarkers(failData);
+  }, [stats, isDark]);
+
   useCanvasChart(canvasRef, drawChart);
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {
@@ -148,12 +185,14 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
   const hoverSuccessRate = hover && hover.point.query_count > 0
     ? (hover.point.success_count / hover.point.query_count) * 100
     : 0;
+  const hoverFailed = hover ? failureFlag(hover.point) === 100 : false;
+  const hoverMaxLatency = hover && hover.point.success_count > 0 ? hover.point.max_latency : 0;
 
   return (
     <div className="relative h-40">
       <canvas
         ref={canvasRef}
-        className="h-full w-full"
+        className="h-full w-full rounded-md bg-transparent"
         style={{ display: 'block' }}
         onMouseMove={handleMouseMove}
         onMouseLeave={() => setHover(null)}
@@ -165,31 +204,31 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
             style={{ left: hover.left }}
           />
           <div
-            className="pointer-events-none absolute top-2 z-10 w-56 -translate-x-1/2 rounded-lg border border-gray-200 bg-white/95 p-3 text-xs shadow-xl backdrop-blur dark:border-gray-700 dark:bg-gray-950/95"
+            className="pointer-events-none absolute top-2 z-10 w-56 -translate-x-1/2 rounded-xl border border-slate-300/70 bg-slate-900/95 p-3 text-xs text-slate-100 shadow-2xl backdrop-blur dark:border-slate-600/80 dark:bg-slate-950/95"
             style={{ left: hover.tooltipLeft }}
           >
-            <div className="mb-2 font-black text-gray-900 dark:text-white">
+            <div className="mb-2 font-black text-slate-50">
               {labels.time}: {new Date(hover.point.timestamp * 1000).toLocaleString()}
             </div>
             <div className="space-y-1 font-semibold tabular-nums">
-              <div className="flex items-center justify-between gap-3 text-blue-600 dark:text-blue-300">
-                <span>{labels.avgLatency}</span>
-                <span>{hover.point.avg_latency.toFixed(1)} ms</span>
+              <div className="flex items-center justify-between gap-3 text-sky-300">
+                <span className="text-slate-300">{labels.avgLatency}</span>
+                <span>{formatLatencyMs(hover.point.avg_latency)} ms</span>
               </div>
-              <div className="flex items-center justify-between gap-3 text-amber-600 dark:text-amber-300">
-                <span>{labels.maxLatency}</span>
-                <span>{hover.point.max_latency.toFixed(1)} ms</span>
+              <div className="flex items-center justify-between gap-3 text-amber-300">
+                <span className="text-slate-300">{labels.maxLatency}</span>
+                <span>{formatLatencyMs(hoverMaxLatency)} ms</span>
               </div>
-              <div className="flex items-center justify-between gap-3 text-green-600 dark:text-green-300">
-                <span>{labels.successRate}</span>
+              <div className="flex items-center justify-between gap-3 text-emerald-300">
+                <span className="text-slate-300">{labels.successRate}</span>
                 <span>{hoverSuccessRate.toFixed(1)}%</span>
               </div>
-              <div className="flex items-center justify-between gap-3 text-red-600 dark:text-red-300">
-                <span>{labels.packetLoss}</span>
-                <span>{(100 - hoverSuccessRate).toFixed(1)}%</span>
+              <div className="flex items-center justify-between gap-3 text-rose-300">
+                <span className="text-slate-300">{labels.failure}</span>
+                <span>{hoverFailed ? '100%' : '0%'}</span>
               </div>
-              <div className="flex items-center justify-between gap-3 text-gray-500 dark:text-gray-400">
-                <span>{labels.totalQueries}</span>
+              <div className="flex items-center justify-between gap-3 text-slate-200">
+                <span className="text-slate-400">{labels.totalQueries}</span>
                 <span>{hover.point.query_count}</span>
               </div>
             </div>
@@ -200,6 +239,24 @@ function LatencyChart({ stats, labels }: LatencyChartProps) {
   );
 }
 
+function useIsDarkMode(): boolean {
+  const [isDark, setIsDark] = useState(() =>
+    typeof document !== 'undefined' && document.documentElement.classList.contains('dark'),
+  );
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const root = document.documentElement;
+    const update = () => setIsDark(root.classList.contains('dark'));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
+  return isDark;
+}
+
 export function QueryRecords({ serverAddress }: QueryRecordsProps) {
   const [records, setRecords] = useState<A2SQueryDebugRecord[]>([]);
   const [stats, setStats] = useState<A2SLatencyStatPoint[]>([]);
@@ -207,6 +264,7 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedRecord, setExpandedRecord] = useState<number | null>(null);
   const { t } = useI18n();
+  const isDark = useIsDarkMode();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -253,32 +311,45 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
   }
 
   const summary = stats.length > 0 ? calculateStats(stats) : null;
+  const maxLatencyClass = summary && summary.maxLatency > LATENCY_WARNING_MS
+    ? 'text-lg font-bold text-red-500'
+    : 'text-lg font-bold text-gray-900 dark:text-white';
+  const successRateClass = summary && summary.successRate < SUCCESS_RATE_WARNING
+    ? 'text-lg font-bold text-red-500'
+    : 'text-lg font-bold text-green-600 dark:text-green-400';
 
   return (
     <div className="space-y-4">
-      {/* Stats summary */}
       {summary && (
         <div className="grid grid-cols-4 gap-2">
-          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg text-center">
+          <div className="rounded-lg bg-gray-50 p-3 text-center dark:bg-gray-800/80">
             <div className="text-lg font-bold text-gray-900 dark:text-white">{summary.totalQueries}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{t.queryTotalQueries}</div>
           </div>
-          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg text-center">
-            <div className="text-lg font-bold text-blue-600 dark:text-blue-400">{summary.avgLatency.toFixed(1)}<span className="text-xs ml-0.5">ms</span></div>
+          <div className="rounded-lg bg-gray-50 p-3 text-center dark:bg-gray-800/80">
+            <div className="text-lg font-bold text-blue-600 dark:text-blue-400">
+              {formatLatencyMs(summary.avgLatency)}
+              <span className="ml-0.5 text-xs">ms</span>
+            </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{t.queryAvgLatency}</div>
           </div>
-          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg text-center">
-            <div className={`text-lg font-bold ${summary.maxLatency > LATENCY_WARNING_MS ? 'text-red-500' : 'text-gray-900 dark:text-white'}`}>{summary.maxLatency.toFixed(1)}<span className="text-xs ml-0.5">ms</span></div>
+          <div className="rounded-lg bg-gray-50 p-3 text-center dark:bg-gray-800/80">
+            <div className={maxLatencyClass}>
+              {formatLatencyMs(summary.maxLatency)}
+              <span className="ml-0.5 text-xs">ms</span>
+            </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{t.queryMaxLatency}</div>
           </div>
-          <div className="p-3 bg-white dark:bg-gray-800 rounded-lg text-center">
-            <div className={`text-lg font-bold ${summary.successRate < SUCCESS_RATE_WARNING ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>{summary.successRate.toFixed(1)}<span className="text-xs ml-0.5">%</span></div>
+          <div className="rounded-lg bg-gray-50 p-3 text-center dark:bg-gray-800/80">
+            <div className={successRateClass}>
+              {summary.successRate.toFixed(1)}
+              <span className="ml-0.5 text-xs">%</span>
+            </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">{t.querySuccessRate}</div>
           </div>
         </div>
       )}
 
-      {/* Latency chart */}
       {stats.length > 0 && (
         <div>
           <div className="mb-2">
@@ -287,62 +358,79 @@ export function QueryRecords({ serverAddress }: QueryRecordsProps) {
           </div>
           <LatencyChart
             stats={stats}
+            isDark={isDark}
             labels={{
               time: t.chartTooltipTime,
               avgLatency: t.queryAvgLatency,
               maxLatency: t.queryMaxLatency,
               successRate: t.querySuccessRate,
-              packetLoss: t.latencyProbePacketLoss,
+              failure: t.queryFailed,
               totalQueries: t.queryTotalQueries,
             }}
           />
-          <div className="flex items-center justify-center gap-4 mt-2 text-xs">
+          <div className="mt-2 flex items-center justify-center gap-4 text-xs">
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded bg-blue-500" />
+              <div className="h-3 w-3 rounded bg-blue-500" />
               <span className="text-gray-600 dark:text-gray-400">{t.queryAvgLatency}</span>
             </div>
             <div className="flex items-center gap-1">
-              <div className="w-3 h-3 rounded bg-amber-500" />
+              <div className="h-3 w-3 rounded bg-amber-500" />
               <span className="text-gray-600 dark:text-gray-400">{t.queryMaxLatency}</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="rounded bg-red-500" style={{ width: 2, height: 12 }} />
+              <span className="text-gray-600 dark:text-gray-400">{t.queryFailed} 100%</span>
             </div>
           </div>
         </div>
       )}
 
-      {/* Recent records */}
       {records.length > 0 && (
         <div>
-          <div className="text-sm font-semibold text-gray-900 dark:text-white mb-2">{t.queryRecentRecords}</div>
+          <div className="mb-2 text-sm font-semibold text-gray-900 dark:text-white">{t.queryRecentRecords}</div>
           <div className="space-y-2">
             {records.map((record, index) => {
               const time = new Date(record.timestamp * 1000).toLocaleString();
               const isExpanded = expandedRecord === index;
+              const rowClass = record.success
+                ? 'rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/80'
+                : 'rounded-lg border border-red-300 bg-red-50 p-3 dark:border-red-800 dark:bg-red-950/40';
+              const statusClass = record.success
+                ? 'rounded px-1.5 py-0.5 font-medium bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                : 'rounded px-1.5 py-0.5 font-medium bg-red-200 text-red-800 dark:bg-red-900/50 dark:text-red-200';
+              const durationClass = (!record.success || record.duration_ms > LATENCY_WARNING_MS)
+                ? 'rounded px-1.5 py-0.5 font-mono bg-red-200 text-red-800 dark:bg-red-900/50 dark:text-red-200'
+                : 'rounded px-1.5 py-0.5 font-mono bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300';
+              const nodeClass = record.is_from_node
+                ? 'rounded px-1.5 py-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300'
+                : 'rounded px-1.5 py-0.5 bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+
               return (
-                <div key={index} className={`p-3 rounded-lg border ${record.success ? 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700' : 'bg-red-50 dark:bg-red-900/10 border-red-200 dark:border-red-800'}`}>
-                  <div className="flex items-center flex-wrap gap-1.5 text-xs">
-                    <span className="text-gray-500 dark:text-gray-400 font-mono">#{index + 1}</span>
-                    <span className={`px-1.5 py-0.5 rounded font-medium ${record.success ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                <div key={index} className={rowClass}>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    <span className="font-mono text-gray-500 dark:text-gray-400">#{index + 1}</span>
+                    <span className={statusClass}>
                       {record.success ? t.querySuccess : t.queryFailed}
                     </span>
                     {record.duration_ms > 0 && (
-                      <span className={`px-1.5 py-0.5 rounded font-mono ${record.duration_ms > LATENCY_WARNING_MS ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'}`}>
-                        {record.duration_ms.toFixed(2)}ms
+                      <span className={durationClass}>
+                        {formatLatencyMs(record.duration_ms)}ms
                       </span>
                     )}
-                    <span className={`px-1.5 py-0.5 rounded ${record.is_from_node ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'}`}>
-                      {record.is_from_node ? `${t.queryRemoteNode}: ${record.node_name}` : t.queryLocalNode}
+                    <span className={nodeClass}>
+                      {formatQueryNodeLabel(record.is_from_node, record.node_name, t.queryLocalNode, t.queryRemoteNode)}
                     </span>
-                    <span className="text-gray-400 dark:text-gray-500 ml-auto">{time}</span>
+                    <span className="ml-auto text-gray-400 dark:text-gray-500">{time}</span>
                   </div>
                   {record.error_message && (
-                    <div className="mt-1.5 text-xs text-red-600 dark:text-red-400">{t.queryError}: {record.error_message}</div>
+                    <div className="mt-1.5 text-xs text-red-600 dark:text-red-300">{t.queryError}: {record.error_message}</div>
                   )}
                   {record.a2s_data && Object.keys(record.a2s_data).length > 0 && (
                     <details open={isExpanded} onToggle={() => setExpandedRecord(isExpanded ? null : index)}>
-                      <summary className="mt-1.5 text-xs text-blue-600 dark:text-blue-400 cursor-pointer hover:underline">
+                      <summary className="mt-1.5 cursor-pointer text-xs text-blue-600 hover:underline dark:text-blue-400">
                         {t.queryA2SData} ({t.queryClickToExpand})
                       </summary>
-                      <pre className="mt-1 p-2 bg-gray-50 dark:bg-gray-900 rounded text-xs overflow-x-auto max-h-40 text-gray-700 dark:text-gray-300">
+                      <pre className="mt-1 max-h-40 overflow-x-auto rounded bg-gray-100 p-2 text-xs text-gray-700 dark:bg-gray-900 dark:text-gray-300">
                         {JSON.stringify(record.a2s_data, null, 2)}
                       </pre>
                     </details>
