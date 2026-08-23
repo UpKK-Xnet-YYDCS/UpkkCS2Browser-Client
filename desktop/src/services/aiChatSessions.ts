@@ -139,6 +139,46 @@ export function renameAIChatSessionFromMessage(
     : session);
 }
 
+export function startAIChatSessionState(
+  current: AIChatSessionState,
+  defaultTitle: string,
+  options: { id?: string; now?: number } = {},
+): AIChatSessionState {
+  const session = createAIChatSession(defaultTitle, options);
+  return {
+    sessions: [session, ...current.sessions].slice(0, AI_CHAT_MAX_SESSIONS),
+    activeSessionId: session.id,
+  };
+}
+
+export function selectAIChatSessionState(
+  current: AIChatSessionState,
+  sessionId: string,
+): AIChatSessionState {
+  return current.activeSessionId === sessionId
+    ? current
+    : { ...current, activeSessionId: sessionId };
+}
+
+export function deleteAIChatSessionState(
+  current: AIChatSessionState,
+  sessionId: string,
+  defaultTitle: string,
+  options: { id?: string; now?: number } = {},
+): AIChatSessionState {
+  const index = current.sessions.findIndex(session => session.id === sessionId);
+  if (index < 0) return current;
+  const remaining = current.sessions.filter(session => session.id !== sessionId);
+  if (remaining.length === 0) {
+    const replacement = createAIChatSession(defaultTitle, options);
+    return { sessions: [replacement], activeSessionId: replacement.id };
+  }
+  const nextActiveId = current.activeSessionId === sessionId
+    ? remaining[Math.min(index, remaining.length - 1)].id
+    : current.activeSessionId;
+  return { sessions: remaining, activeSessionId: nextActiveId };
+}
+
 function stateWithNewSession(defaultTitle: string): AIChatSessionState {
   const session = createAIChatSession(defaultTitle);
   return { sessions: [session], activeSessionId: session.id };

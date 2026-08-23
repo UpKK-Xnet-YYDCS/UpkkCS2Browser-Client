@@ -1,8 +1,13 @@
 fn main() {
     // Read version from version.txt for consistent versioning across the project
     let version = std::fs::read_to_string("../version.txt")
-        .map(|s| s.trim().to_string())
-        .unwrap_or_else(|_| "1.3.0".to_string());
+        .expect("desktop/version.txt must exist")
+        .trim()
+        .to_string();
+    assert!(
+        !version.is_empty(),
+        "desktop/version.txt must contain a version"
+    );
 
     // Browser User-Agent for WebView windows (can be overridden via XPROJ_BROWSER_USER_AGENT env var)
     let default_ua = format!(

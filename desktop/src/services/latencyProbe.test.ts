@@ -9,6 +9,8 @@ import {
   type LatencyProbeSample,
 } from './latencyProbe.ts';
 
+import { buildLatencyProbeAttempt, buildLatencyProbeSample } from './latencyProbeSample.ts';
+
 function successSample(sequence: number, startedAt: number, completedAt: number, latencyMs: number): LatencyProbeSample {
   return {
     sequence,
@@ -239,4 +241,66 @@ test('uses observed slow response time for jitter even when A2S RTT succeeds', (
   assert.equal(metrics.packetLossPercent, 0);
   assert.equal(metrics.avgLatencyMs, 42.5);
   assert.equal(metrics.rttStabilityMs, 230);
+});
+
+test('buildLatencyProbeAttempt clamps elapsed time and only keeps success latency', () => {
+  assert.deepEqual(buildLatencyProbeAttempt({
+    sequence: 2,
+    attempt: 1,
+    startedAt: 50,
+    completedAt: 10,
+    status: 'success',
+    latencyMs: 12.6,
+  }), {
+    sequence: 2,
+    attempt: 1,
+    startedAt: 50,
+    completedAt: 10,
+    status: 'success',
+    elapsedMs: 0,
+    latencyMs: 13,
+  });
+  assert.deepEqual(buildLatencyProbeAttempt({
+    sequence: 2,
+    attempt: 2,
+    startedAt: 10,
+    completedAt: 40,
+    status: 'failed',
+    error: 'timeout',
+  }), {
+    sequence: 2,
+    attempt: 2,
+    startedAt: 10,
+    completedAt: 40,
+    status: 'failed',
+    elapsedMs: 30,
+    error: 'timeout',
+  });
+});
+
+test('buildLatencyProbeSample keeps the existing success and unavailable fallbacks', () => {
+  assert.deepEqual(
+    buildLatencyProbeSample(1, 100, 140, { success: true, latency_ms: 18.4 }, []),
+    {
+      sequence: 1,
+      startedAt: 100,
+      completedAt: 140,
+      status: 'success',
+      observedLatencyMs: 40,
+      attempts: [],
+      latencyMs: 18,
+    },
+  );
+  assert.deepEqual(
+    buildLatencyProbeSample(3, 200, 260, { success: false }, []),
+    {
+      sequence: 3,
+      startedAt: 200,
+      completedAt: 260,
+      status: 'failed',
+      observedLatencyMs: 60,
+      attempts: [],
+      error: 'A2S latency unavailable',
+    },
+  );
 });

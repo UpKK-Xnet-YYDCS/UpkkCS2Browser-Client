@@ -8,24 +8,14 @@
  * - Automatic credential persistence
  */
 
-import { invoke } from '@tauri-apps/api/core';
+import type { ApiTokenResponse, CredentialResponse } from '@/types/desktop';
+import { invokeDesktop } from './desktopRuntime';
 
-export interface CredentialResponse {
-  success: boolean;
-  message: string;
-  steamid64?: string;
-  securecode?: string;
-}
-
-export interface ApiTokenResponse {
-  success: boolean;
-  message: string;
-  token?: string;
-}
+export type { ApiTokenResponse, CredentialResponse } from '@/types/desktop';
 
 export async function saveApiToken(token: string): Promise<ApiTokenResponse> {
   try {
-    return await invoke<ApiTokenResponse>('save_api_token', { token });
+    return await invokeDesktop('save_api_token', { token });
   } catch (error) {
     return { success: false, message: error instanceof Error ? error.message : String(error) };
   }
@@ -33,7 +23,7 @@ export async function saveApiToken(token: string): Promise<ApiTokenResponse> {
 
 export async function loadApiToken(): Promise<ApiTokenResponse> {
   try {
-    return await invoke<ApiTokenResponse>('load_api_token');
+    return await invokeDesktop('load_api_token');
   } catch (error) {
     return { success: false, message: error instanceof Error ? error.message : String(error) };
   }
@@ -41,7 +31,7 @@ export async function loadApiToken(): Promise<ApiTokenResponse> {
 
 export async function clearApiToken(): Promise<ApiTokenResponse> {
   try {
-    return await invoke<ApiTokenResponse>('clear_api_token');
+    return await invokeDesktop('clear_api_token');
   } catch (error) {
     return { success: false, message: error instanceof Error ? error.message : String(error) };
   }
@@ -58,7 +48,7 @@ export async function saveCredentials(
   securecode: string
 ): Promise<CredentialResponse> {
   try {
-    return await invoke<CredentialResponse>('save_credentials', {
+    return await invokeDesktop('save_credentials', {
       steamid64,
       securecode,
     });
@@ -78,7 +68,7 @@ export async function saveCredentials(
  */
 export async function loadCredentials(): Promise<CredentialResponse> {
   try {
-    return await invoke<CredentialResponse>('load_credentials');
+    return await invokeDesktop('load_credentials');
   } catch (error) {
     console.error('[SecureStorage] Failed to load credentials:', error);
     return {
@@ -93,7 +83,7 @@ export async function loadCredentials(): Promise<CredentialResponse> {
  */
 export async function clearCredentials(): Promise<CredentialResponse> {
   try {
-    return await invoke<CredentialResponse>('clear_credentials');
+    return await invokeDesktop('clear_credentials');
   } catch (error) {
     console.error('[SecureStorage] Failed to clear credentials:', error);
     return {
@@ -109,7 +99,7 @@ export async function clearCredentials(): Promise<CredentialResponse> {
  */
 export async function getDeviceFingerprint(): Promise<string> {
   try {
-    return await invoke<string>('get_device_fingerprint');
+    return await invokeDesktop('get_device_fingerprint');
   } catch (error) {
     console.error('[SecureStorage] Failed to get device fingerprint:', error);
     return 'unknown';
@@ -121,7 +111,7 @@ export async function getDeviceFingerprint(): Promise<string> {
  */
 export async function hasStoredCredentials(): Promise<boolean> {
   try {
-    return await invoke<boolean>('has_stored_credentials');
+    return await invokeDesktop('has_stored_credentials');
   } catch (error) {
     console.error('[SecureStorage] Failed to check credentials:', error);
     return false;

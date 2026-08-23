@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import type { RGBAColor } from '@/store/theme';
-import { rgbaToCss, rgbaToHex, hexToRgba, presetColors } from '@/store/themeUtils';
+import { hexToRgba, isPresetColorSelected, presetColors, rgbaAlphaPercent, rgbaChannelGradient, rgbaToCss, rgbaToHex } from '@/store/themeUtils';
+import { RGBAChannelSlider } from './RGBAChannelSlider';
 
 interface RGBAColorPickerProps {
   color: RGBAColor;
@@ -65,7 +66,7 @@ export function RGBAColorPicker({ color, onChange, label, onReset }: RGBAColorPi
                   key={preset.value}
                   onClick={() => handlePresetClick(preset.value)}
                   className={`w-7 h-7 rounded-lg border-2 transition-all ${
-                    rgbaToHex(color).toLowerCase() === preset.value.toLowerCase()
+                    isPresetColorSelected(color, preset.value)
                       ? 'border-gray-900 dark:border-white scale-110'
                       : 'border-transparent hover:scale-105'
                   }`}
@@ -89,81 +90,47 @@ export function RGBAColorPicker({ color, onChange, label, onReset }: RGBAColorPi
 
           {/* RGBA Sliders */}
           <div className="space-y-3">
-            {/* Red */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-red-500">R (红)</span>
-                <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{color.r}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={color.r}
-                onChange={(e) => handleChannelChange('r', Number(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, rgb(0, ${color.g}, ${color.b}), rgb(255, ${color.g}, ${color.b}))`,
-                }}
-              />
-            </div>
-
-            {/* Green */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-green-500">G (绿)</span>
-                <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{color.g}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={color.g}
-                onChange={(e) => handleChannelChange('g', Number(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, rgb(${color.r}, 0, ${color.b}), rgb(${color.r}, 255, ${color.b}))`,
-                }}
-              />
-            </div>
-
-            {/* Blue */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-blue-500">B (蓝)</span>
-                <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{color.b}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="255"
-                value={color.b}
-                onChange={(e) => handleChannelChange('b', Number(e.target.value))}
-                className="w-full h-2 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, rgb(${color.r}, ${color.g}, 0), rgb(${color.r}, ${color.g}, 255))`,
-                }}
-              />
-            </div>
-
-            {/* Alpha */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs font-medium text-gray-500">A (透明度)</span>
-                <span className="text-xs font-mono text-gray-600 dark:text-gray-400">{Math.round(color.a * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={color.a * 100}
-                onChange={(e) => handleChannelChange('a', Number(e.target.value) / 100)}
-                className="w-full h-2 bg-gradient-to-r from-transparent to-gray-900 rounded-lg appearance-none cursor-pointer"
-                style={{
-                  background: `linear-gradient(to right, rgba(${color.r}, ${color.g}, ${color.b}, 0), rgba(${color.r}, ${color.g}, ${color.b}, 1))`,
-                }}
-              />
-            </div>
+            <RGBAChannelSlider
+              label="R (红)"
+              labelClass="text-xs font-medium text-red-500"
+              value={color.r}
+              display={String(color.r)}
+              min={0}
+              max={255}
+              gradient={rgbaChannelGradient('r', color)}
+              onChange={(value) => handleChannelChange('r', value)}
+            />
+            <RGBAChannelSlider
+              label="G (绿)"
+              labelClass="text-xs font-medium text-green-500"
+              value={color.g}
+              display={String(color.g)}
+              min={0}
+              max={255}
+              gradient={rgbaChannelGradient('g', color)}
+              onChange={(value) => handleChannelChange('g', value)}
+            />
+            <RGBAChannelSlider
+              label="B (蓝)"
+              labelClass="text-xs font-medium text-blue-500"
+              value={color.b}
+              display={String(color.b)}
+              min={0}
+              max={255}
+              gradient={rgbaChannelGradient('b', color)}
+              onChange={(value) => handleChannelChange('b', value)}
+            />
+            <RGBAChannelSlider
+              label="A (透明度)"
+              labelClass="text-xs font-medium text-gray-500"
+              value={color.a * 100}
+              display={rgbaAlphaPercent(color.a) + '%'}
+              min={0}
+              max={100}
+              gradient={rgbaChannelGradient('a', color)}
+              className="w-full h-2 bg-gradient-to-r from-transparent to-gray-900 rounded-lg appearance-none cursor-pointer"
+              onChange={(value) => handleChannelChange('a', value / 100)}
+            />
           </div>
 
           {/* Reset Button */}

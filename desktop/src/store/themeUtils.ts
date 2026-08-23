@@ -1,4 +1,4 @@
-import type { ColorRegion, RGBAColor } from './theme';
+import type { ColorRegion, RGBAColor } from './themeTypes';
 
 export const rgbaToCss = (color: RGBAColor): string => {
   return `rgba(${color.r}, ${color.g}, ${color.b}, ${color.a})`;
@@ -46,3 +46,18 @@ export const presetColors = [
   { name: '黑色', value: '#000000' },
   { name: '灰色', value: '#6b7280' },
 ];
+
+export function rgbaChannelGradient(channel: 'r' | 'g' | 'b' | 'a', color: RGBAColor): string {
+  if (channel === 'r') return 'linear-gradient(to right, rgb(0, ' + color.g + ', ' + color.b + '), rgb(255, ' + color.g + ', ' + color.b + '))';
+  if (channel === 'g') return 'linear-gradient(to right, rgb(' + color.r + ', 0, ' + color.b + '), rgb(' + color.r + ', 255, ' + color.b + '))';
+  if (channel === 'b') return 'linear-gradient(to right, rgb(' + color.r + ', ' + color.g + ', 0), rgb(' + color.r + ', ' + color.g + ', 255))';
+  return 'linear-gradient(to right, rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', 0), rgba(' + color.r + ', ' + color.g + ', ' + color.b + ', 1))';
+}
+
+export function isPresetColorSelected(color: RGBAColor, hex: string): boolean {
+  return rgbaToHex(color).toLowerCase() === hex.toLowerCase();
+}
+
+export function rgbaAlphaPercent(alpha: number): number {
+  return Math.round(alpha * 100);
+}

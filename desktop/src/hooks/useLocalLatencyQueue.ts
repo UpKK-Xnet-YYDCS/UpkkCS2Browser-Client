@@ -1,14 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ServerStatus } from '@/types';
-import {
-  createDesktopA2SLatencyScheduler,
-  type LocalLatencySnapshot,
-  type LocalLatencyTarget,
-} from '@/services/a2s';
-import {
-  getServerLatencyTarget,
-  isSameLatencySnapshot,
-} from '@/services/latencyDisplay';
+import type { LocalLatencyScheduler, LocalLatencySnapshot } from '@/services/a2sLatencyTypes';
+import { isSameLatencySnapshot } from '@/services/latencyDisplay';
+import { excludeForegroundTargets, getUniqueLatencyTargets } from '@/services/latencyTargets';
 import {
   useLatencyDetectionSettings,
   type LatencyDetectionSettings,
@@ -33,48 +27,6 @@ interface UseLocalLatencyQueueResult {
   measureServers: (servers: ServerStatus[], options?: MeasureServersOptions) => () => void;
 }
 
-function targetAddress(target: LocalLatencyTarget): string {
-  return `${target.ip.trim()}:${String(target.port).trim()}`;
-}
-
-function getUniqueLatencyTargets(servers: ServerStatus[]): LocalLatencyTarget[] {
-  const targetsByAddress = new Map<string, LocalLatencyTarget>();
-
-  for (const server of servers) {
-    const target = getServerLatencyTarget(server);
-    if (!target) continue;
-
-    const address = targetAddress(target);
-    const existing = targetsByAddress.get(address);
-    if (!existing) {
-      targetsByAddress.set(address, target);
-      continue;
-    }
-
-    targetsByAddress.set(address, {
-      ...existing,
-      priority: Math.min(existing.priority ?? 0, target.priority ?? 0),
-    });
-  }
-
-  return Array.from(targetsByAddress.values());
-}
-
-function excludeForegroundTargets(
-  targets: LocalLatencyTarget[],
-  foregroundServers: ServerStatus[] | undefined,
-): LocalLatencyTarget[] {
-  if (!foregroundServers || foregroundServers.length === 0) {
-    return targets;
-  }
-
-  const foregroundAddresses = new Set(
-    getUniqueLatencyTargets(foregroundServers).map(targetAddress),
-  );
-
-  return targets.filter(target => !foregroundAddresses.has(targetAddress(target)));
-}
-
 export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueResult {
   const latencyDetectionSettings = useLatencyDetectionSettings();
   const latencySchedulerOptions = useMemo(() => ({
@@ -89,13 +41,26 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     latencyDetectionSettings.workerCount,
   ]);
   const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
-  const latencySchedulerRef = useRef(createDesktopA2SLatencyScheduler(latencySchedulerOptions));
+  const latencySchedulerRef = useRef<LocalLatencyScheduler | null>(null);
+  const schedulerOptionsRef = useRef(latencySchedulerOptions);
+  const boundSchedulerOptionsRef = useRef<LocalLatencySchedulerOptions | null>(null);
   const pendingUpdatesRef = useRef<Record<string, LocalLatencySnapshot>>({});
   const updateFrameRef = useRef<number | null>(null);
 
+  const ensureScheduler = useCallback(async () => {
+    const { createDesktopA2SLatencyScheduler } = await import('@/services/a2s');
+    const options = schedulerOptionsRef.current;
+    if (!latencySchedulerRef.current || boundSchedulerOptionsRef.current !== options) {
+      latencySchedulerRef.current = createDesktopA2SLatencyScheduler(options);
+      boundSchedulerOptionsRef.current = options;
+    }
+    return latencySchedulerRef.current;
+  }, []);
+
   useEffect(() => {
-    latencySchedulerRef.current = createDesktopA2SLatencyScheduler(latencySchedulerOptions);
-  }, [latencySchedulerOptions]);
+    schedulerOptionsRef.current = latencySchedulerOptions;
+    void ensureScheduler();
+  }, [ensureScheduler, latencySchedulerOptions]);
 
   useEffect(() => () => {
     if (updateFrameRef.current !== null) window.cancelAnimationFrame(updateFrameRef.current);
@@ -127,17 +92,22 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     );
     let cancelled = false;
 
-    latencySchedulerRef.current.measure(targets, (key, snapshot) => {
+    const measureOptions = options.mode ? { mode: options.mode } : undefined;
+
+    void ensureScheduler().then(scheduler => {
       if (cancelled) return;
-      queueSnapshotUpdate(key, snapshot);
-    }, options.mode ? { mode: options.mode } : undefined).catch(error => {
-      console.error(`[${logPrefix}] Failed to measure local A2S latency:`, error);
+      return scheduler.measure(targets, (key, snapshot) => {
+        if (cancelled) return;
+        queueSnapshotUpdate(key, snapshot);
+      }, measureOptions);
+    }).catch(error => {
+      console.error("[" + logPrefix + "] Failed to measure local A2S latency:", error);
     });
 
     return () => {
       cancelled = true;
     };
-  }, [logPrefix, queueSnapshotUpdate]);
+  }, [logPrefix, queueSnapshotUpdate, ensureScheduler]);
 
   return {
     latencyByKey,

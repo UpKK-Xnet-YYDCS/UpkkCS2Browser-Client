@@ -14,7 +14,8 @@
  * }
  */
 
-import { XPROJ_USER_AGENT } from '@/api';
+import { XPROJ_USER_AGENT } from '@/api/clientConfig';
+import { forceMandatoryIfBelowMinimum, isNewerVersion } from './updateVersion.ts';
 
 // Current app version - auto-read from version.txt via Vite compile-time define
 // Version is centralized in desktop/version.txt for easy maintenance
@@ -39,27 +40,6 @@ export interface UpdateCheckResult {
   updateInfo?: UpdateInfo;
   currentVersion: string;
   error?: string;
-}
-
-/**
- * Compare two semver version strings
- * Returns: 1 if a > b, -1 if a < b, 0 if equal
- */
-function compareVersions(a: string, b: string): number {
-  const partsA = a.split('.').map(n => parseInt(n, 10) || 0);
-  const partsB = b.split('.').map(n => parseInt(n, 10) || 0);
-  
-  const maxLength = Math.max(partsA.length, partsB.length);
-  
-  for (let i = 0; i < maxLength; i++) {
-    const numA = partsA[i] || 0;
-    const numB = partsB[i] || 0;
-    
-    if (numA > numB) return 1;
-    if (numA < numB) return -1;
-  }
-  
-  return 0;
 }
 
 /**
@@ -112,16 +92,10 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     }
 
     // Compare versions
-    const hasUpdate = compareVersions(updateInfo.version, APP_VERSION) > 0;
+    const hasUpdate = isNewerVersion(updateInfo.version, APP_VERSION);
 
     // Check if current version is below minimum supported version
-    if (updateInfo.min_version) {
-      const isBelowMinimum = compareVersions(APP_VERSION, updateInfo.min_version) < 0;
-      if (isBelowMinimum) {
-        // Force update if below minimum version
-        updateInfo.mandatory = true;
-      }
-    }
+    forceMandatoryIfBelowMinimum(updateInfo, APP_VERSION);
 
     return {
       hasUpdate,

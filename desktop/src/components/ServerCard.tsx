@@ -1,18 +1,16 @@
 import type { ServerStatus } from '@/types';
-import { useFavoriteActions, useIsFavorite } from '@/hooks/useFavoriteAddress';
-import { lazy, Suspense, useState, useEffect, useRef, memo } from 'react';
-import { createPortal } from 'react-dom';
-import * as api from '@/api';
-import { useCloudAuth } from '@/hooks/useCloudAuth';
+import { useState, memo } from 'react';
 import { LocalA2SLatencyBadge } from './LocalA2SLatencyBadge';
 import { useI18n } from '@/hooks/useI18n';
 import { getOfflineDuration, isServerOnline } from '@/utils/serverStatus';
 import { Icons } from './serverCardPresentation';
 import { DEFAULT_MAP_IMAGE, getMapImageUrl } from '@/services/serverCardImages';
-
-const AutoJoinModal = lazy(() => import('./AutoJoinModal').then(module => ({ default: module.AutoJoinModal })));
-const LatencyProbeModal = lazy(() => import('./LatencyProbeModal').then(module => ({ default: module.LatencyProbeModal })));
-const JoinServerConfirmModal = lazy(() => import('./JoinServerConfirmModal').then(module => ({ default: module.JoinServerConfirmModal })));
+import { getPlayerLoadGradient, getPlayerLoadPercent, resolveServerPresentation } from '@/services/serverPresentation';
+import { useMultiServerDropdown } from '@/hooks/useMultiServerDropdown';
+import { useServerJoinActions } from '@/hooks/useServerJoinActions';
+import { useServerCloudFavorite } from '@/hooks/useServerCloudFavorite';
+import { ServerJoinControls } from './server/ServerJoinControls';
+import { ServerCloudFavoritePrompt } from './ServerCloudFavoritePrompt';
 
 interface ServerCardProps {
   server: ServerStatus;
@@ -23,49 +21,23 @@ interface ServerCardProps {
 }
 
 function ServerCardInner({ server, onClick, onSelect, onFavoriteChange, hideCloudFavorite }: ServerCardProps) {
-  const { addFavorite: addLocalFavorite, removeFavorite: removeLocalFavorite } = useFavoriteActions();
   const { t } = useI18n();
   const [imageError, setImageError] = useState(false);
-  const [isCloudFavorite, setIsCloudFavorite] = useState(false);
-  const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
-  const { isLoggedIn } = useCloudAuth();
-  const [showAutoJoinModal, setShowAutoJoinModal] = useState(false);
-  const [showLatencyProbeModal, setShowLatencyProbeModal] = useState(false);
-  const [autoJoinTarget, setAutoJoinTarget] = useState<ServerStatus | null>(null);
-  const [joinTarget, setJoinTarget] = useState<ServerStatus | null>(null);
-  const [showCloudPrompt, setShowCloudPrompt] = useState<'add' | 'remove' | null>(null);
-  const [showMultiServerDropdown, setShowMultiServerDropdown] = useState(false);
-  const multiServerRef = useRef<HTMLDivElement>(null);
-  const multiServerBtnRef = useRef<HTMLButtonElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
-  
-  const alternates = server.alternate_servers;
-  const hasAlternates = alternates && alternates.length > 0;
-
-  // Close multi-server dropdown when clicking outside
-  useEffect(() => {
-    if (!showMultiServerDropdown) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (multiServerRef.current && !multiServerRef.current.contains(e.target as Node) &&
-          multiServerBtnRef.current && !multiServerBtnRef.current.contains(e.target as Node)) {
-        setShowMultiServerDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showMultiServerDropdown]);
-  
-  // Handle both old (PascalCase) and new (snake_case) API formats
-  const serverIp = server.ip || server.Addr || '';
-  const serverPort = server.port || server.Port || '';
-  const serverName = server.name || server.Name || 'Unknown Server';
-  const serverMap = server.map_name || server.Map || 'Unknown';
-  const serverPlayers = server.players ?? server.Players ?? 0;
-  const serverMaxPlayers = server.max_players ?? server.MaxPlayers ?? 0;
-  const serverBots = server.bots ?? server.Bots ?? 0;
-  const serverCountry = server.country_name || server.Country || '';
-  const serverCountryCode = server.country_code || server.CountryCode || '';
-  const serverVac = server.vac ?? server.VAC ?? false;
+  const dropdown = useMultiServerDropdown('up');
+  const join = useServerJoinActions(server, dropdown.close);
+  const {
+    serverIp,
+    serverPort,
+    displayAddress,
+    serverName,
+    serverMap,
+    serverPlayers,
+    serverMaxPlayers,
+    serverBots,
+    serverCountry,
+    serverCountryCode,
+    serverVac,
+  } = resolveServerPresentation(server);
   const serverOnline = isServerOnline(server);
   const offlineDuration = serverOnline ? '' : getOfflineDuration(server, {
     secondsAgo: t.secondsAgo,
@@ -75,124 +47,25 @@ function ServerCardInner({ server, onClick, onSelect, onFavoriteChange, hideClou
     hourUnit: t.hourUnit,
     dayUnit: t.dayUnit,
   });
-  // Always show address:port format - display_address from API may only contain IP/domain without port
-  // Strip any trailing port from display_address to avoid duplication (e.g. "1.1.1.1:29667:29667")
-  const rawBaseAddress = server.display_address || serverIp;
-  const baseAddress = rawBaseAddress.includes(':') ? rawBaseAddress.split(':')[0] : rawBaseAddress;
-  const displayAddress = serverPort ? `${baseAddress}:${serverPort}` : baseAddress;
-  
   // Favorite state: use only local favorites to avoid per-card API calls.
   // Cloud favorite status is checked lazily when user clicks the favorite button.
   // Use baseAddress (from display_address) to keep domain names consistent
-  const favoriteAddr = serverPort ? `${baseAddress}:${serverPort}` : baseAddress;
-  const localFav = useIsFavorite(favoriteAddr);
-  const favorite = localFav || isCloudFavorite;
-  
-  const playerPercent = serverMaxPlayers > 0 
-    ? Math.round((serverPlayers / serverMaxPlayers) * 100) 
-    : 0;
-  
-  const getPlayerGradient = () => {
-    if (playerPercent >= 80) return 'from-green-400 to-emerald-500';
-    if (playerPercent >= 50) return 'from-yellow-400 to-orange-500';
-    if (playerPercent > 0) return 'from-blue-400 to-cyan-500';
-    return 'from-gray-300 to-gray-400';
-  };
-
-  const handleFavoriteClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const addr = favoriteAddr;
-    const currentlyFavorite = favorite;
-    
-    // Always toggle local favorite immediately
-    if (currentlyFavorite) {
-      removeLocalFavorite(addr);
-    } else {
-      addLocalFavorite(addr);
-    }
-    
-    // If logged in, prompt for cloud favorite sync
-    if (isLoggedIn) {
-      setShowCloudPrompt(currentlyFavorite ? 'remove' : 'add');
-    }
-  };
-
-  const handleCloudPromptConfirm = async () => {
-    const action = showCloudPrompt;
-    setShowCloudPrompt(null);
-    setIsFavoriteLoading(true);
-    try {
-      if (action === 'add') {
-        await api.addFavorite(String(serverIp), String(serverPort), serverName);
-        setIsCloudFavorite(true);
-      } else {
-        await api.removeFavorite(String(serverIp), String(serverPort));
-        setIsCloudFavorite(false);
-      }
-      onFavoriteChange?.();
-    } catch (error) {
-      console.error('Failed to update cloud favorite:', error);
-    } finally {
-      setIsFavoriteLoading(false);
-    }
-  };
-
-  const handleConnect = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setJoinTarget(server);
-  };
-
-  const handleAutoJoin = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setAutoJoinTarget(null);
-    setShowAutoJoinModal(true);
-  };
-
-  const handleAutoJoinAlternate = (ip: string, port: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setAutoJoinTarget({ ...server, ip, port: String(port), display_address: ip } as ServerStatus);
-    setShowAutoJoinModal(true);
-    setShowMultiServerDropdown(false);
-  };
-
-  const handleLatencyClick = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation();
-    setShowLatencyProbeModal(true);
-  };
-
-  const handleConnectAlternate = (ip: string, port: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    const alternate = alternates?.find(item => item.ip === ip && String(item.port) === String(port));
-    setJoinTarget({
-      ...server,
-      ip,
-      port: String(port),
-      display_address: ip,
-      players: alternate?.real_players ?? server.players,
-      real_players: alternate?.real_players ?? server.real_players,
-      max_players: alternate?.max_players ?? server.max_players,
-      country_code: alternate?.country_code ?? server.country_code,
-      country_name: alternate?.country_name ?? server.country_name,
-    } as ServerStatus);
-    setShowMultiServerDropdown(false);
-  };
-
-  const handleMultiServerClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!showMultiServerDropdown && multiServerBtnRef.current) {
-      const rect = multiServerBtnRef.current.getBoundingClientRect();
-      const dropdownWidth = 320; // w-80 = 20rem = 320px
-      let left = rect.left;
-      // Prevent right-side overflow
-      if (left + dropdownWidth > window.innerWidth - 8) {
-        left = window.innerWidth - dropdownWidth - 8;
-      }
-      // Prevent left-side overflow
-      if (left < 8) left = 8;
-      setDropdownPos({ top: rect.top - 4, left });
-    }
-    setShowMultiServerDropdown(prev => !prev);
-  };
+  const {
+    isLoggedIn,
+    favorite,
+    isFavoriteLoading,
+    showCloudPrompt,
+    setShowCloudPrompt,
+    handleFavoriteClick,
+    handleCloudPromptConfirm,
+  } = useServerCloudFavorite({
+    favoriteAddr: displayAddress,
+    serverIp,
+    serverPort,
+    serverName,
+    onFavoriteChange,
+  });
+  const playerPercent = getPlayerLoadPercent(serverPlayers, serverMaxPlayers);
 
   const handleImageError = () => {
     setImageError(true);
@@ -273,7 +146,7 @@ function ServerCardInner({ server, onClick, onSelect, onFavoriteChange, hideClou
             status={server.local_latency_status}
             latencyMs={server.local_latency_ms}
             error={server.local_latency_error}
-            onClick={handleLatencyClick}
+            onClick={join.handleLatencyClick}
             labels={{
               latency: t.localA2SLatency,
               queued: t.localA2SQueued,
@@ -329,7 +202,7 @@ function ServerCardInner({ server, onClick, onSelect, onFavoriteChange, hideClou
         <div className="mb-4">
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2 overflow-hidden">
             <div 
-              className={`h-2 rounded-full transition-all duration-500 bg-gradient-to-r ${getPlayerGradient()}`}
+              className={`h-2 rounded-full transition-all duration-500 bg-gradient-to-r ${getPlayerLoadGradient(playerPercent)}`}
               style={{ width: `${playerPercent}%` }}
             />
           </div>
@@ -341,163 +214,29 @@ function ServerCardInner({ server, onClick, onSelect, onFavoriteChange, hideClou
             {serverBots > 0 && `+${serverBots} bot`}
           </span>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleAutoJoin}
-              className="inline-flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 text-white text-xs font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-              title={t.autoJoinButton}
-              aria-label={t.autoJoinButton}
-            >
-              <Icons.AutoJoin />
-            </button>
-            {hasAlternates && (
-              <>
-                <button
-                  ref={multiServerBtnRef}
-                  onClick={handleMultiServerClick}
-                  className="inline-flex items-center gap-1 px-3 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white text-xs font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-                  title={t.multiServerSelect}
-                >
-                  {t.multiServerSelect}({(alternates?.length ?? 0) + 1})
-                </button>
-                {showMultiServerDropdown && dropdownPos && createPortal(
-                  <div
-                    ref={multiServerRef}
-                    className="fixed w-80 bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 z-[9999] overflow-hidden"
-                    style={{ top: dropdownPos.top, left: dropdownPos.left, transform: 'translateY(-100%)' }}
-                  >
-                    <div className="px-3 py-2 bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold">
-                      {t.multiServerTitle}
-                    </div>
-                    <div className="max-h-[200px] overflow-y-auto">
-                    {/* Current/primary server */}
-                    <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <div className="flex-1 min-w-0">
-                        <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{serverIp}:{serverPort}</span>
-                        <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                          {serverCountryCode && <span>{serverCountry || serverCountryCode}</span>}
-                          <span>{serverPlayers}/{serverMaxPlayers}</span>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={(e) => { e.stopPropagation(); setAutoJoinTarget(null); setShowAutoJoinModal(true); setShowMultiServerDropdown(false); }}
-                          className="p-1 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded transition-colors"
-                          title={t.autoJoinButton}
-                        >
-                          <Icons.AutoJoin />
-                        </button>
-                        <button
-                          onClick={(e) => handleConnect(e)}
-                          className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-bold rounded transition-colors"
-                        >
-                          {t.multiServerJoin}
-                        </button>
-                      </div>
-                    </div>
-                    {/* Alternate servers */}
-                    {alternates?.map((alt) => (
-                      <div key={`${alt.ip}:${alt.port}`} className="px-3 py-2 border-b border-gray-100 dark:border-gray-700 last:border-b-0 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                        <div className="flex-1 min-w-0">
-                          <span className="text-xs font-mono text-gray-700 dark:text-gray-300">{alt.ip}:{alt.port}</span>
-                          <div className="flex items-center gap-2 text-[10px] text-gray-500 dark:text-gray-400">
-                            {alt.country_code && <span>{alt.country_name || alt.country_code}</span>}
-                            <span>{alt.real_players}/{alt.max_players}</span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => handleAutoJoinAlternate(alt.ip, alt.port, e)}
-                            className="p-1 bg-amber-100 dark:bg-amber-900/30 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded transition-colors"
-                            title={t.autoJoinButton}
-                          >
-                            <Icons.AutoJoin />
-                          </button>
-                          <button
-                            onClick={(e) => handleConnectAlternate(alt.ip, alt.port, e)}
-                            className="px-2 py-1 bg-blue-500 hover:bg-blue-600 text-white text-[10px] font-bold rounded transition-colors"
-                          >
-                            {t.multiServerJoin}
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-                    </div>
-                  </div>,
-                  document.body
-                )}
-              </>
-            )}
-            <button
-              onClick={handleConnect}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white text-xs font-bold rounded-lg transition-all duration-200 shadow-md hover:shadow-lg"
-            >
-              <Icons.Play />
-              {t.joinServer}
-            </button>
+            <ServerJoinControls
+              server={server}
+              variant="card"
+              serverIp={serverIp}
+              serverPort={serverPort}
+              serverCountry={serverCountry}
+              serverCountryCode={serverCountryCode}
+              serverPlayers={serverPlayers}
+              serverMaxPlayers={serverMaxPlayers}
+              dropdown={dropdown}
+              join={join}
+            />
           </div>
         </div>
       </div>
 
-      {/* Auto-Join Modal */}
-      {showAutoJoinModal && (
-        <Suspense fallback={null}>
-          <AutoJoinModal
-            server={autoJoinTarget || server}
-            onClose={() => { setShowAutoJoinModal(false); setAutoJoinTarget(null); }}
-          />
-        </Suspense>
-      )}
-
-      {showLatencyProbeModal && (
-        <Suspense fallback={null}>
-          <LatencyProbeModal
-            server={server}
-            onClose={() => setShowLatencyProbeModal(false)}
-          />
-        </Suspense>
-      )}
-
-      {joinTarget && (
-        <Suspense fallback={null}>
-          <JoinServerConfirmModal
-            server={joinTarget}
-            latencyMs={joinTarget.local_latency_ms}
-            onClose={() => setJoinTarget(null)}
-          />
-        </Suspense>
-      )}
-
-      {/* Cloud Favorite Prompt */}
       {showCloudPrompt && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={(e) => { e.stopPropagation(); setShowCloudPrompt(null); }}>
-          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl max-w-sm w-full p-6" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-2">
-              {showCloudPrompt === 'add' ? t.addToCloudPrompt : t.removeFromCloudPrompt}
-            </h3>
-            <p className="text-gray-500 dark:text-gray-400 text-sm mb-1">
-              {showCloudPrompt === 'add' ? t.addToCloudPromptDesc : t.removeFromCloudPromptDesc}
-            </p>
-            <p className="text-gray-700 dark:text-gray-300 text-sm font-medium mb-4 truncate">{serverName}</p>
-            <div className="flex gap-3">
-              <button
-                onClick={(e) => { e.stopPropagation(); setShowCloudPrompt(null); }}
-                className="flex-1 px-4 py-2 rounded-xl bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                {t.cancel}
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleCloudPromptConfirm(); }}
-                className={`flex-1 px-4 py-2 rounded-xl text-white font-medium transition-colors ${
-                  showCloudPrompt === 'add' 
-                    ? 'bg-blue-500 hover:bg-blue-600' 
-                    : 'bg-red-500 hover:bg-red-600'
-                }`}
-              >
-                {showCloudPrompt === 'add' ? t.addToFavorites : t.removeFavorite}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ServerCloudFavoritePrompt
+          action={showCloudPrompt}
+          serverName={serverName}
+          onCancel={() => setShowCloudPrompt(null)}
+          onConfirm={handleCloudPromptConfirm}
+        />
       )}
     </div>
   );

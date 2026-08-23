@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { Bot } from 'lucide-react';
 import { useI18n } from '@/hooks/useI18n';
 import type { Translations } from '@/store/i18n';
 import type { TabId } from '@/hooks/useTabNavigation';
@@ -50,13 +49,24 @@ const MonitorIcon = () => (
   </svg>
 );
 
+const BotIcon = () => (
+  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8V4H8" />
+    <rect width="16" height="12" x="4" y="8" rx="2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 14h2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 14h2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13v2" />
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 13v2" />
+  </svg>
+);
+
 const tabs: Tab[] = [
   { id: 'servers', labelKey: 'tabServers', icon: <ServerIcon /> },
   { id: 'favorites', labelKey: 'tabFavorites', icon: <FavoritesIcon /> },
   { id: 'monitor', labelKey: 'tabMonitor', icon: <MonitorIcon /> },
   { id: 'forum', labelKey: 'tabForum', icon: <ForumIcon /> },
   { id: 'checkin', labelKey: 'tabCheckIn', icon: <CheckInIcon /> },
-  { id: 'ai', labelKey: 'tabAi', icon: <Bot className="w-5 h-5" aria-hidden="true" /> },
+  { id: 'ai', labelKey: 'tabAi', icon: <BotIcon /> },
   { id: 'settings', labelKey: 'tabSettings', icon: <SettingsIcon /> },
 ];
 

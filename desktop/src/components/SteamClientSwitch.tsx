@@ -1,6 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { Translations } from '../store/i18n';
-import { getSteamClient, setSteamClient, type SteamClient } from '@/services/steamClient';
+import {
+  STEAM_CLIENT_NOTICE_MS,
+  dispatchSteamClientStorageEvent,
+  getSteamClient,
+  readSteamClientFromStorageEvent,
+  setSteamClient,
+  toggleSteamClient,
+  type SteamClient,
+} from '@/services/steamClient';
+import { SteamClientConfirmDialog } from '@/components/steam/SteamClientConfirmDialog';
+import { SteamClientNotice } from '@/components/steam/SteamClientNotice';
 
 interface SteamClientSwitchProps {
   t: Translations;
@@ -25,18 +35,15 @@ const SteamClientSwitch: React.FC<SteamClientSwitchProps> = ({ t }) => {
   // Listen for external changes to steamClient (e.g. from Settings)
   useEffect(() => {
     const handleStorage = (e: StorageEvent) => {
-      if (e.key === 'steamClient') {
-        const val = e.newValue as SteamClient;
-        if (val === 'steam' || val === 'steamchina') setClient(val);
-      }
+      const next = readSteamClientFromStorageEvent(e.key, e.newValue);
+      if (next) setClient(next);
     };
     window.addEventListener('storage', handleStorage);
     return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const handleToggle = () => {
-    const newClient: SteamClient = client === 'steam' ? 'steamchina' : 'steam';
-    setPendingClient(newClient);
+    setPendingClient(toggleSteamClient(client));
     setShowConfirmDialog(true);
   };
 
@@ -46,7 +53,7 @@ const SteamClientSwitch: React.FC<SteamClientSwitchProps> = ({ t }) => {
       setSteamClient(pendingClient);
       
       // Dispatch storage event so Settings stays in sync
-      window.dispatchEvent(new StorageEvent('storage', { key: 'steamClient', newValue: pendingClient }));
+      dispatchSteamClientStorageEvent(pendingClient);
       
       setNotification({ show: true, type: pendingClient });
       
@@ -56,7 +63,7 @@ const SteamClientSwitch: React.FC<SteamClientSwitchProps> = ({ t }) => {
       
       notificationTimeoutRef.current = setTimeout(() => {
         setNotification(null);
-      }, 3000);
+      }, STEAM_CLIENT_NOTICE_MS);
     }
     setShowConfirmDialog(false);
     setPendingClient(null);
@@ -69,121 +76,28 @@ const SteamClientSwitch: React.FC<SteamClientSwitchProps> = ({ t }) => {
 
   return (
     <>
-      {/* Confirm dialog */}
-      {showConfirmDialog && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="steam-switch-dialog-title"
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 10001,
-          }}
-          onClick={cancelSwitch}
-        >
-          <div
-            style={{
-              backgroundColor: 'white',
-              borderRadius: '12px',
-              padding: '24px',
-              maxWidth: '400px',
-              width: '90%',
-              boxShadow: '0 4px 20px rgba(0, 0, 0, 0.3)',
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 id="steam-switch-dialog-title" style={{ margin: '0 0 16px 0', fontSize: '18px', fontWeight: 'bold', color: '#333' }}>
-              {t.steamSwitchConfirmTitle}
-            </h3>
-            <p style={{ margin: '0 0 20px 0', color: '#666', lineHeight: '1.5' }}>
-              {pendingClient === 'steamchina' ? (
-                <>
-                  {t.steamSwitchToChina}
-                  <br />
-                  <span style={{ fontSize: '13px', color: '#999' }}>
-                    {t.steamSwitchToChinaWarning}
-                  </span>
-                </>
-              ) : (
-                t.steamSwitchToInternational
-              )}
-            </p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
-              <button
-                onClick={cancelSwitch}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: '#f5f5f5',
-                  color: '#666',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.backgroundColor = '#e0e0e0'; }}
-                onMouseOut={(e) => { e.currentTarget.style.backgroundColor = '#f5f5f5'; }}
-                onFocus={(e) => { e.currentTarget.style.outline = '2px solid #1a73e8'; }}
-                onBlur={(e) => { e.currentTarget.style.outline = 'none'; }}
-              >
-                {t.steamCancel}
-              </button>
-              <button
-                onClick={confirmSwitch}
-                style={{
-                  padding: '10px 20px',
-                  backgroundColor: pendingClient === 'steamchina' ? '#e65100' : '#1a73e8',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 500,
-                }}
-                onMouseOver={(e) => { e.currentTarget.style.opacity = '0.9'; }}
-                onMouseOut={(e) => { e.currentTarget.style.opacity = '1'; }}
-                onFocus={(e) => { e.currentTarget.style.outline = '2px solid white'; e.currentTarget.style.outlineOffset = '2px'; }}
-                onBlur={(e) => { e.currentTarget.style.outline = 'none'; }}
-              >
-                {t.steamConfirm}
-              </button>
-            </div>
-          </div>
-        </div>
+      {showConfirmDialog && pendingClient && (
+        <SteamClientConfirmDialog
+          pendingClient={pendingClient}
+          title={t.steamSwitchConfirmTitle}
+          toChina={t.steamSwitchToChina}
+          toChinaWarning={t.steamSwitchToChinaWarning}
+          toInternational={t.steamSwitchToInternational}
+          cancelLabel={t.steamCancel}
+          confirmLabel={t.steamConfirm}
+          onCancel={cancelSwitch}
+          onConfirm={confirmSwitch}
+        />
       )}
 
-      {/* Notification banner */}
       {notification?.show && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            padding: '12px 20px',
-            backgroundColor: notification.type === 'steam' ? '#4caf50' : '#ff9800',
-            color: 'white',
-            textAlign: 'center',
-            zIndex: 10000,
-            fontWeight: 'bold',
-            boxShadow: '0 2px 10px rgba(0,0,0,0.3)',
-          }}
-        >
-          {notification.type === 'steam'
-            ? t.steamSwitchedToInternational
-            : t.steamSwitchedToChina}
-        </div>
+        <SteamClientNotice
+          type={notification.type}
+          internationalLabel={t.steamSwitchedToInternational}
+          chinaLabel={t.steamSwitchedToChina}
+        />
       )}
       
-      {/* Toggle button */}
       <button
         onClick={handleToggle}
         title={client === 'steam' ? t.steamHeaderTooltipInternational : t.steamHeaderTooltipChina}

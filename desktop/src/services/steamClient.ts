@@ -89,3 +89,20 @@ function readSteamClient(): SteamClient {
   const saved = window.localStorage.getItem('steamClient') as SteamClient | null;
   return saved === 'steamchina' ? 'steamchina' : 'steam';
 }
+
+export const STEAM_CLIENT_STORAGE_KEY = 'steamClient';
+
+export function readSteamClientFromStorageEvent(key: string | null, value: string | null): SteamClient | null {
+  if (key !== STEAM_CLIENT_STORAGE_KEY) return null;
+  return value === 'steam' || value === 'steamchina' ? value : null;
+}
+
+export const STEAM_CLIENT_NOTICE_MS = 3000;
+
+export function toggleSteamClient(client: SteamClient): SteamClient {
+  return client === 'steam' ? 'steamchina' : 'steam';
+}
+
+export function dispatchSteamClientStorageEvent(client: SteamClient): void {
+  window.dispatchEvent(new StorageEvent('storage', { key: STEAM_CLIENT_STORAGE_KEY, newValue: client }));
+}

@@ -4,12 +4,11 @@ import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 import fs from 'fs'
 
-// Read version from version.txt for consistent versioning across the project
-let version = '1.0.0'
-try {
-  version = fs.readFileSync(path.resolve(import.meta.dirname, 'version.txt'), 'utf-8').trim() || '1.0.0'
-} catch {
-  console.warn('Warning: Could not read version.txt, falling back to default version 1.0.0')
+// Read the canonical project version and fail before producing inconsistent artifacts.
+const versionPath = path.resolve(import.meta.dirname, 'version.txt')
+const version = fs.readFileSync(versionPath, 'utf-8').trim()
+if (!/^\d+\.\d+\.\d+(?:[+-][0-9A-Za-z.-]+)?$/.test(version)) {
+  throw new Error(`Invalid desktop version in ${versionPath}: ${JSON.stringify(version)}`)
 }
 
 // User-Agent configuration for HTTP POST requests (can be overridden via env)

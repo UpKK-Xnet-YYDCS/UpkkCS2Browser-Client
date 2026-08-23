@@ -1,9 +1,10 @@
 import type { ServerStatus } from '@/types';
+import type { LatencyFilterValue } from '@/types/ui';
 import { isServerOffline } from '../utils/serverStatus.ts';
 import type { LocalLatencySnapshot, LocalLatencyTarget } from './a2sLatency';
 
 export type LatencyGrade = 'green' | 'yellow' | 'amber' | 'red' | 'unknown';
-export type LatencyFilter = 'all' | 'le80' | 'le150' | 'le250' | 'le300' | 'le350' | 'ge350' | 'unknown';
+export type LatencyFilter = LatencyFilterValue;
 
 interface LatencyLabelInput {
   status?: ServerStatus['local_latency_status'];
@@ -59,6 +60,29 @@ export function getServerLatencyTarget(server: ServerStatus): LocalLatencyTarget
     port: serverPort,
     priority: isServerOffline(server) ? 1 : 0,
   };
+}
+
+export function applyLatencySnapshotToServer(
+  server: ServerStatus,
+  latencyByKey: Readonly<Record<string, LocalLatencySnapshot | undefined>>,
+): ServerStatus {
+  const target = getServerLatencyTarget(server);
+  return target ? applyLatencySnapshot(server, latencyByKey[target.key]) : server;
+}
+
+export function applyLatencySnapshots(
+  servers: readonly ServerStatus[],
+  latencyByKey: Readonly<Record<string, LocalLatencySnapshot | undefined>>,
+): ServerStatus[] {
+  return servers.map((server) => applyLatencySnapshotToServer(server, latencyByKey));
+}
+
+export function filterServersByLatency(
+  servers: readonly ServerStatus[],
+  latencyByKey: Readonly<Record<string, LocalLatencySnapshot | undefined>>,
+  filter: LatencyFilter,
+): ServerStatus[] {
+  return applyLatencySnapshots(servers, latencyByKey).filter((server) => matchesLatencyFilter(server, filter));
 }
 
 export function applyLatencySnapshot(server: ServerStatus, snapshot?: LocalLatencySnapshot): ServerStatus {

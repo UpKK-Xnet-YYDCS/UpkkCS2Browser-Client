@@ -9,6 +9,7 @@ const assetsDir = path.join(distDir, 'assets');
 const budget = JSON.parse(
   await readFile(path.join(desktopDir, 'performance-budget.json'), 'utf8'),
 );
+const baselinePath = path.join(desktopDir, 'performance-baseline.json');
 
 async function collectFiles(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -37,6 +38,31 @@ function localAssetPath(reference) {
 
 function formatBytes(bytes) {
   return `${bytes} B (${(bytes / 1024).toFixed(1)} KiB)`;
+}
+
+function logicalAssetName(file) {
+  return path.basename(file).replace(/-[A-Za-z0-9_-]{8}\.(js|css)$/, '.$1');
+}
+
+function printAssetTable(measured, baselineAssets = {}) {
+  console.log('Asset breakdown (gzip):');
+  for (const asset of [...measured].sort((left, right) => right.gzipBytes - left.gzipBytes)) {
+    const name = logicalAssetName(asset.file);
+    const baseline = baselineAssets[name];
+    const delta = baseline ? asset.gzipBytes - baseline.gzipBytes : null;
+    const deltaLabel = delta === null ? 'new' : `${delta >= 0 ? '+' : ''}${delta} B`;
+    console.log(
+      `- ${name}: raw ${formatBytes(asset.rawBytes)}, gzip ${formatBytes(asset.gzipBytes)}, ${deltaLabel}`,
+    );
+  }
+}
+
+function emitWarning(message) {
+  if (process.env.GITHUB_ACTIONS === 'true') {
+    console.warn(`::warning title=Desktop bundle growth::${message}`);
+  } else {
+    console.warn(`Performance warning: ${message}`);
+  }
 }
 
 async function measureFiles(files) {
@@ -83,6 +109,21 @@ try {
   );
   const cssGzipBytes = css.reduce((total, asset) => total + asset.gzipBytes, 0);
 
+  if (process.argv.includes('--print-baseline')) {
+    const assets = Object.fromEntries(
+      allAssets.measured
+        .map(asset => [logicalAssetName(asset.file), {
+          rawBytes: asset.rawBytes,
+          gzipBytes: asset.gzipBytes,
+        }])
+        .sort(([left], [right]) => left.localeCompare(right)),
+    );
+    console.log(JSON.stringify({ allAssetsGzipBytes: allAssets.gzipBytes, assets }, null, 2));
+    process.exit(0);
+  }
+
+  const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
+
   console.log(`Initial assets: raw ${formatBytes(initial.rawBytes)}, gzip ${formatBytes(initial.gzipBytes)}`);
   console.log(`All assets: raw ${formatBytes(allAssets.rawBytes)}, gzip ${formatBytes(allAssets.gzipBytes)}`);
   console.log(
@@ -90,6 +131,27 @@ try {
     `${largestJavaScript ? ` (${path.basename(largestJavaScript.file)})` : ''}`,
   );
   console.log(`Total CSS gzip: ${formatBytes(cssGzipBytes)}`);
+  printAssetTable(allAssets.measured, baseline.assets);
+
+  const totalGrowth = allAssets.gzipBytes - baseline.allAssetsGzipBytes;
+  if (totalGrowth > baseline.warningThresholds.totalGzipGrowthBytes) {
+    emitWarning(
+      `all-assets gzip grew by ${totalGrowth} B; warning threshold is ` +
+      `${baseline.warningThresholds.totalGzipGrowthBytes} B`,
+    );
+  }
+  for (const asset of allAssets.measured) {
+    const name = logicalAssetName(asset.file);
+    const previous = baseline.assets[name];
+    if (!previous) continue;
+    const growth = asset.gzipBytes - previous.gzipBytes;
+    if (growth > baseline.warningThresholds.chunkGzipGrowthBytes) {
+      emitWarning(
+        `${name} gzip grew by ${growth} B; warning threshold is ` +
+        `${baseline.warningThresholds.chunkGzipGrowthBytes} B`,
+      );
+    }
+  }
 
   const violations = [];
   if (initial.rawBytes > budget.initialAssets.rawBytes) {

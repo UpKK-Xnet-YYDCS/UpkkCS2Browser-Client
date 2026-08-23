@@ -1,119 +1,21 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState } from 'react';
 import { useI18n } from '@/hooks/useI18n';
-import { logInfo, logWarn } from '@/store/log';
-import { UpdateContext, type UpdateContextType } from '@/contexts/updateContext';
-import { 
-  checkForUpdates, 
-  openDownloadUrl, 
-  setDismissedVersion, 
-  isUpdateDismissed,
+import {
+  openDownloadUrl,
+  setDismissedVersion,
   type UpdateInfo,
-  type UpdateCheckResult,
   APP_VERSION
 } from '@/services/update';
+import { UPDATE_DOWNLOAD_FEEDBACK_MS, canDismissUpdate } from '@/services/updateModalPolicy';
+import { DownloadIcon, SparkleIcon, UpdateIcon, XIcon } from './updateIcons';
 
-// Icons
-const UpdateIcon = () => (
-  <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-  </svg>
-);
-
-const XIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-  </svg>
-);
-
-const DownloadIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-  </svg>
-);
-
-const SparkleIcon = () => (
-  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-  </svg>
-);
-
-// Provider wrapper for the update functionality
-export function UpdateProvider({ children }: { children: ReactNode }) {
-  const [isChecking, setIsChecking] = useState(false);
-  const [isOpen, setIsOpen] = useState(false);
-  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  
-  // Manual check function that can be called from Settings
-  const triggerManualCheck = useCallback(async (): Promise<UpdateCheckResult> => {
-    setIsChecking(true);
-    try {
-      const result = await checkForUpdates();
-      
-      if (result.hasUpdate && result.updateInfo) {
-        setUpdateInfo(result.updateInfo);
-        setIsOpen(true);
-      }
-      
-      return result;
-    } finally {
-      setIsChecking(false);
-    }
-  }, []);
-
-  // Auto-check on mount (non-blocking - runs in background)
-  useEffect(() => {
-    const performAutoCheck = async () => {
-      try {
-        const result = await checkForUpdates();
-        
-        if (result.hasUpdate && result.updateInfo) {
-          // Check if user has dismissed this version (unless mandatory)
-          if (!result.updateInfo.mandatory && isUpdateDismissed(result.updateInfo.version)) {
-            logInfo('Update', `User has dismissed version ${result.updateInfo.version}`);
-            return;
-          }
-          
-          setUpdateInfo(result.updateInfo);
-          setIsOpen(true);
-        } else if (result.error) {
-          // Silent fail for auto update check - just log it
-          logWarn('Update', `Auto check failed: ${result.error}`);
-        }
-      } catch (err) {
-        console.error('[Update] Unexpected error during auto check:', err);
-      }
-    };
-
-    // Small delay to let the app fully load first - non-blocking
-    const timer = setTimeout(performAutoCheck, 1500);
-    return () => clearTimeout(timer);
-  }, []);
-
-  const contextValue: UpdateContextType = {
-    triggerManualCheck,
-    isChecking,
-  };
-
-  return (
-    <UpdateContext.Provider value={contextValue}>
-      {children}
-      <UpdateModalInner 
-        isOpen={isOpen} 
-        setIsOpen={setIsOpen} 
-        updateInfo={updateInfo} 
-      />
-    </UpdateContext.Provider>
-  );
-}
-
-// Inner modal component
-interface UpdateModalInnerProps {
+interface UpdateModalViewProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
   updateInfo: UpdateInfo | null;
 }
 
-function UpdateModalInner({ isOpen, setIsOpen, updateInfo }: UpdateModalInnerProps) {
+export function UpdateModalView({ isOpen, setIsOpen, updateInfo }: UpdateModalViewProps) {
   const { t } = useI18n();
   const [error, setError] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -132,10 +34,10 @@ function UpdateModalInner({ isOpen, setIsOpen, updateInfo }: UpdateModalInnerPro
       // Don't close modal immediately - let user see the download started
       setTimeout(() => {
         setIsDownloading(false);
-        if (!updateInfo.mandatory) {
+        if (canDismissUpdate(updateInfo.mandatory)) {
           setIsOpen(false);
         }
-      }, 1000);
+      }, UPDATE_DOWNLOAD_FEEDBACK_MS);
     } catch {
       setError(t.updateDownloadFailed);
       setIsDownloading(false);
@@ -143,14 +45,14 @@ function UpdateModalInner({ isOpen, setIsOpen, updateInfo }: UpdateModalInnerPro
   };
 
   const handleDismiss = () => {
-    if (updateInfo && !updateInfo.mandatory) {
+    if (updateInfo && canDismissUpdate(updateInfo.mandatory)) {
       setDismissedVersion(updateInfo.version);
       setIsOpen(false);
     }
   };
 
   const handleClose = () => {
-    if (updateInfo?.mandatory) {
+    if (!canDismissUpdate(updateInfo?.mandatory)) {
       // For mandatory updates, don't allow closing
       return;
     }
@@ -162,7 +64,7 @@ function UpdateModalInner({ isOpen, setIsOpen, updateInfo }: UpdateModalInnerPro
     return null;
   }
 
-  const isMandatory = updateInfo.mandatory === true;
+  const isMandatory = !canDismissUpdate(updateInfo.mandatory);
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm">
@@ -276,10 +178,3 @@ function UpdateModalInner({ isOpen, setIsOpen, updateInfo }: UpdateModalInnerPro
   );
 }
 
-// Backward-compatible UpdateModal component for existing usage
-// Uses the UpdateProvider internally
-export function UpdateModal() {
-  // This component is now just a placeholder since UpdateProvider handles everything
-  // The actual modal is rendered by UpdateProvider
-  return null;
-}

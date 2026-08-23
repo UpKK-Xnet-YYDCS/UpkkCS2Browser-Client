@@ -1,4 +1,4 @@
-export type ViewMode = 'card' | 'list';
+import type { ViewMode } from '@/types/ui';
 
 interface ViewModeSwitchProps {
   viewMode: ViewMode;

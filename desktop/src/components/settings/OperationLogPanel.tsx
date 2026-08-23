@@ -1,6 +1,6 @@
 import type { Ref } from 'react';
 import type { Translations } from '@/store/i18n';
-import { clearLogs, type LogEntry } from '@/store/log';
+import { clearLogs, type LogEntry } from '@/services/operationLog';
 import { LogIcon, TrashIcon } from './SettingsIcons';
 
 const formatLogTime = (timestamp: number) =>
@@ -84,4 +84,3 @@ export function OperationLogPanel({ entries, endRef, t }: OperationLogPanelProps
     </div>
   );
 }
-

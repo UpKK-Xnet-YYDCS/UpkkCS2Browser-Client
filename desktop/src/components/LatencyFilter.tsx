@@ -1,4 +1,5 @@
-import { LATENCY_FILTERS, getLatencyFilterLabel, type LatencyFilter as LatencyFilterValue } from '@/services/latencyDisplay';
+import { LATENCY_FILTERS, getLatencyFilterLabel } from '@/services/latencyDisplay';
+import type { LatencyFilterValue } from '@/types/ui';
 
 interface LatencyFilterProps {
   value: LatencyFilterValue;
@@ -49,5 +50,3 @@ export function LatencyFilter({ value, onChange, label, allLabel, unknownLabel }
     </div>
   );
 }
-
-export type { LatencyFilterValue };

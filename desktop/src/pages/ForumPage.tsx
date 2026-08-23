@@ -1,12 +1,6 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { useUserStore } from '@/hooks/useUserStore';
-import { useI18n } from '@/hooks/useI18n';
-import { logInfo, logDebug } from '@/store/log';
-import { invokeDesktop, openExternalUrl } from '@/services/desktopRuntime';
+import { useForumPage } from '@/hooks/useForumPage';
+import { FORUM_URL } from '@/services/forumConstants';
 
-const FORUM_URL = 'https://bbs.upkk.com';
-
-// Icons
 const RefreshIcon = () => (
   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
@@ -25,106 +19,18 @@ const ForumIcon = () => (
   </svg>
 );
 
-type ForumStatus = 'loading' | 'opened' | 'error' | 'waiting-login';
-
 export function ForumPage() {
-  const [status, setStatus] = useState<ForumStatus>('loading');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const openAttempted = useRef(false);
-  const { user, isLoggedIn, openLoginModal } = useUserStore();
-  const { t } = useI18n();
+  const {
+    status,
+    errorMessage,
+    user,
+    isLoggedIn,
+    openLoginModal,
+    t,
+    handleRetry,
+    handleOpenExternal,
+  } = useForumPage();
 
-  const openForumWindow = useCallback(async () => {
-    setStatus('loading');
-    setErrorMessage('');
-    
-    logInfo('Forum', 'Attempting to open forum...');
-    
-    try {
-      // Try to import Tauri API - this will fail in non-Tauri environments
-      logDebug('Forum', 'Importing Tauri API...');
-      if (isLoggedIn && user) {
-        // Use POST login with uid and auth
-        logInfo('Forum', `Opening forum with POST login for user: ${user.username}`);
-        await invokeDesktop('open_forum_with_login', {
-          uid: String(user.uid), 
-          auth: user.user_auth 
-        });
-      } else {
-        // Open forum without login
-        logInfo('Forum', 'Opening forum without login');
-        await invokeDesktop('open_forum_window');
-      }
-      
-      logInfo('Forum', 'Forum window opened successfully');
-      setStatus('opened');
-    } catch (error) {
-      console.error('[Forum] Failed to open forum window:', error);
-      const errMsg = error instanceof Error ? error.message : String(error);
-      
-      // Check if it's a module import error (not in Tauri)
-      if (errMsg.includes('module') || errMsg.includes('import') || errMsg.includes('Cannot find')) {
-        setErrorMessage(t.tauriNotDetected);
-      } else {
-        setErrorMessage(`${t.openForumFailedMsg}: ${errMsg}`);
-      }
-      setStatus('error');
-    }
-  }, [isLoggedIn, user, t]);
-
-  // Auto-open forum on mount, but show login modal if not logged in
-  useEffect(() => {
-    if (!openAttempted.current) {
-      openAttempted.current = true;
-      const timer = window.setTimeout(() => {
-        // If not logged in, show login modal and wait for login
-        if (!isLoggedIn) {
-          openLoginModal();
-          setStatus('waiting-login');
-        } else {
-          void openForumWindow();
-        }
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [openForumWindow, isLoggedIn, openLoginModal]);
-
-  // Open forum after user logs in (only if we were waiting for login)
-  useEffect(() => {
-    if (isLoggedIn && status === 'waiting-login') {
-      const timer = window.setTimeout(() => {
-        void openForumWindow();
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-    return undefined;
-  }, [isLoggedIn, status, openForumWindow]);
-
-  const handleRetry = () => {
-    // If not logged in, show login modal first
-    if (!isLoggedIn) {
-      openLoginModal();
-      return;
-    }
-    openAttempted.current = false;
-    openForumWindow();
-  };
-
-  const handleOpenExternal = async () => {
-    try {
-      // Use Tauri shell:open to open in system browser
-      // Note: External browser can't do POST, so we just open the base forum URL
-      await openExternalUrl(FORUM_URL);
-      logInfo('Forum', `Opened in system browser via Tauri shell: ${FORUM_URL}`);
-    } catch (error) {
-      console.error('[Forum] Failed to open via Tauri shell, falling back:', error);
-      // Fallback to window.location for Tauri environment
-      window.location.href = FORUM_URL;
-    }
-  };
-
-  // Waiting for login state
   if (status === 'waiting-login') {
     return (
       <div className="h-full flex-1 flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900">
@@ -147,7 +53,6 @@ export function ForumPage() {
     );
   }
 
-  // Loading state
   if (status === 'loading') {
     return (
       <div className="h-full flex-1 flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900">
@@ -160,7 +65,6 @@ export function ForumPage() {
     );
   }
 
-  // Error state
   if (status === 'error') {
     return (
       <div className="h-full flex-1 flex items-center justify-center bg-gradient-to-br from-red-50 via-pink-50 to-purple-50 dark:from-gray-900 dark:via-red-900/20 dark:to-gray-900 p-8">
@@ -202,7 +106,6 @@ export function ForumPage() {
     );
   }
 
-  // Success state
   return (
     <div className="h-full flex-1 flex items-center justify-center bg-gradient-to-br from-purple-50 via-pink-50 to-blue-50 dark:from-gray-900 dark:via-purple-900/20 dark:to-gray-900 p-8">
       <div className="max-w-md w-full text-center">
@@ -217,8 +120,7 @@ export function ForumPage() {
             </svg>
             <span className="font-medium">{t.usingWebView2}</span>
           </div>
-          
-          {/* Login Status */}
+
           {isLoggedIn && user ? (
             <div className="mb-4 p-3 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
               <div className="flex items-center justify-center gap-2">
@@ -248,7 +150,7 @@ export function ForumPage() {
               </button>
             </div>
           )}
-          
+
           <p className="text-gray-500 dark:text-gray-400 mb-2">
             {t.forumRunsInWindow}
           </p>
@@ -285,3 +187,4 @@ export function ForumPage() {
     </div>
   );
 }
+

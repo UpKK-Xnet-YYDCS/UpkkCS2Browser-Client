@@ -1,13 +1,25 @@
 import { useState, useEffect, useRef, useCallback, type MouseEvent as ReactMouseEvent } from 'react';
-import { getServerPlayerHistory, type PlayerHistoryStat } from '@/api';
+import { getServerPlayerHistory, type PlayerHistoryStat } from '@/api/history';
 import { useI18n } from '@/hooks/useI18n';
 import { useCanvasChart } from '@/hooks/useCanvasChart';
+import { pickCanvasChartHover } from '@/services/canvasChartHover';
+import {
+  PLAYER_HISTORY_CHART_PADDING,
+  canvasChartPlotRect,
+  drawCanvasAreaLine,
+  drawCanvasGridAndYAxis,
+  drawCanvasXAxisLabels,
+} from '@/services/canvasLineChart';
+import {
+  formatPlayerHistoryXAxisLabel,
+  playerHistoryHoverCounts,
+  playerHistorySeries,
+  type PlayerHistoryPeriod,
+} from '@/services/playerHistorySeries';
 
 interface PlayerHistoryChartProps {
   serverId: string;
 }
-
-type Period = '6h' | '12h' | '24h' | '7d' | '30d';
 
 // ChartIcon
 const ChartIcon = () => (
@@ -21,12 +33,12 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
   const [stats, setStats] = useState<PlayerHistoryStat[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [period, setPeriod] = useState<Period>('24h');
+  const [period, setPeriod] = useState<PlayerHistoryPeriod>('24h');
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [hover, setHover] = useState<{ point: PlayerHistoryStat; left: number; tooltipLeft: number } | null>(null);
   
   // Get periods with translations
-  const PERIODS: { value: Period; label: string }[] = [
+  const PERIODS: { value: PlayerHistoryPeriod; label: string }[] = [
     { value: '6h', label: t.period6h },
     { value: '12h', label: t.period12h },
     { value: '24h', label: t.period24h },
@@ -58,112 +70,47 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
   const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {
     if (stats.length === 0) return;
 
-    const padding = { top: 20, right: 20, bottom: 30, left: 40 };
-    const chartWidth = width - padding.left - padding.right;
-    const chartHeight = height - padding.top - padding.bottom;
+    const plot = canvasChartPlotRect(width, height, PLAYER_HISTORY_CHART_PADDING);
+    const { realPlayers, bots, maxValue } = playerHistorySeries(stats);
 
-    // Get data
-    const realPlayers = stats.map(s => s.real_players ?? s.players ?? 0);
-    const bots = stats.map(s => s.bots ?? 0);
-    const maxValue = Math.max(...realPlayers, ...bots, 1);
-
-    // Draw grid lines
-    ctx.strokeStyle = '#e5e7eb';
-    ctx.lineWidth = 1;
-    const gridLines = 5;
-    for (let i = 0; i <= gridLines; i++) {
-      const y = padding.top + (chartHeight / gridLines) * i;
-      ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(width - padding.right, y);
-      ctx.stroke();
-
-      // Y-axis labels
-      const value = Math.round(maxValue - (maxValue / gridLines) * i);
-      ctx.fillStyle = '#6b7280';
-      ctx.font = '11px sans-serif';
-      ctx.textAlign = 'right';
-      ctx.fillText(String(value), padding.left - 5, y + 4);
-    }
-
-    // Draw X-axis labels (show a few time labels)
-    const labelCount = Math.min(6, stats.length);
-    const labelStep = Math.floor(stats.length / labelCount) || 1;
-    ctx.fillStyle = '#6b7280';
-    ctx.font = '10px sans-serif';
-    ctx.textAlign = 'center';
-    for (let i = 0; i < stats.length; i += labelStep) {
-      const x = padding.left + (chartWidth / (stats.length - 1 || 1)) * i;
-      const date = new Date(stats[i].timestamp);
-      const label = period === '7d' || period === '30d'
-        ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-        : date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-      ctx.fillText(label, x, height - 8);
-    }
-
-    // Draw line helper
-    const drawLine = (data: number[], color: string, fillColor: string) => {
-      if (data.length < 2) return;
-
-      ctx.beginPath();
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 2;
-      ctx.lineJoin = 'round';
-      ctx.lineCap = 'round';
-
-      const xStep = chartWidth / (data.length - 1 || 1);
-      
-      for (let i = 0; i < data.length; i++) {
-        const x = padding.left + xStep * i;
-        const y = padding.top + chartHeight - (data[i] / maxValue) * chartHeight;
-        if (i === 0) {
-          ctx.moveTo(x, y);
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-      ctx.stroke();
-
-      // Fill area under the line
-      ctx.lineTo(padding.left + chartWidth, padding.top + chartHeight);
-      ctx.lineTo(padding.left, padding.top + chartHeight);
-      ctx.closePath();
-      ctx.fillStyle = fillColor;
-      ctx.fill();
-    };
-
-    // Draw bots first (behind)
+    drawCanvasGridAndYAxis(ctx, plot, maxValue, {
+      gridColor: '#e5e7eb',
+      labelColor: '#6b7280',
+      font: '11px sans-serif',
+      formatLabel: (value) => String(value),
+    });
+    drawCanvasXAxisLabels(ctx, height, plot, stats.length, {
+      color: '#6b7280',
+      font: '10px sans-serif',
+      getLabel: (index) => formatPlayerHistoryXAxisLabel(stats[index].timestamp, period),
+    });
     if (bots.some(b => b > 0)) {
-      drawLine(bots, '#f59e0b', 'rgba(245, 158, 11, 0.15)');
+      drawCanvasAreaLine(ctx, plot, bots, maxValue, '#f59e0b', 'rgba(245, 158, 11, 0.15)');
     }
-    // Draw real players
-    drawLine(realPlayers, '#3b82f6', 'rgba(59, 130, 246, 0.2)');
+    drawCanvasAreaLine(ctx, plot, realPlayers, maxValue, '#3b82f6', 'rgba(59, 130, 246, 0.2)');
   }, [stats, period]);
 
   // Use the canvas chart hook for reliable rendering with ResizeObserver + retry
   useCanvasChart(canvasRef, drawChart);
 
   const handleMouseMove = (event: ReactMouseEvent<HTMLCanvasElement>) => {
-    if (stats.length === 0) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const padding = { left: 40, right: 20 };
-    const chartWidth = rect.width - padding.left - padding.right;
-    const relativeX = Math.min(Math.max(event.clientX - rect.left, padding.left), rect.width - padding.right);
-    const index = stats.length <= 1
-      ? 0
-      : Math.min(stats.length - 1, Math.max(0, Math.round(((relativeX - padding.left) / Math.max(chartWidth, 1)) * (stats.length - 1))));
-    const left = stats.length <= 1
-      ? padding.left
-      : padding.left + (chartWidth / (stats.length - 1)) * index;
+    const nextHover = pickCanvasChartHover(
+      event.currentTarget.getBoundingClientRect(),
+      event.clientX,
+      stats.length,
+      { left: PLAYER_HISTORY_CHART_PADDING.left, right: PLAYER_HISTORY_CHART_PADDING.right, tooltipHalf: 104 },
+    );
+    if (!nextHover) return;
     setHover({
-      point: stats[index],
-      left,
-      tooltipLeft: Math.min(rect.width - 104, Math.max(104, left)),
+      point: stats[nextHover.index],
+      left: nextHover.left,
+      tooltipLeft: nextHover.tooltipLeft,
     });
   };
 
-  const hoverRealPlayers = hover ? hover.point.real_players ?? hover.point.players ?? 0 : 0;
-  const hoverBots = hover ? hover.point.bots ?? 0 : 0;
+  const hoverCounts = hover ? playerHistoryHoverCounts(hover.point) : { realPlayers: 0, bots: 0 };
+  const hoverRealPlayers = hoverCounts.realPlayers;
+  const hoverBots = hoverCounts.bots;
 
   return (
     <div className="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">

@@ -4,12 +4,15 @@ import {
   AI_CHAT_MAX_TURNS,
   countAIChatTurns,
   createAIChatSession,
+  deleteAIChatSessionState,
   deriveAIChatSessionTitle,
   ensureWritableAIChatSession,
   isAIChatSessionFull,
   loadAIChatSessionState,
   renameAIChatSessionFromMessage,
   saveAIChatSessionState,
+  selectAIChatSessionState,
+  startAIChatSessionState,
   type AIChatSessionStorage,
   type DesktopChatMessage,
 } from './aiChatSessions.ts';
@@ -64,4 +67,20 @@ test('persists sessions and drops incomplete streamed messages', () => {
   const restored = loadAIChatSessionState(storage, 'New chat');
   assert.equal(restored.activeSessionId, 'one');
   assert.deepEqual(restored.sessions[0].messages.map(message => message.id), ['welcome', 'u']);
+});
+
+test('starts, selects, and deletes sessions without changing unrelated ones', () => {
+  const first = createAIChatSession('New chat', { id: 'one', now: 1 });
+  const started = startAIChatSessionState({ sessions: [first], activeSessionId: first.id }, 'New chat', { id: 'two', now: 2 });
+  assert.equal(started.activeSessionId, 'two');
+  assert.deepEqual(started.sessions.map(session => session.id), ['two', 'one']);
+  const selected = selectAIChatSessionState(started, 'one');
+  assert.equal(selected.activeSessionId, 'one');
+  assert.equal(selectAIChatSessionState(selected, 'one'), selected);
+  const deleted = deleteAIChatSessionState(started, 'two', 'New chat');
+  assert.equal(deleted.activeSessionId, 'one');
+  assert.deepEqual(deleted.sessions.map(session => session.id), ['one']);
+  const last = deleteAIChatSessionState(deleted, 'one', 'New chat', { id: 'fresh', now: 3 });
+  assert.equal(last.activeSessionId, 'fresh');
+  assert.equal(last.sessions.length, 1);
 });

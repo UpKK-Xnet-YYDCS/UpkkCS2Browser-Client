@@ -8,19 +8,20 @@ import {
 } from 'react';
 import { useI18n } from '@/hooks/useI18n';
 import { showToast } from '@/services/toast';
-import { MonitorRuntimeContext, type MonitorRuntimeValue } from './monitorRuntimeContext';
+import {
+  MonitorCountdownContext,
+  MonitorRuntimeContext,
+  type MonitorRuntimeValue,
+} from './monitorRuntimeContext';
 import {
   MONITOR_RULES_KEY,
   getMonitorEnabled,
   getMonitorInterval,
   loadMonitorRules,
   loadMonitorRulesFromFile,
-  performMonitorCheck,
   setMonitorEnabled,
-  type MatchedServer,
-  type MonitorRule,
-  type MonitorStatus,
-} from '@/services/monitor';
+} from '@/services/monitorPersistence';
+import type { MatchedServer, MonitorRule, MonitorStatus } from '@/services/monitorTypes';
 
 const initialStatus: MonitorStatus = {
   isRunning: false,
@@ -74,6 +75,7 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
     const currentRules = rulesRef.current;
     if (currentRules.length === 0) return;
     setStatus(previous => ({ ...previous, isRunning: true }));
+    const { performMonitorCheck } = await import('@/services/monitorCheck');
     const result = await performMonitorCheck(currentRules);
     setCurrentMatches([...result.currentMatches].reverse());
     setStatus(previous => ({
@@ -105,6 +107,11 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
   }, [runCheck]);
 
   const hasEnabledRules = rules.some(rule => rule.enabled && rule.mapPatterns.length > 0);
+  useEffect(() => {
+    if (isEnabled && hasEnabledRules) {
+      void import('@/services/monitorCheck');
+    }
+  }, [hasEnabledRules, isEnabled]);
   useEffect(() => {
     if (!isEnabled || !hasEnabledRules) {
       return undefined;
@@ -163,9 +170,14 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
     status,
     setStatus,
     currentMatches,
-    countdown,
     setCountdown,
-  }), [countdown, currentMatches, interval, isEnabled, rules, status]);
+  }), [currentMatches, interval, isEnabled, rules, status]);
 
-  return <MonitorRuntimeContext.Provider value={value}>{children}</MonitorRuntimeContext.Provider>;
+  return (
+    <MonitorRuntimeContext.Provider value={value}>
+      <MonitorCountdownContext.Provider value={countdown}>
+        {children}
+      </MonitorCountdownContext.Provider>
+    </MonitorRuntimeContext.Provider>
+  );
 }

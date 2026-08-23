@@ -1,7 +1,11 @@
 mod a2s;
 mod file_storage;
+mod secure_crypto;
 mod secure_storage;
 mod window;
+mod window_common;
+mod window_login;
+mod window_nav;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -15,7 +19,7 @@ pub fn run() {
             window::open_forum_window,
             window::open_forum_with_login,
             window::open_url_in_browser_window,
-            window::open_steam_login,
+            window_login::open_steam_login,
             window::open_checkin_page,
             window::close_window,
             window::forum_navigate,

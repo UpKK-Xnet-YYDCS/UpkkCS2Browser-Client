@@ -31,6 +31,32 @@ function countLines(source) {
   return /\r?\n$/.test(source) ? lines - 1 : lines;
 }
 
+function importedProjectModules(source, importer) {
+  const modules = [];
+  const expression = /(?:\bfrom\s*|\bimport\s*\()\s*['"]([^'"]+)['"]/g;
+  for (const match of source.matchAll(expression)) {
+    const specifier = match[1];
+    if (specifier.startsWith('@/')) {
+      modules.push(`src/${specifier.slice(2)}`);
+    } else if (specifier.startsWith('.')) {
+      modules.push(path.normalize(path.join(path.dirname(importer), specifier)).split(path.sep).join('/'));
+    }
+  }
+  return modules;
+}
+
+const dataFilePatterns = (budget.dataFilePatterns ?? []).map((entry) => ({
+  regex: new RegExp(entry.pattern),
+  maxLines: entry.maxLines,
+}));
+
+function dataFileLineLimit(relative) {
+  for (const entry of dataFilePatterns) {
+    if (entry.regex.test(relative)) return entry.maxLines;
+  }
+  return null;
+}
+
 const files = (await Promise.all(productionRoots.map(collectFiles)))
   .flat()
   .filter(file => productionExtension.test(file) && !testFile.test(relativePath(file)));
@@ -39,12 +65,17 @@ const violations = [];
 for (const file of files) {
   const relative = relativePath(file);
   const source = await readFile(file, 'utf8');
-  const lineLimit = budget.oversizedFileLineLimits[relative] ?? budget.maxProductionFileLines;
+  const dataLimit = dataFileLineLimit(relative);
+  const lineLimit = dataLimit ?? budget.oversizedFileLineLimits[relative] ?? budget.maxProductionFileLines;
   const lineCount = countLines(source);
   if (lineCount > lineLimit) {
     violations.push(`${relative}: ${lineCount} lines exceeds ${lineLimit}`);
   }
-  if (Object.hasOwn(budget.oversizedFileLineLimits, relative) && lineCount < lineLimit) {
+  if (
+    dataLimit === null &&
+    Object.hasOwn(budget.oversizedFileLineLimits, relative) &&
+    lineCount < lineLimit
+  ) {
     violations.push(
       `${relative}: lower its ratchet from ${lineLimit} to ${lineCount}` +
       `${lineCount <= budget.maxProductionFileLines ? ' (or remove the entry)' : ''}`,
@@ -57,6 +88,29 @@ for (const file of files) {
       violations.push(
         `${relative}: ${matches.length} direct @tauri-apps import(s); use src/services/`,
       );
+    }
+  }
+
+  if (relative.startsWith('src/')) {
+    const imports = importedProjectModules(source, relative);
+    if (
+      relative !== 'src/App.tsx' &&
+      !relative.startsWith('src/pages/') &&
+      imports.some(target => target.startsWith('src/pages/'))
+    ) {
+      violations.push(`${relative}: non-page module imports src/pages/`);
+    }
+    if (
+      relative.startsWith('src/store/') &&
+      imports.some(target => target.startsWith('src/components/'))
+    ) {
+      violations.push(`${relative}: store imports src/components/`);
+    }
+    if (
+      (relative.startsWith('src/api/') || relative.startsWith('src/services/')) &&
+      imports.some(target => target.startsWith('src/store/'))
+    ) {
+      violations.push(`${relative}: API/service imports src/store/`);
     }
   }
 }

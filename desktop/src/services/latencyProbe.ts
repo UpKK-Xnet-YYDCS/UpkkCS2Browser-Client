@@ -1,83 +1,30 @@
-import type { LocalLatencyQuery, LocalLatencyQueryResult } from './a2sLatency';
+import type { LocalLatencyQuery } from './a2sLatency.ts';
+import { getLatencyProbeMetrics, normalizeLatencyProbeOptions } from './latencyProbeMetrics.ts';
+import { buildLatencyProbeAttempt, buildLatencyProbeSample } from './latencyProbeSample.ts';
+import type {
+  LatencyProbeAttempt,
+  LatencyProbeOptions,
+  LatencyProbeSample,
+  LatencyProbeSession,
+  LatencyProbeSummary,
+  LatencyProbeTarget,
+  NormalizedLatencyProbeOptions,
+} from './latencyProbeTypes.ts';
 
-export interface LatencyProbeTarget {
-  ip: string;
-  port: string;
-}
-
-export interface LatencyProbeOptions {
-  intervalMs?: number;
-  durationMs?: number;
-  timeoutMs?: number;
-  retryCount?: number;
-  retryDelayMs?: number;
-}
-
-export interface NormalizedLatencyProbeOptions {
-  intervalMs: number;
-  durationMs: number;
-  timeoutMs: number;
-  retryCount: number;
-  retryDelayMs: number;
-}
-
-export type LatencyProbeSampleStatus = 'success' | 'failed';
-
-export interface LatencyProbeAttempt {
-  sequence: number;
-  attempt: number;
-  startedAt: number;
-  completedAt: number;
-  status: LatencyProbeSampleStatus;
-  elapsedMs: number;
-  latencyMs?: number;
-  error?: string;
-}
-
-export interface LatencyProbeSample {
-  sequence: number;
-  startedAt: number;
-  completedAt: number;
-  status: LatencyProbeSampleStatus;
-  observedLatencyMs: number;
-  attempts: LatencyProbeAttempt[];
-  latencyMs?: number;
-  error?: string;
-}
-
-export interface LatencyProbeMetrics {
-  sent: number;
-  received: number;
-  lost: number;
-  packetLossPercent: number;
-  attempts: number;
-  failedAttempts: number;
-  attemptLossPercent: number;
-  minLatencyMs?: number;
-  avgLatencyMs?: number;
-  maxLatencyMs?: number;
-  rttStabilityMs?: number;
-}
-
-export interface LatencyProbeSummary {
-  samples: LatencyProbeSample[];
-  metrics: LatencyProbeMetrics;
-}
-
-export interface LatencyProbeSeriesPoint {
-  sequence: number;
-  startedAt: number;
-  status: LatencyProbeSampleStatus;
-  latencyMs?: number;
-  packetLossPercent: number;
-  rttStabilityMs?: number;
-  error?: string;
-}
-
-export interface LatencyProbeSession {
-  start: () => Promise<LatencyProbeSummary>;
-  stop: () => void;
-}
+export type {
+  LatencyProbeAttempt,
+  LatencyProbeMetrics,
+  LatencyProbeOptions,
+  LatencyProbeSample,
+  LatencyProbeSampleStatus,
+  LatencyProbeSeriesPoint,
+  LatencyProbeSession,
+  LatencyProbeSummary,
+  LatencyProbeTarget,
+  NormalizedLatencyProbeOptions,
+} from './latencyProbeTypes.ts';
+export { getLatencyProbeMetrics, getLatencyProbeSeries, normalizeLatencyProbeOptions } from './latencyProbeMetrics.ts';
+export { buildLatencyProbeAttempt, buildLatencyProbeSample } from './latencyProbeSample.ts';
 
 interface CreateLatencyProbeSessionOptions {
   target: LatencyProbeTarget;
@@ -88,96 +35,8 @@ interface CreateLatencyProbeSessionOptions {
   sleep?: (ms: number) => Promise<void>;
 }
 
-const DEFAULT_OPTIONS: NormalizedLatencyProbeOptions = {
-  intervalMs: 1_000,
-  durationMs: 120_000,
-  timeoutMs: 2_000,
-  retryCount: 1,
-  retryDelayMs: 300,
-};
-
-function clampNumber(value: number | undefined, fallback: number, min: number, max: number): number {
-  if (!Number.isFinite(value) || value === undefined) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(value)));
-}
-
-function roundMetric(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 function defaultSleep(ms: number): Promise<void> {
   return new Promise(resolve => window.setTimeout(resolve, ms));
-}
-
-export function normalizeLatencyProbeOptions(options: LatencyProbeOptions = {}): NormalizedLatencyProbeOptions {
-  return {
-    intervalMs: clampNumber(options.intervalMs, DEFAULT_OPTIONS.intervalMs, 1_000, 60_000),
-    durationMs: clampNumber(options.durationMs, DEFAULT_OPTIONS.durationMs, 5_000, 30 * 60_000),
-    timeoutMs: clampNumber(options.timeoutMs, DEFAULT_OPTIONS.timeoutMs, 500, 5_000),
-    retryCount: clampNumber(options.retryCount, DEFAULT_OPTIONS.retryCount, 0, 5),
-    retryDelayMs: clampNumber(options.retryDelayMs, DEFAULT_OPTIONS.retryDelayMs, 0, 3_000),
-  };
-}
-
-export function getLatencyProbeMetrics(samples: LatencyProbeSample[]): LatencyProbeMetrics {
-  const sent = samples.length;
-  const successSamples = samples.filter(sample => sample.status === 'success' && Number.isFinite(sample.latencyMs));
-  const received = successSamples.length;
-  const lost = sent - received;
-  const latencies = successSamples.map(sample => Math.max(0, sample.latencyMs ?? 0));
-  const attempts = samples.flatMap(sample => sample.attempts ?? []);
-  const failedAttempts = attempts.filter(attempt => attempt.status === 'failed').length;
-  const observedLatencies = samples
-    .map(sample => {
-      if (Number.isFinite(sample.observedLatencyMs)) {
-        return Math.max(0, sample.observedLatencyMs);
-      }
-      if (sample.status === 'success' && Number.isFinite(sample.latencyMs)) {
-        return Math.max(0, sample.latencyMs ?? 0);
-      }
-      return Math.max(0, sample.completedAt - sample.startedAt);
-    })
-    .filter(value => Number.isFinite(value));
-  const avg = latencies.length > 0 ? latencies.reduce((sum, value) => sum + value, 0) / latencies.length : undefined;
-  const observedAvg = observedLatencies.length > 0
-    ? observedLatencies.reduce((sum, value) => sum + value, 0) / observedLatencies.length
-    : undefined;
-  const variance = observedAvg === undefined
-    ? undefined
-    : observedLatencies.reduce((sum, value) => sum + (value - observedAvg) ** 2, 0) / observedLatencies.length;
-
-  return {
-    sent,
-    received,
-    lost,
-    packetLossPercent: sent > 0 ? roundMetric((lost / sent) * 100) : 0,
-    attempts: attempts.length,
-    failedAttempts,
-    attemptLossPercent: attempts.length > 0 ? roundMetric((failedAttempts / attempts.length) * 100) : 0,
-    minLatencyMs: latencies.length > 0 ? Math.min(...latencies) : undefined,
-    avgLatencyMs: avg === undefined ? undefined : roundMetric(avg),
-    maxLatencyMs: latencies.length > 0 ? Math.max(...latencies) : undefined,
-    rttStabilityMs: variance === undefined ? undefined : roundMetric(Math.sqrt(variance)),
-  };
-}
-
-export function getLatencyProbeSeries(samples: LatencyProbeSample[]): LatencyProbeSeriesPoint[] {
-  return samples.map((sample, index) => {
-    const metrics = getLatencyProbeMetrics(samples.slice(0, index + 1));
-    const latencyMs = sample.status === 'success' && Number.isFinite(sample.latencyMs)
-      ? Math.max(0, Math.round(sample.latencyMs ?? 0))
-      : undefined;
-
-    return {
-      sequence: sample.sequence,
-      startedAt: sample.startedAt,
-      status: sample.status,
-      latencyMs,
-      packetLossPercent: metrics.packetLossPercent,
-      rttStabilityMs: metrics.rttStabilityMs,
-      error: sample.error,
-    };
-  });
 }
 
 async function queryWithRetries(
@@ -187,8 +46,8 @@ async function queryWithRetries(
   sleep: (ms: number) => Promise<void>,
   now: () => number,
   sequence: number,
-): Promise<{ result: LocalLatencyQueryResult; attempts: LatencyProbeAttempt[] }> {
-  let lastResult: LocalLatencyQueryResult = { success: false, error: 'A2S latency unavailable' };
+): Promise<{ result: Awaited<ReturnType<LocalLatencyQuery>>; attempts: LatencyProbeAttempt[] }> {
+  let lastResult: Awaited<ReturnType<LocalLatencyQuery>> = { success: false, error: 'A2S latency unavailable' };
   const attempts: LatencyProbeAttempt[] = [];
   for (let attempt = 0; attempt <= options.retryCount; attempt += 1) {
     const startedAt = now();
@@ -196,45 +55,42 @@ async function queryWithRetries(
       const result = await query(target.ip, target.port, { timeoutMs: options.timeoutMs });
       const completedAt = now();
       if (result.success && Number.isFinite(result.latency_ms)) {
-        attempts.push({
+        attempts.push(buildLatencyProbeAttempt({
           sequence,
           attempt: attempt + 1,
           startedAt,
           completedAt,
           status: 'success',
-          elapsedMs: Math.max(0, completedAt - startedAt),
-          latencyMs: Math.max(0, Math.round(result.latency_ms ?? 0)),
-        });
+          latencyMs: result.latency_ms,
+        }));
         return { result, attempts };
       }
       lastResult = {
         success: false,
         error: result.error || 'A2S latency unavailable',
       };
-      attempts.push({
+      attempts.push(buildLatencyProbeAttempt({
         sequence,
         attempt: attempt + 1,
         startedAt,
         completedAt,
         status: 'failed',
-        elapsedMs: Math.max(0, completedAt - startedAt),
         error: lastResult.error,
-      });
+      }));
     } catch (error) {
       const completedAt = now();
       lastResult = {
         success: false,
         error: error instanceof Error ? error.message : String(error),
       };
-      attempts.push({
+      attempts.push(buildLatencyProbeAttempt({
         sequence,
         attempt: attempt + 1,
         startedAt,
         completedAt,
         status: 'failed',
-        elapsedMs: Math.max(0, completedAt - startedAt),
         error: lastResult.error,
-      });
+      }));
     }
     if (attempt < options.retryCount && options.retryDelayMs > 0) {
       await sleep(options.retryDelayMs);
@@ -270,25 +126,7 @@ export function createLatencyProbeSession({
       const startedAt = now();
       const { result, attempts } = await queryWithRetries(query, target, normalized, sleep, now, index + 1);
       const completedAt = now();
-      const sample: LatencyProbeSample = result.success && Number.isFinite(result.latency_ms)
-        ? {
-          sequence: index + 1,
-          startedAt,
-          completedAt,
-          status: 'success',
-          observedLatencyMs: Math.max(0, completedAt - startedAt),
-          attempts,
-          latencyMs: Math.max(0, Math.round(result.latency_ms ?? 0)),
-        }
-        : {
-          sequence: index + 1,
-          startedAt,
-          completedAt,
-          status: 'failed',
-          observedLatencyMs: Math.max(0, completedAt - startedAt),
-          attempts,
-          error: result.error || 'A2S latency unavailable',
-        };
+      const sample = buildLatencyProbeSample(index + 1, startedAt, completedAt, result, attempts);
 
       samples.push(sample);
       onSample?.(sample, {

@@ -6,6 +6,9 @@ import {
   getLatencyLabel,
   getServerLatencyTarget,
   applyLatencySnapshot,
+  applyLatencySnapshotToServer,
+  applyLatencySnapshots,
+  filterServersByLatency,
   getLatencyFilterLabel,
   matchesLatencyFilter,
   LATENCY_FILTERS,
@@ -148,4 +151,21 @@ test('marks already-offline servers as lower-priority latency targets', () => {
   offline.server_offline = true;
 
   assert.equal(getServerLatencyTarget(offline)?.priority, 1);
+});
+
+test('applies and filters latency snapshots across a server list', () => {
+  const online = server(120);
+  const pending = server(undefined, 'checking');
+  pending.ip = '10.0.0.2';
+  const snapshots = {
+    '10.0.0.1:27015': { status: 'success' as const, latencyMs: 72, updatedAt: 1_700_000_000_000 },
+    '10.0.0.2:27015': { status: 'checking' as const },
+  };
+
+  const decorated = applyLatencySnapshots([online, pending], snapshots);
+  assert.equal(decorated[0].local_latency_ms, 72);
+  assert.equal(applyLatencySnapshotToServer(online, snapshots).local_latency_ms, 72);
+  const filtered = filterServersByLatency([online, pending], snapshots, 'le80');
+  assert.equal(filtered.length, 2);
+  assert.equal(filtered[0].local_latency_ms, 72);
 });

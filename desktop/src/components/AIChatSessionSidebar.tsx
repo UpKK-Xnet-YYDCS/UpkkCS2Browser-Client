@@ -2,7 +2,7 @@ import { MessageSquare, Plus, Trash2, X } from 'lucide-react';
 import type { AIChatSession } from '@/services/aiChatSessions';
 import { countAIChatTurns } from '@/services/aiChatSessions';
 import type { Language } from '@/store/i18n';
-import type { AIChatLabels } from '@/pages/aiLabels';
+import type { AIChatLabels } from '@/i18n/aiChat';
 
 interface AIChatSessionSidebarProps {
   sessions: AIChatSession[];

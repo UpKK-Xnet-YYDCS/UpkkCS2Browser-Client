@@ -1,7 +1,31 @@
 import { createContext } from 'react';
-import type { AppContextType } from './index';
+import type { ServerRegion, GameType } from '@/types';
+import type { ViewMode } from '@/types/ui';
+import type { AppState, FetchFilters, FetchOptions } from './appState';
 
-export const AppContext = createContext<AppContextType | null>(null);
+export interface AppContextType extends AppState {
+  fetchServers: (page?: number, filters?: FetchFilters, options?: FetchOptions) => Promise<void>;
+  fetchCategories: () => Promise<void>;
+  fetchStats: () => Promise<void>;
+  fetchMetadata: () => Promise<void>;
+  setSearchQuery: (query: string) => void;
+  setSelectedRegion: (region: ServerRegion) => void;
+  setSelectedGameType: (gameType: GameType) => void;
+  setSelectedContinent: (continent: string) => void;
+  setSelectedGeoRegion: (geoRegion: string) => void;
+  setSelectedCountry: (country: string) => void;
+  setSelectedCategory: (category: string | null) => void;
+  setApiBaseUrl: (url: string) => void;
+  addFavorite: (addr: string) => void;
+  removeFavorite: (addr: string) => void;
+  importFavorites: (addrs: string[]) => void;
+  reorderFavorites: (from: number, to: number) => void;
+  isFavorite: (addr: string) => boolean;
+  clearError: () => void;
+  setViewMode: (mode: ViewMode) => void;
+  setPerPage: (perPage: number) => void;
+  setCardMinWidth: (width: number) => void;
+}
 
 export type ServerDataStore = Pick<AppContextType,
   'servers' | 'totalServers' | 'currentPage' | 'totalPages' | 'isLoading' | 'error' |

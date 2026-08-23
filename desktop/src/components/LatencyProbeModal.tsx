@@ -1,29 +1,19 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import type { ServerStatus } from '@/types';
-import { isTauriAvailable, queryServerA2S } from '@/services/a2s';
 import { getServerLatencyTarget } from '@/services/latencyDisplay';
-import {
-  createLatencyProbeSession,
-  getLatencyProbeMetrics,
-  normalizeLatencyProbeOptions,
-  type LatencyProbeSession,
-  type LatencyProbeSummary,
-} from '@/services/latencyProbe';
 import { useI18n } from '@/hooks/useI18n';
+import { useLatencyProbeSession } from '@/hooks/useLatencyProbeSession';
 import { useLatencyDetectionSettings } from '@/services/latencySettings';
 import { LatencyProbeChart } from '@/components/latency/LatencyProbeChart';
 import { LatencyProbeMetricsGrid } from '@/components/latency/LatencyProbeMetricsGrid';
+import { LatencyProbeOptionsForm } from '@/components/latency/LatencyProbeOptionsForm';
+import { formatLatencyProbeServerLabel } from '@/services/latencyProbeFormat';
 
 interface LatencyProbeModalProps {
   server: ServerStatus;
   onClose: () => void;
 }
-
-const EMPTY_SUMMARY: LatencyProbeSummary = {
-  samples: [],
-  metrics: getLatencyProbeMetrics([]),
-};
 
 const CloseIcon = () => (
   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -37,112 +27,33 @@ const ChartIcon = () => (
   </svg>
 );
 
-function getNumericInput(value: string, fallback: number): number {
-  const next = Number(value);
-  return Number.isFinite(next) ? next : fallback;
-}
-
-function getServerLabel(server: ServerStatus): string {
-  const ip = String(server.ip || server.Addr || '').trim();
-  const port = String(server.port || server.Port || '').trim();
-  const rawBaseAddress = String(server.display_address || ip).trim();
-  const baseAddress = rawBaseAddress.includes(':') ? rawBaseAddress.split(':')[0] : rawBaseAddress;
-  return port ? `${baseAddress || ip}:${port}` : baseAddress || ip;
-}
-
 export function LatencyProbeModal({ server, onClose }: LatencyProbeModalProps) {
   const { t } = useI18n();
   const latencyDetectionSettings = useLatencyDetectionSettings();
   const target = useMemo(() => getServerLatencyTarget(server), [server]);
   const serverName = server.name || server.Name || 'Unknown Server';
-  const serverAddress = getServerLabel(server);
-  const [intervalSeconds, setIntervalSeconds] = useState(1);
-  const [durationSeconds, setDurationSeconds] = useState(120);
-  const [timeoutSeconds, setTimeoutSeconds] = useState(() => latencyDetectionSettings.a2sTimeoutMs / 1_000);
-  const [retryCount, setRetryCount] = useState(latencyDetectionSettings.retryCount);
-  const [retryDelayMs, setRetryDelayMs] = useState(latencyDetectionSettings.retryDelayMs);
-  const [running, setRunning] = useState(false);
-  const [summary, setSummary] = useState<LatencyProbeSummary>(EMPTY_SUMMARY);
-  const [error, setError] = useState<string | undefined>();
-  const sessionRef = useRef<LatencyProbeSession | null>(null);
-  const runIdRef = useRef(0);
-
-  useEffect(() => {
-    return () => {
-      runIdRef.current += 1;
-      sessionRef.current?.stop();
-      sessionRef.current = null;
-    };
-  }, []);
-
-  const handleStart = () => {
-    if (!target) {
-      setError(t.latencyProbeNoTarget);
-      return;
-    }
-    if (!isTauriAvailable()) {
-      setError(t.localA2SUnavailable);
-      return;
-    }
-
-    const normalized = normalizeLatencyProbeOptions({
-      intervalMs: intervalSeconds * 1_000,
-      durationMs: durationSeconds * 1_000,
-      timeoutMs: timeoutSeconds * 1_000,
-      retryCount,
-      retryDelayMs,
-    });
-    setIntervalSeconds(normalized.intervalMs / 1_000);
-    setDurationSeconds(normalized.durationMs / 1_000);
-    setTimeoutSeconds(normalized.timeoutMs / 1_000);
-    setRetryCount(normalized.retryCount);
-    setRetryDelayMs(normalized.retryDelayMs);
-    setSummary(EMPTY_SUMMARY);
-    setError(undefined);
-    setRunning(true);
-
-    const runId = runIdRef.current + 1;
-    runIdRef.current = runId;
-    const session = createLatencyProbeSession({
-      target,
-      options: normalized,
-      query: queryServerA2S,
-      onSample: (_sample, nextSummary) => {
-        if (runIdRef.current === runId) {
-          setSummary(nextSummary);
-        }
-      },
-    });
-    sessionRef.current = session;
-
-    void session.start()
-      .then(finalSummary => {
-        if (runIdRef.current === runId) {
-          setSummary(finalSummary);
-        }
-      })
-      .catch(cause => {
-        if (runIdRef.current === runId) {
-          setError(cause instanceof Error ? cause.message : String(cause));
-        }
-      })
-      .finally(() => {
-        if (runIdRef.current === runId) {
-          setRunning(false);
-          sessionRef.current = null;
-        }
-      });
-  };
-
-  const handleStop = () => {
-    runIdRef.current += 1;
-    sessionRef.current?.stop();
-    sessionRef.current = null;
-    setRunning(false);
-  };
+  const serverAddress = formatLatencyProbeServerLabel(server);
+  const {
+    intervalSeconds,
+    durationSeconds,
+    timeoutSeconds,
+    retryCount,
+    retryDelayMs,
+    running,
+    summary,
+    error,
+    unavailableText,
+    start,
+    stop,
+    applyFormPatch,
+  } = useLatencyProbeSession({
+    target,
+    noTargetMessage: t.latencyProbeNoTarget,
+    unavailableMessage: t.localA2SUnavailable,
+    latencyDetectionSettings,
+  });
 
   const statusText = running ? t.latencyProbeRunning : t.latencyProbeIdle;
-  const unavailableText = !target ? t.latencyProbeNoTarget : !isTauriAvailable() ? t.localA2SUnavailable : undefined;
 
   const modal = (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4" onClick={(event) => { event.stopPropagation(); onClose(); }}>
@@ -166,73 +77,26 @@ export function LatencyProbeModal({ server, onClose }: LatencyProbeModalProps) {
         </div>
 
         <div className="max-h-[calc(92vh-88px)] overflow-y-auto p-6">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <label className="block">
-              <span className="mb-1 block text-xs font-bold text-gray-500 dark:text-gray-400">{t.latencyProbeInterval}</span>
-              <input
-                type="number"
-                min="1"
-                max="60"
-                step="1"
-                value={intervalSeconds}
-                disabled={running}
-                onChange={event => setIntervalSeconds(getNumericInput(event.target.value, 1))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-bold text-gray-500 dark:text-gray-400">{t.latencyProbeDuration}</span>
-              <input
-                type="number"
-                min="5"
-                max="1800"
-                step="5"
-                value={durationSeconds}
-                disabled={running}
-                onChange={event => setDurationSeconds(getNumericInput(event.target.value, 120))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-bold text-gray-500 dark:text-gray-400">{t.latencyProbeTimeout}</span>
-              <input
-                type="number"
-                min="0.5"
-                max="5"
-                step="0.5"
-                value={timeoutSeconds}
-                disabled={running}
-                onChange={event => setTimeoutSeconds(getNumericInput(event.target.value, 3))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-bold text-gray-500 dark:text-gray-400">{t.latencyProbeRetries}</span>
-              <input
-                type="number"
-                min="0"
-                max="5"
-                step="1"
-                value={retryCount}
-                disabled={running}
-                onChange={event => setRetryCount(getNumericInput(event.target.value, latencyDetectionSettings.retryCount))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </label>
-            <label className="block">
-              <span className="mb-1 block text-xs font-bold text-gray-500 dark:text-gray-400">{t.latencyRetryDelay}</span>
-              <input
-                type="number"
-                min="0"
-                max="3000"
-                step="50"
-                value={retryDelayMs}
-                disabled={running}
-                onChange={event => setRetryDelayMs(getNumericInput(event.target.value, latencyDetectionSettings.retryDelayMs))}
-                className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold text-gray-900 outline-none focus:border-blue-500 dark:border-gray-700 dark:bg-gray-900 dark:text-white"
-              />
-            </label>
-          </div>
+          <LatencyProbeOptionsForm
+            intervalSeconds={intervalSeconds}
+            durationSeconds={durationSeconds}
+            timeoutSeconds={timeoutSeconds}
+            retryCount={retryCount}
+            retryDelayMs={retryDelayMs}
+            disabled={running}
+            labels={{
+              interval: t.latencyProbeInterval,
+              duration: t.latencyProbeDuration,
+              timeout: t.latencyProbeTimeout,
+              retries: t.latencyProbeRetries,
+              retryDelay: t.latencyRetryDelay,
+            }}
+            retryFallback={{
+              retryCount: latencyDetectionSettings.retryCount,
+              retryDelayMs: latencyDetectionSettings.retryDelayMs,
+            }}
+            onChange={applyFormPatch}
+          />
 
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <span className="rounded-full bg-gray-100 px-3 py-1.5 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
@@ -241,14 +105,14 @@ export function LatencyProbeModal({ server, onClose }: LatencyProbeModalProps) {
             <div className="flex items-center gap-2">
               {running ? (
                 <button
-                  onClick={handleStop}
+                  onClick={stop}
                   className="rounded-lg bg-red-500 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-red-600"
                 >
                   {t.latencyProbeStop}
                 </button>
               ) : (
                 <button
-                  onClick={handleStart}
+                  onClick={start}
                   disabled={Boolean(unavailableText)}
                   className="rounded-lg bg-blue-500 px-4 py-2 text-sm font-bold text-white transition-colors hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >

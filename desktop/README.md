@@ -28,7 +28,7 @@
 ### 环境要求
 
 - Node.js 24, 25, or 26
-- Rust (通过 [rustup](https://rustup.rs/) 安装)
+- Rust 1.89.0 或更高版本（通过 [rustup](https://rustup.rs/) 安装）
 - Windows: Microsoft Visual Studio C++ Build Tools
 - Linux: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev`
 
@@ -99,11 +99,13 @@ bash scripts/desktop-check.sh
 
 ```bash
 npm run check:architecture
+npm run check:contracts
 npm run check:performance # 需要先生成 dist/
 ```
 
 `check:architecture` 规定只有 `src/services/` 可以直接导入 Tauri，新增生产
-文件最多 400 行，并锁定历史超大文件不得增长。`check:performance` 强制以下
+文件最多 400 行，同步语言包数据文件（`src/i18n/types.ts` 与 `src/i18n/locales/*.ts`）
+上限 800 行，并锁定历史超大文件不得增长。`check:performance` 强制以下
 生产资源预算：
 
 | 指标 | raw 上限 | gzip 上限 |
@@ -113,7 +115,8 @@ npm run check:performance # 需要先生成 dist/
 
 单个 JavaScript chunk 的 gzip 上限为 84 KiB，全部 CSS 的 gzip 上限为
 20 KiB。预算配置分别位于 `architecture-budget.json` 和
-`performance-budget.json`。
+`performance-budget.json`；逐 chunk 基线与渲染场景记录见
+`performance-baseline.json` 和 `docs/performance-baseline.md`。
 
 构建产物位于 `src-tauri/target/release/bundle/`:
 - Windows: `.msi` 和 `.exe` 安装包
@@ -167,8 +170,12 @@ https://update-software.upkk.com/xproj-server-clients/update.json
 
 项目配置了 GitHub Actions 工作流，推送到 `desktop/` 目录时自动触发构建：
 
-- Windows: 生成 MSI 和 NSIS 安装包
+- Windows: 生成 MSI、NSIS 和便携版 EXE
 - Linux: 生成 AppImage 和 DEB 包
+- macOS: 分别生成 Intel 与 Apple Silicon DMG
+
+普通构建与发布使用同一个四平台可复用打包工作流，避免平台参数、产物命名和
+签名配置在两套流程中漂移。Rust 同时由最新 stable 和 1.89.0 MSRV 作业验证。
 
 ## 数据存储
 

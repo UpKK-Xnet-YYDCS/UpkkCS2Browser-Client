@@ -1,4 +1,5 @@
 import type { LatencyProbeMetrics } from '@/services/latencyProbe';
+import { formatProbeMs, formatProbePercent } from '@/services/latencyProbeFormat';
 
 interface LatencyProbeMetricsLabels {
   sent: string;
@@ -16,25 +17,16 @@ interface LatencyProbeMetricsGridProps {
   labels: LatencyProbeMetricsLabels;
 }
 
-function formatMs(value: number | undefined): string {
-  if (!Number.isFinite(value)) return '--';
-  return `${Math.round(value ?? 0)} ms`;
-}
-
-function formatPercent(value: number): string {
-  return `${value.toFixed(value % 1 === 0 ? 0 : 2)}%`;
-}
-
 export function LatencyProbeMetricsGrid({ metrics, labels }: LatencyProbeMetricsGridProps) {
   const items = [
     { label: labels.sent, value: String(metrics.sent) },
     { label: labels.received, value: String(metrics.received) },
-    { label: labels.packetLoss, value: formatPercent(metrics.packetLossPercent) },
-    { label: labels.attemptLoss, value: formatPercent(metrics.attemptLossPercent) },
-    { label: labels.average, value: formatMs(metrics.avgLatencyMs) },
-    { label: labels.min, value: formatMs(metrics.minLatencyMs) },
-    { label: labels.max, value: formatMs(metrics.maxLatencyMs) },
-    { label: labels.stability, value: formatMs(metrics.rttStabilityMs) },
+    { label: labels.packetLoss, value: formatProbePercent(metrics.packetLossPercent) },
+    { label: labels.attemptLoss, value: formatProbePercent(metrics.attemptLossPercent) },
+    { label: labels.average, value: formatProbeMs(metrics.avgLatencyMs) },
+    { label: labels.min, value: formatProbeMs(metrics.minLatencyMs) },
+    { label: labels.max, value: formatProbeMs(metrics.maxLatencyMs) },
+    { label: labels.stability, value: formatProbeMs(metrics.rttStabilityMs) },
   ];
 
   return (

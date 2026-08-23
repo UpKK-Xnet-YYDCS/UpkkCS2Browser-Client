@@ -1,50 +1,30 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { I18nContext, type I18nContextType } from './i18nContext';
 import { translations, type Language } from './i18n';
+import {
+  LANGUAGE_STORAGE_KEY,
+  detectSystemLanguage,
+  readLanguagePreference,
+  readNavigatorLanguage,
+} from '@/i18n/language';
 
-// Detect system language and map to supported language
-const detectSystemLanguage = (): Language => {
-  const systemLang = navigator.language || navigator.languages?.[0] || 'en';
-  const langCode = systemLang.toLowerCase();
-  
-  if (langCode.startsWith('ja')) {
-    return 'ja';
-  }
-  if (langCode.startsWith('ko')) {
-    return 'ko';
-  }
-  // Traditional Chinese (Taiwan, Hong Kong, Macau)
-  if (langCode === 'zh-tw' || langCode === 'zh-hk' || langCode === 'zh-mo' || langCode === 'zh-hant') {
-    return 'zh-TW';
-  }
-  // Simplified Chinese (default for zh)
-  if (langCode.startsWith('zh')) {
-    return 'zh-CN';
-  }
-  return 'en';
-};
-
-const LANGUAGE_STORAGE_KEY = 'upkk-language';
+const resolveSystemLanguage = () => detectSystemLanguage(readNavigatorLanguage());
 
 export function I18nProvider({ children }: { children: ReactNode }) {
   const [isAuto, setIsAuto] = useState<boolean>(() => {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return stored === null || stored === 'auto';
+    return readLanguagePreference(localStorage.getItem(LANGUAGE_STORAGE_KEY)).isAuto;
   });
   
   const [language, setLanguageState] = useState<Language>(() => {
-    const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    if (stored && stored !== 'auto' && (stored === 'en' || stored === 'ja' || stored === 'zh-CN' || stored === 'zh-TW' || stored === 'ko')) {
-      return stored;
-    }
-    return detectSystemLanguage();
+    return readLanguagePreference(localStorage.getItem(LANGUAGE_STORAGE_KEY)).storedLanguage
+      ?? resolveSystemLanguage();
   });
 
   // Update language when system language changes (for auto mode)
   useEffect(() => {
     if (isAuto) {
       const handleLanguageChange = () => {
-        setLanguageState(detectSystemLanguage());
+        setLanguageState(resolveSystemLanguage());
       };
       
       // Listen for language changes
@@ -56,7 +36,7 @@ export function I18nProvider({ children }: { children: ReactNode }) {
   const setLanguage = useCallback((lang: Language | 'auto') => {
     if (lang === 'auto') {
       setIsAuto(true);
-      setLanguageState(detectSystemLanguage());
+      setLanguageState(resolveSystemLanguage());
       localStorage.setItem(LANGUAGE_STORAGE_KEY, 'auto');
     } else {
       setIsAuto(false);

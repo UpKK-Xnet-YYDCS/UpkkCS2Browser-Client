@@ -1,17 +1,4 @@
-import { useState, useCallback } from 'react';
-import { XPROJ_USER_AGENT } from '@/api';
-import { useUserStore } from '@/hooks/useUserStore';
-import { useI18n } from '@/hooks/useI18n';
-import { logInfo, logDebug } from '@/store/log';
-import { getDesktopHttpFetch, invokeDesktop, openExternalUrl } from '@/services/desktopRuntime';
-
-const FORUM_URL = 'https://bbs.upkk.com';
-const CHECK_IN_ENDPOINT = '/plugin.php?id=xnet_core_api:xproj_sign';
-
-interface CheckInResult {
-  status: number;
-  message: string;
-}
+import { useCheckInPage } from '@/hooks/useCheckInPage';
 
 const CheckIcon = () => (
   <svg className="w-16 h-16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -33,133 +20,33 @@ const CalendarIcon = () => (
 );
 
 export function CheckInPage() {
-  const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<CheckInResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const { user, isLoggedIn, openLoginModal } = useUserStore();
-  const { t } = useI18n();
+  const {
+    isLoading,
+    result,
+    error,
+    user,
+    isLoggedIn,
+    openLoginModal,
+    t,
+    handleCheckIn,
+    handleOpenForum,
+    statusGradient,
+  } = useCheckInPage();
 
-  const handleCheckIn = useCallback(async () => {
-    // Check if user is logged in
-    if (!isLoggedIn || !user) {
-      openLoginModal();
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-    setResult(null);
-
-    try {
-      // Build the POST body with uid and auth
-      const postBody = new URLSearchParams({
-        uid: String(user.uid),
-        auth: user.user_auth,
-      }).toString();
-
-      // Try using Tauri HTTP plugin first (can handle cookies properly)
-      try {
-        const tauriFetch = await getDesktopHttpFetch();
-        const response = await tauriFetch(`${FORUM_URL}${CHECK_IN_ENDPOINT}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'User-Agent': XPROJ_USER_AGENT,
-          },
-          body: postBody,
-        });
-
-        if (!response.ok) {
-          throw new Error(`请求失败: ${response.status}`);
-        }
-
-        const data = await response.json();
-        setResult({
-          status: data.status ?? 0,
-          message: data.message ?? '签到完成',
-        });
-        return;
-      } catch {
-        logDebug('CheckIn', 'Tauri HTTP not available, falling back to fetch');
-      }
-
-      // Fallback to regular fetch
-      const response = await fetch(`${FORUM_URL}${CHECK_IN_ENDPOINT}`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'User-Agent': XPROJ_USER_AGENT,
-          'X-Client-UA': XPROJ_USER_AGENT,
-        },
-        body: postBody,
-      });
-
-      if (!response.ok) {
-        throw new Error(`请求失败: ${response.status}`);
-      }
-
-      const data = await response.json();
-      setResult({
-        status: data.status ?? 0,
-        message: data.message ?? '签到完成',
-      });
-    } catch (err) {
-      if (err instanceof TypeError && err.message.includes('fetch')) {
-        setError('网络请求失败，请检查网络连接');
-      } else {
-        setError(err instanceof Error ? err.message : '签到请求失败，请稍后重试');
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [isLoggedIn, user, openLoginModal]);
-
-  const handleOpenForum = async () => {
-    try {
-      // Use Tauri to open forum in WebView2 window
-      await invokeDesktop('open_forum_window');
-      logInfo('CheckIn', 'Forum opened in WebView2 window');
-    } catch (error) {
-      console.error('[CheckIn] Failed to open forum via Tauri:', error);
-      // Fallback to shell:open
-      try {
-        await openExternalUrl(FORUM_URL);
-      } catch {
-        window.location.href = FORUM_URL;
-      }
-    }
-  };
-
-  const getStatusColor = () => {
-    if (!result) return '';
-    return result.status === 1 
-      ? 'from-green-400 to-emerald-500' 
-      : 'from-yellow-400 to-orange-500';
-  };
-
-  const getStatusIcon = () => {
-    if (!result) return null;
-    if (result.status === 1) {
-      return (
-        <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-        </svg>
-      );
-    }
-    return (
-      <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-      </svg>
-    );
-  };
+  const statusIcon = !result ? null : result.status === 1 ? (
+    <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+    </svg>
+  ) : (
+    <svg className="w-16 h-16 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+    </svg>
+  );
 
   return (
     <div className="h-full flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-8">
       <div className="max-w-md w-full">
-        {/* Main Card */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl overflow-hidden">
-          {/* Header */}
           <div className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 p-6 text-center">
             <div className="w-20 h-20 mx-auto bg-white/20 backdrop-blur-sm rounded-full flex items-center justify-center mb-4">
               <CalendarIcon />
@@ -168,19 +55,16 @@ export function CheckInPage() {
             <p className="text-white/80 text-sm">{t.checkInDesc}</p>
           </div>
 
-          {/* Content */}
           <div className="p-6">
-            {/* Result Display */}
             {result && (
-              <div className={`mb-6 p-4 rounded-xl bg-gradient-to-r ${getStatusColor()} text-white text-center`}>
+              <div className={'mb-6 p-4 rounded-xl bg-gradient-to-r ' + statusGradient + ' text-white text-center'}>
                 <div className="w-16 h-16 mx-auto mb-3 bg-white/20 rounded-full flex items-center justify-center">
-                  {getStatusIcon()}
+                  {statusIcon}
                 </div>
                 <p className="text-lg font-medium">{result.message}</p>
               </div>
             )}
 
-            {/* Error Display */}
             {error && (
               <div className="mb-6 p-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                 <div className="flex items-start gap-3">
@@ -194,7 +78,6 @@ export function CheckInPage() {
               </div>
             )}
 
-            {/* Login Status Display */}
             {isLoggedIn && user && (
               <div className="mb-6 p-3 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                 <div className="flex items-center gap-2">
@@ -208,17 +91,15 @@ export function CheckInPage() {
               </div>
             )}
 
-            {/* Check-in Button */}
             <button
               onClick={handleCheckIn}
               disabled={isLoading}
-              className={`
-                w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-3
-                ${isLoading
+              className={
+                'w-full py-4 rounded-xl font-bold text-lg transition-all duration-300 flex items-center justify-center gap-3 ' +
+                (isLoading
                   ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]'
-                }
-              `}
+                  : 'bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white shadow-lg hover:shadow-xl hover:scale-[1.02]')
+              }
             >
               {isLoading ? (
                 <>
@@ -240,7 +121,6 @@ export function CheckInPage() {
               )}
             </button>
 
-            {/* Login/Forum Link */}
             <div className="mt-6 text-center">
               {isLoggedIn ? (
                 <button
@@ -266,7 +146,6 @@ export function CheckInPage() {
             </div>
           </div>
 
-          {/* Footer */}
           <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900/50 border-t border-gray-100 dark:border-gray-700">
             <div className="flex items-center justify-center gap-2 text-xs text-gray-400">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -280,3 +159,4 @@ export function CheckInPage() {
     </div>
   );
 }
+

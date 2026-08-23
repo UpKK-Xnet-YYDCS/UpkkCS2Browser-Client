@@ -1,4 +1,4 @@
-import type { FavoriteServer } from '@/api';
+import type { FavoriteServer } from '@/api/favorites';
 import type { ServerStatus } from '@/types';
 
 export function favoriteToServerStatus(favorite: FavoriteServer): ServerStatus {

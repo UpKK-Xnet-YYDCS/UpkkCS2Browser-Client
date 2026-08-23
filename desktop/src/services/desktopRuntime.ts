@@ -1,3 +1,11 @@
+import type {
+  DesktopCommandArgs,
+  DesktopCommandName,
+  DesktopCommandResult,
+  DesktopEventMap,
+  DesktopEventName,
+} from '@/types/desktop';
+
 export type DesktopUnlisten = () => void;
 export type DesktopHttpFetch = typeof import('@tauri-apps/plugin-http').fetch;
 let optionalHttpFetchPromise: Promise<DesktopHttpFetch | null> | null = null;
@@ -10,17 +18,25 @@ function isModuleLoadError(error: unknown): boolean {
     message.includes('Failed to resolve');
 }
 
-export async function invokeDesktop<T>(command: string, args?: Record<string, unknown>): Promise<T> {
+type DesktopInvokeArguments<Name extends DesktopCommandName> =
+  DesktopCommandArgs<Name> extends undefined
+    ? [args?: undefined]
+    : [args: DesktopCommandArgs<Name>];
+
+export async function invokeDesktop<Name extends DesktopCommandName>(
+  command: Name,
+  ...[args]: DesktopInvokeArguments<Name>
+): Promise<DesktopCommandResult<Name>> {
   const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<T>(command, args);
+  return invoke<DesktopCommandResult<Name>>(command, args);
 }
 
-export async function listenDesktopEvent<T>(
-  event: string,
-  handler: (payload: T) => void | Promise<void>,
+export async function listenDesktopEvent<Name extends DesktopEventName>(
+  event: Name,
+  handler: (payload: DesktopEventMap[Name]) => void | Promise<void>,
 ): Promise<DesktopUnlisten> {
   const { listen } = await import('@tauri-apps/api/event');
-  return listen<T>(event, ({ payload }) => handler(payload));
+  return listen<DesktopEventMap[Name]>(event, ({ payload }) => handler(payload));
 }
 
 export async function openExternalUrl(url: string): Promise<void> {

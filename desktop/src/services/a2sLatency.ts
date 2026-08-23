@@ -1,42 +1,34 @@
 import { BoundedLruMap } from './boundedLru.ts';
+import {
+  DEFAULT_LATENCY_TTL_MS,
+  groupLatencyTargets,
+  normalizeLatencyConcurrency,
+  normalizeLatencyRetryCount,
+  normalizeLatencyRetryDelayMs,
+  normalizeLatencyTimeoutMs,
+} from './a2sLatencyPolicy.ts';
+import { queryLatencyWithRetry } from './a2sLatencyQuery.ts';
+import type {
+  GroupedLatencyJob,
+  LocalLatencyMeasureOptions,
+  LocalLatencyQuery,
+  LocalLatencyScheduler,
+  LocalLatencySnapshot,
+  LocalLatencyTarget,
+  LocalLatencyUpdate,
+} from './a2sLatencyTypes.ts';
 
-export type LocalLatencyStatus = 'queued' | 'checking' | 'success' | 'failed' | 'unavailable';
-
-export interface LocalLatencyTarget {
-  key: string;
-  ip: string;
-  port: string;
-  priority?: number;
-}
-
-export interface LocalLatencySnapshot {
-  status: LocalLatencyStatus;
-  latencyMs?: number;
-  error?: string;
-  updatedAt?: number;
-}
-
-export interface LocalLatencyQueryOptions {
-  timeoutMs: number;
-}
-
-export interface LocalLatencyQueryResult {
-  success: boolean;
-  latency_ms?: number;
-  error?: string;
-}
-
-export type LocalLatencyQuery = (
-  ip: string,
-  port: string,
-  options: LocalLatencyQueryOptions,
-) => Promise<LocalLatencyQueryResult>;
-
-export type LocalLatencyUpdate = (key: string, snapshot: LocalLatencySnapshot) => void;
-
-export interface LocalLatencyMeasureOptions {
-  mode?: 'replace' | 'background';
-}
+export type {
+  LocalLatencyMeasureOptions,
+  LocalLatencyQuery,
+  LocalLatencyQueryOptions,
+  LocalLatencyQueryResult,
+  LocalLatencyScheduler,
+  LocalLatencySnapshot,
+  LocalLatencyStatus,
+  LocalLatencyTarget,
+  LocalLatencyUpdate,
+} from './a2sLatencyTypes.ts';
 
 interface LocalLatencySchedulerOptions {
   query: LocalLatencyQuery;
@@ -51,17 +43,8 @@ interface LocalLatencySchedulerOptions {
   isAvailable?: () => boolean;
 }
 
-export interface LocalLatencyScheduler {
-  measure: (targets: LocalLatencyTarget[], onUpdate: LocalLatencyUpdate, options?: LocalLatencyMeasureOptions) => Promise<void>;
-  clearCache: () => void;
-}
 
-interface LatencyJob {
-  address: string;
-  target: LocalLatencyTarget;
-  keys: string[];
-  priority: number;
-}
+type LatencyJob = GroupedLatencyJob;
 
 interface LatencyListener {
   keys: string[];
@@ -78,44 +61,10 @@ interface LatencyProbe {
   resolve: (snapshot: LocalLatencySnapshot) => void;
 }
 
-const DEFAULT_CONCURRENCY = 3;
-const DEFAULT_TTL_MS = 60_000;
-const DEFAULT_TIMEOUT_MS = 2_000;
-const DEFAULT_RETRY_COUNT = 1;
-const DEFAULT_RETRY_DELAY_MS = 300;
-
-function normalizeConcurrency(value: number | undefined): number {
-  if (!Number.isFinite(value) || value === undefined) return DEFAULT_CONCURRENCY;
-  return Math.max(1, Math.min(6, Math.floor(value)));
-}
-
-function normalizeTimeoutMs(value: number | undefined): number {
-  if (!Number.isFinite(value) || value === undefined) return DEFAULT_TIMEOUT_MS;
-  return Math.max(500, Math.min(5_000, Math.floor(value)));
-}
-
-function normalizeRetryCount(value: number | undefined): number {
-  if (!Number.isFinite(value) || value === undefined) return DEFAULT_RETRY_COUNT;
-  return Math.max(0, Math.min(5, Math.floor(value)));
-}
-
-function normalizeRetryDelayMs(value: number | undefined): number {
-  if (!Number.isFinite(value) || value === undefined) return DEFAULT_RETRY_DELAY_MS;
-  return Math.max(0, Math.min(3_000, Math.floor(value)));
-}
-
-function normalizePriority(value: number | undefined): number {
-  if (!Number.isFinite(value) || value === undefined) return 0;
-  return Math.max(0, Math.floor(value));
-}
-
 function defaultSleep(ms: number): Promise<void> {
   return new Promise(resolve => globalThis.setTimeout(resolve, ms));
 }
 
-function addressKey(ip: string, port: string): string {
-  return `${ip.trim()}:${String(port).trim()}`;
-}
 
 function updateKeys(keys: string[], snapshot: LocalLatencySnapshot, onUpdate: LocalLatencyUpdate): void {
   for (const key of keys) {
@@ -124,11 +73,11 @@ function updateKeys(keys: string[], snapshot: LocalLatencySnapshot, onUpdate: Lo
 }
 
 export function createLocalLatencyScheduler(options: LocalLatencySchedulerOptions): LocalLatencyScheduler {
-  const concurrency = normalizeConcurrency(options.concurrency);
-  const ttlMs = Math.max(1_000, options.ttlMs ?? DEFAULT_TTL_MS);
-  const timeoutMs = normalizeTimeoutMs(options.timeoutMs);
-  const retryCount = normalizeRetryCount(options.retryCount);
-  const retryDelayMs = normalizeRetryDelayMs(options.retryDelayMs);
+  const concurrency = normalizeLatencyConcurrency(options.concurrency);
+  const ttlMs = Math.max(1_000, options.ttlMs ?? DEFAULT_LATENCY_TTL_MS);
+  const timeoutMs = normalizeLatencyTimeoutMs(options.timeoutMs);
+  const retryCount = normalizeLatencyRetryCount(options.retryCount);
+  const retryDelayMs = normalizeLatencyRetryDelayMs(options.retryDelayMs);
   const replacePending = options.replacePending ?? true;
   const now = options.now ?? (() => Date.now());
   const sleep = options.sleep ?? defaultSleep;
@@ -145,39 +94,15 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
   }
 
   async function queryJob(job: LatencyJob): Promise<LocalLatencySnapshot> {
-    let lastError = 'A2S latency unavailable';
-    const attempts = retryCount + 1;
-    try {
-      for (let attempt = 0; attempt < attempts; attempt += 1) {
-        try {
-          const result = await options.query(job.target.ip, job.target.port, { timeoutMs });
-          if (result.success && Number.isFinite(result.latency_ms)) {
-            return {
-              status: 'success',
-              latencyMs: Math.max(0, Math.round(result.latency_ms ?? 0)),
-              updatedAt: now(),
-            };
-          }
-          lastError = result.error || 'A2S latency unavailable';
-        } catch (error) {
-          lastError = error instanceof Error ? error.message : String(error);
-        }
-        if (attempt < attempts - 1 && retryDelayMs > 0) {
-          await sleep(retryDelayMs);
-        }
-      }
-      return {
-        status: 'failed',
-        error: lastError,
-        updatedAt: now(),
-      };
-    } catch (error) {
-      return {
-        status: 'failed',
-        error: error instanceof Error ? error.message : String(error),
-        updatedAt: now(),
-      };
-    }
+    return queryLatencyWithRetry({
+      query: options.query,
+      target: job.target,
+      timeoutMs,
+      retryCount,
+      retryDelayMs,
+      now,
+      sleep,
+    });
   }
 
   function pumpQueue(): void {
@@ -286,23 +211,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
       return;
     }
 
-    const grouped = new Map<string, LatencyJob>();
-    for (const target of targets) {
-      const address = addressKey(target.ip, target.port);
-      if (!address || address === ':') continue;
-      const existing = grouped.get(address);
-      if (existing) {
-        existing.keys.push(target.key);
-        existing.priority = Math.min(existing.priority, normalizePriority(target.priority));
-      } else {
-        grouped.set(address, {
-          address,
-          target,
-          keys: [target.key],
-          priority: normalizePriority(target.priority),
-        });
-      }
-    }
+    const grouped = groupLatencyTargets(targets);
 
     if (shouldReplacePending) {
       prioritizeCurrentBatch(grouped);

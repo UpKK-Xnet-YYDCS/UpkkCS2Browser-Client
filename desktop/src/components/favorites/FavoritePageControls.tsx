@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import * as api from '@/api';
+import { addFavorite } from '@/api/favorites';
+import { refreshServer } from '@/api/servers';
+import { CountdownProgressBar } from '@/components/CountdownProgressBar';
 import { useI18n } from '@/hooks/useI18n';
-
-const DEFAULT_SERVER_PORT = '27015';
+import { favoriteAddDisplayName, favoriteAddFailureMessage, parseFavoriteAddressInput } from '@/services/favoriteAddressInput';
 
 // Star filled icon
 const StarFilledIcon = () => (
@@ -39,37 +40,6 @@ const PlusIcon = () => (
   </svg>
 );
 
-// Countdown Progress Bar Component (same as server list)
-interface CountdownProgressBarProps {
-  secondsRemaining: number;
-  totalSeconds: number;
-  isLoading?: boolean;
-}
-
-const CountdownProgressBar = ({ secondsRemaining, totalSeconds, isLoading }: CountdownProgressBarProps) => {
-  const progress = totalSeconds > 0 ? ((totalSeconds - secondsRemaining) / totalSeconds) * 100 : 0;
-  
-  return (
-    <div className="flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-purple-50 to-blue-50 dark:from-purple-900/20 dark:to-blue-900/20 rounded-lg border border-purple-200 dark:border-purple-800/50 min-w-[120px]">
-      <div className="flex-1 relative">
-        <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-          <div 
-            className={`h-full rounded-full transition-all duration-1000 ease-linear ${
-              isLoading 
-                ? 'bg-gradient-to-r from-purple-500 to-blue-500 animate-pulse w-full' 
-                : 'bg-gradient-to-r from-purple-500 to-blue-500'
-            }`}
-            style={{ width: isLoading ? '100%' : `${progress}%` }}
-          />
-        </div>
-      </div>
-      <span className="text-xs font-medium text-purple-600 dark:text-purple-400 min-w-[28px] text-right tabular-nums">
-        {isLoading ? '...' : `${secondsRemaining}s`}
-      </span>
-    </div>
-  );
-};
-
 // Add Favorite Modal
 function AddFavoriteModal({ onClose, onAdded }: { onClose: () => void; onAdded: () => void }) {
   const { t } = useI18n();
@@ -80,25 +50,20 @@ function AddFavoriteModal({ onClose, onAdded }: { onClose: () => void; onAdded: 
   const [error, setError] = useState('');
 
   const handleSubmit = async () => {
-    const trimmed = address.trim();
-    if (!trimmed) return;
-    // Parse IP:Port
-    const parts = trimmed.split(':');
-    const ip = parts[0]?.trim();
-    const port = parts[1]?.trim() || DEFAULT_SERVER_PORT;
-    if (!ip) return;
+    const parsed = parseFavoriteAddressInput(address);
+    if (!parsed) return;
 
     setIsSubmitting(true);
     setError('');
     try {
-      const result = await api.addFavorite(ip, port, name.trim() || trimmed, notes.trim());
+      const result = await addFavorite(parsed.ip, parsed.port, favoriteAddDisplayName(name, parsed.raw), notes.trim());
       if (result.success) {
         // Trigger A2S query to immediately populate server info
-        api.refreshServer(`${ip}:${port}`).catch(() => {});
+        refreshServer(`${parsed.ip}:${parsed.port}`).catch(() => {});
         onAdded();
         onClose();
       } else {
-        setError((result as unknown as { error?: string }).error || 'Failed to add');
+        setError(favoriteAddFailureMessage(result));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

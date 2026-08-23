@@ -1,5 +1,5 @@
 import { createContext } from 'react';
-import type { AuthStatus } from '@/api';
+import type { AuthStatus } from '@/api/auth';
 import type { CloudLoginProvider } from '@/types/cloudAuth';
 
 export type { CloudLoginProvider } from '@/types/cloudAuth';
