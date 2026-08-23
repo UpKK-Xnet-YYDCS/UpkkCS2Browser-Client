@@ -30,14 +30,16 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.generate-token.outputs.token || secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js latest stable
+      - name: Setup Node.js 24
         uses: actions/setup-node@v6
         with:
-          node-version: 'latest'
+          node-version: '24'
           check-latest: true
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
 
       - name: Get current date
         id: date

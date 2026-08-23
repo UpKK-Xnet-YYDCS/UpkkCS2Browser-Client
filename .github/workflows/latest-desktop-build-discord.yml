@@ -64,10 +64,10 @@ jobs:
             librsvg2-dev \
             patchelf
 
-      - name: Setup Node.js latest stable
+      - name: Setup Node.js 24
         uses: actions/setup-node@v6
         with:
-          node-version: 'latest'
+          node-version: '24'
           check-latest: true
           cache: 'npm'
           cache-dependency-path: desktop/package-lock.json
@@ -107,8 +107,9 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          ENABLE_DEVTOOLS: ${{ inputs.devtools == true }}
         run: |
-          if [ "${{ inputs.devtools }}" = "true" ]; then
+          if [ "$ENABLE_DEVTOOLS" = "true" ]; then
             npm run tauri:build -- --features devtools --target ${{ matrix.rust_target }}
           else
             npm run tauri:build -- --target ${{ matrix.rust_target }}
@@ -219,7 +220,7 @@ jobs:
 
       - name: Notify Discord - Release Published
         if: success()
-        uses: appleboy/discord-action@master
+        uses: appleboy/discord-action@v1.2.0
         with:
           webhook_id: ${{ secrets.DISCORD_WEBHOOK_ID }}
           webhook_token: ${{ secrets.DISCORD_WEBHOOK_TOKEN }}
