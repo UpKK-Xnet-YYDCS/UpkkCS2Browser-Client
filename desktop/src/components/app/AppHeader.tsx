@@ -21,7 +21,7 @@ export function AppHeader({
 
   return (
     <header
-      className={`sticky top-0 z-50 border-b border-gray-200 dark:border-gray-700 shadow-sm ${
+      className={`sticky top-0 z-50 shrink-0 border-b border-gray-200 dark:border-gray-700 shadow-sm ${
         theme.glassEffect || theme.backgroundImage ? 'backdrop-blur-xl' : ''
       }`}
       style={{ backgroundColor: headerColor }}

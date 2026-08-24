@@ -10,7 +10,7 @@ interface AIMessageListProps {
   messages: DesktopChatMessage[];
   labels: AIChatLabels;
   status: string;
-  endRef: RefObject<HTMLDivElement | null>;
+  scrollRef: RefObject<HTMLDivElement | null>;
   prompts: string[];
   promptDisabled?: boolean;
   onPrompt(prompt: string): void;
@@ -33,10 +33,10 @@ const MARKDOWN_COMPONENTS: NonNullable<ComponentProps<typeof ReactMarkdown>['com
   pre: ({ children }) => <pre className="my-2 overflow-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100">{children}</pre>,
 };
 
-export function AIMessageList({ messages, labels, status, endRef, prompts, promptDisabled, onPrompt, setThinkingOpen }: AIMessageListProps) {
+export function AIMessageList({ messages, labels, status, scrollRef, prompts, promptDisabled, onPrompt, setThinkingOpen }: AIMessageListProps) {
   const visibleMessages = messages.filter(message => message.id !== 'welcome');
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-6" aria-live="polite">
+    <div ref={scrollRef} className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-3 py-5 sm:px-6" aria-live="polite">
       {visibleMessages.length === 0 ? (
         <div className="mx-auto flex min-h-full w-full max-w-2xl flex-col items-center justify-center py-10 text-center">
           <span className="grid h-11 w-11 place-items-center rounded-lg bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
@@ -69,7 +69,6 @@ export function AIMessageList({ messages, labels, status, endRef, prompts, promp
           )}
         </div>
       )}
-      <div ref={endRef} />
     </div>
   );
 }

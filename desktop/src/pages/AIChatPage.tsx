@@ -15,12 +15,12 @@ export function AIChatPage() {
   const {
     language, labels, isLoggedIn, isReady, sessionState, input, setInput, instructions, setInstructions,
     sendingSessionId, sidebarOpen, setSidebarOpen, joinTarget, setJoinTarget, joinCandidates, setJoinCandidates,
-    joinLatency, localToolResults, setLocalToolResults, localToolRunning, endRef, activeSession, activeMessages,
+    joinLatency, localToolResults, setLocalToolResults, localToolRunning, messageScrollRef, activeSession, activeMessages,
     activeTurnCount, activeStatus, activeSessionSending, startNewSession, selectSession, deleteSession,
     requestJoin, setThinkingOpen, submit, stop,
   } = page;
 
-  if (!isReady) return <div className="grid flex-1 place-items-center text-sm text-gray-500">{labels.loading}</div>;
+  if (!isReady) return <div className="grid min-h-0 flex-1 place-items-center overflow-hidden text-sm text-gray-500">{labels.loading}</div>;
   if (!isLoggedIn) {
     return (
       <CloudLoginPanel
@@ -46,7 +46,7 @@ export function AIChatPage() {
         onClose={() => setSidebarOpen(false)}
       />
 
-      <section className="flex min-w-0 flex-1 flex-col bg-white dark:bg-gray-950">
+      <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-gray-950">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b border-gray-200 px-3 dark:border-gray-800 sm:px-4">
           <button type="button" onClick={() => setSidebarOpen(true)} title={labels.openSidebar} aria-label={labels.openSidebar} className="grid h-9 w-9 shrink-0 place-items-center rounded-md text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-800 lg:hidden">
             <Menu className="h-4 w-4" />
@@ -76,7 +76,7 @@ export function AIChatPage() {
           messages={activeMessages}
           labels={labels}
           status={activeStatus}
-          endRef={endRef}
+          scrollRef={messageScrollRef}
           prompts={labels.prompts}
           promptDisabled={Boolean(sendingSessionId)}
           onPrompt={setInput}

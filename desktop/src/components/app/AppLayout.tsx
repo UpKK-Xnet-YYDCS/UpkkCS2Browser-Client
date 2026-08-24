@@ -18,10 +18,11 @@ export function AppLayout({
 }) {
   const theme = useTheme();
   const { backgroundStyle, overlayStyle } = useAppChromeStyles(theme);
+  const constrainToViewport = activeTab === 'ai';
 
   return (
     <div
-      className="min-h-screen min-w-0 overflow-x-hidden flex flex-col relative"
+      className={`${constrainToViewport ? 'h-dvh overflow-hidden' : 'min-h-screen overflow-x-hidden'} min-w-0 flex flex-col relative`}
       style={backgroundStyle}
     >
       {theme.backgroundImage && (
@@ -30,7 +31,7 @@ export function AppLayout({
           style={overlayStyle}
         />
       )}
-      <div className="relative z-10 min-h-screen flex flex-col">
+      <div className={`${constrainToViewport ? 'h-full min-h-0' : 'min-h-screen'} relative z-10 flex flex-col`}>
         <AppHeader activeTab={activeTab} onTabChange={onTabChange} />
         <main className="min-h-0 flex-1 flex flex-col overflow-hidden">
           <Suspense fallback={<div className="flex-1" />}>

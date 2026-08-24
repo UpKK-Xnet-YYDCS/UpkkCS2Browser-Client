@@ -29,7 +29,7 @@ export function useAIChatPage() {
   const [sendingSessionId, setSendingSessionId] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  const endRef = useRef<HTMLDivElement | null>(null);
+  const messageScrollRef = useRef<HTMLDivElement | null>(null);
 
   const workspace = useAIChatToolWorkspace({ language, isLoggedIn });
   const {
@@ -86,7 +86,9 @@ export function useAIChatPage() {
   }, [instructions]);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const messageScroller = messageScrollRef.current;
+    if (!messageScroller) return;
+    messageScroller.scrollTo({ top: messageScroller.scrollHeight, behavior: 'smooth' });
   }, [activeMessages, activeStatus]);
 
   useEffect(() => () => {
@@ -164,7 +166,7 @@ export function useAIChatPage() {
   return {
     language, labels, isLoggedIn, isReady, sessionState, input, setInput, instructions, setInstructions,
     sendingSessionId, sidebarOpen, setSidebarOpen, joinTarget, setJoinTarget, joinCandidates, setJoinCandidates,
-    joinLatency, localToolResults, setLocalToolResults, localToolRunning, endRef, activeSession, activeMessages,
+    joinLatency, localToolResults, setLocalToolResults, localToolRunning, messageScrollRef, activeSession, activeMessages,
     activeTurnCount, activeStatus, activeSessionSending, startNewSession, selectSession, deleteSession,
     requestJoin, setThinkingOpen, submit, stop,
   };
