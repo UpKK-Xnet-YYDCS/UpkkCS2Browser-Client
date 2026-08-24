@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  AIChatRequestError,
   consumeAIChatSSE,
   parseSSEText,
   streamAIChat,
@@ -33,6 +34,66 @@ test('rejects an unfinished stream', async () => {
     consumeAIChatSSE(stream, () => undefined, new AbortController().signal, 100),
     /ended before completion/,
   );
+});
+
+test('sends language as a header without adding it to the strict request body', async () => {
+  let capturedBody: Record<string, unknown> | undefined;
+  let capturedHeaders: Headers | undefined;
+  const fetcher: AIChatFetch = async (_input, init) => {
+    capturedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+    capturedHeaders = new Headers(init.headers);
+    return sseResponse(['data: {"type":"complete"}\n\n']);
+  };
+
+  await streamAIChat(
+    {
+      message: 'aaa',
+      history: [{ role: 'user', content: 'previous' }],
+      instructions: 'be brief',
+      context: 'local context',
+      language: 'zh-CN',
+    },
+    {
+      signal: new AbortController().signal,
+      onEvent: () => undefined,
+      fetcher,
+      baseUrl: 'https://example.test',
+      token: 'token',
+    },
+  );
+
+  assert.deepEqual(capturedBody, {
+    message: 'aaa',
+    history: [{ role: 'user', content: 'previous' }],
+    instructions: 'be brief',
+    context: 'local context',
+  });
+  assert.equal(capturedHeaders?.get('Accept-Language'), 'zh-CN');
+});
+
+test('preserves a terminal SSE validation error instead of reporting an incomplete stream', async () => {
+  let calls = 0;
+  const fetcher: AIChatFetch = async () => {
+    calls += 1;
+    return sseResponse(['data: {"type":"error","error":"Invalid request body"}\n\n']);
+  };
+
+  await assert.rejects(
+    streamAIChat(
+      { message: 'aaa', history: [], language: 'en' },
+      {
+        signal: new AbortController().signal,
+        onEvent: () => undefined,
+        fetcher,
+        baseUrl: 'https://example.test',
+        token: 'token',
+        retryWait: async () => undefined,
+      },
+    ),
+    (error: unknown) => error instanceof AIChatRequestError &&
+      error.message === 'Invalid request body' && !error.retryable,
+  );
+  assert.equal(calls, 1);
 });
 
 test('retries with continue_from and preserves streamed content', async () => {

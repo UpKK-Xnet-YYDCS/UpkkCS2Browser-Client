@@ -23,6 +23,7 @@ export async function streamAIChat(request: AIChatRequest, options: AIChatStream
   }
   const maxRetries = options.maxRetries ?? AI_MAX_RETRIES;
   let partialContent = request.continue_from ?? '';
+  const { language, ...requestBody } = request;
 
   for (let retry = 0; ; retry += 1) {
     throwIfAborted(options.signal);
@@ -30,9 +31,9 @@ export async function streamAIChat(request: AIChatRequest, options: AIChatStream
       const response = await fetcher(`${baseUrl}/api/ai-chat`, {
         method: 'POST',
         signal: options.signal,
-        headers: requestHeaders(token, request.language, true),
+        headers: requestHeaders(token, language, true),
         body: JSON.stringify({
-          ...request,
+          ...requestBody,
           history: request.history.slice(-10),
           continue_from: partialContent || undefined,
         }),
