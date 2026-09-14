@@ -31,7 +31,7 @@ export function useHomeFavoriteServers({
 }: UseHomeFavoriteServersOptions) {
   const { t } = useI18n();
   const {
-    latencyByKey,
+    latencyStore,
     latencyDetectionSettings,
     latencySchedulerOptions,
     measureServers,
@@ -71,7 +71,7 @@ export function useHomeFavoriteServers({
     servers,
     perPage,
     showFavoritesOnly,
-    latencyByKey,
+    latencyStore,
   });
   const shouldBackfillLatency = latencyDetectionSettings.deepScanEnabled || latencyFilter !== 'all';
 

@@ -46,15 +46,25 @@ export function areServerEntitiesEquivalent(left: ServerStatus, right: ServerSta
   return leftKeys.length === rightKeys.length && leftKeys.every(key => equivalentValue(left[key], right[key]));
 }
 
+export function reuseArrayIfIdentical<T>(previous: readonly T[], next: readonly T[]): T[] {
+  if (previous.length === next.length && previous.every((item, index) => item === next[index])) {
+    return previous as T[];
+  }
+  return next as T[];
+}
+
 export function reconcileServerEntities(
   previous: ServerStatus[],
   incoming: ServerStatus[],
 ): ServerStatus[] {
-  if (incoming.length === 0) return incoming;
+  if (incoming.length === 0) {
+    return previous.length === 0 ? previous : incoming;
+  }
   const previousByKey = new Map(previous.map(server => [getServerEntityKey(server), server]));
-  return incoming.map(server => {
+  const next = incoming.map(server => {
     const normalized = normalizeServerStatus(server);
     const existing = previousByKey.get(getServerEntityKey(normalized));
     return existing && areServerEntitiesEquivalent(existing, normalized) ? existing : normalized;
   });
+  return reuseArrayIfIdentical(previous, next);
 }

@@ -2,6 +2,11 @@ import type { ServerStatus } from '@/types';
 import type { LatencyFilterValue } from '@/types/ui';
 import { isServerOffline } from '../utils/serverStatus.ts';
 import type { LocalLatencySnapshot, LocalLatencyTarget } from './a2sLatency';
+import {
+  areServerEntitiesEquivalent,
+  getServerEntityKey,
+  reuseArrayIfIdentical,
+} from './serverEntities.ts';
 
 export type LatencyGrade = 'green' | 'yellow' | 'amber' | 'red' | 'unknown';
 export type LatencyFilter = LatencyFilterValue;
@@ -70,19 +75,69 @@ export function applyLatencySnapshotToServer(
   return target ? applyLatencySnapshot(server, latencyByKey[target.key]) : server;
 }
 
+const EMPTY_SERVERS: ServerStatus[] = [];
+
+function latencyProjectionKey(server: ServerStatus): string {
+  return getServerLatencyTarget(server)?.key ?? getServerEntityKey(server);
+}
+
 export function applyLatencySnapshots(
   servers: readonly ServerStatus[],
   latencyByKey: Readonly<Record<string, LocalLatencySnapshot | undefined>>,
+  previous: readonly ServerStatus[] = EMPTY_SERVERS,
 ): ServerStatus[] {
-  return servers.map((server) => applyLatencySnapshotToServer(server, latencyByKey));
+  if (servers.length === 0) {
+    return previous.length === 0 ? previous as ServerStatus[] : EMPTY_SERVERS;
+  }
+
+  const previousByKey = new Map(previous.map(server => [latencyProjectionKey(server), server]));
+  const next = servers.map(server => {
+    const projected = applyLatencySnapshotToServer(server, latencyByKey);
+    const prior = previousByKey.get(latencyProjectionKey(projected));
+    if (prior && areServerEntitiesEquivalent(prior, projected)) return prior;
+    return projected;
+  });
+  return reuseArrayIfIdentical(previous, next);
 }
 
 export function filterServersByLatency(
   servers: readonly ServerStatus[],
   latencyByKey: Readonly<Record<string, LocalLatencySnapshot | undefined>>,
   filter: LatencyFilter,
+  previous: readonly ServerStatus[] = EMPTY_SERVERS,
 ): ServerStatus[] {
-  return applyLatencySnapshots(servers, latencyByKey).filter((server) => matchesLatencyFilter(server, filter));
+  const projected = applyLatencySnapshots(servers, latencyByKey, previous);
+  if (filter === 'all') return projected;
+  return reuseArrayIfIdentical(
+    previous,
+    projected.filter((server) => matchesLatencyFilter(server, filter)),
+  );
+}
+
+export function createStableLatencyProjector() {
+  let previousProjected: ServerStatus[] = EMPTY_SERVERS;
+  let previousFiltered: ServerStatus[] = EMPTY_SERVERS;
+  let previousFilter: LatencyFilter | null = null;
+
+  return function project(
+    servers: readonly ServerStatus[],
+    latencyByKey: Readonly<Record<string, LocalLatencySnapshot | undefined>>,
+    filter: LatencyFilter,
+  ): ServerStatus[] {
+    previousProjected = applyLatencySnapshots(servers, latencyByKey, previousProjected);
+    if (filter === 'all') {
+      previousFilter = filter;
+      previousFiltered = previousProjected;
+      return previousProjected;
+    }
+    const filtered = previousProjected.filter(server => matchesLatencyFilter(server, filter));
+    previousFiltered = reuseArrayIfIdentical(
+      previousFilter === filter ? previousFiltered : EMPTY_SERVERS,
+      filtered,
+    );
+    previousFilter = filter;
+    return previousFiltered;
+  };
 }
 
 export function applyLatencySnapshot(server: ServerStatus, snapshot?: LocalLatencySnapshot): ServerStatus {

@@ -33,12 +33,15 @@ export type LocalLatencyQuery = (
 export type LocalLatencyUpdate = (key: string, snapshot: LocalLatencySnapshot) => void;
 
 export interface LocalLatencyMeasureOptions {
-  mode?: 'replace' | 'background';
+  mode?: 'replace' | 'background' | 'realtime';
 }
 
 export interface LocalLatencyScheduler {
   measure: (targets: LocalLatencyTarget[], onUpdate: LocalLatencyUpdate, options?: LocalLatencyMeasureOptions) => Promise<void>;
   clearCache: () => void;
+  cancelListener: (onUpdate: LocalLatencyUpdate) => void;
+  cancelPending: () => void;
+  release: () => void;
 }
 
 export interface GroupedLatencyJob {

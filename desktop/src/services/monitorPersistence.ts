@@ -1,5 +1,6 @@
 import type { MonitorNotifySettings, MonitorRule } from './monitorTypes';
 import { invokeDesktop } from './desktopRuntime';
+import { createLatestSerialWriter } from './persistSerial';
 
 export const MONITOR_RULES_KEY = 'xproj_monitor_rules';
 const MONITOR_INTERVAL_KEY = 'xproj_monitor_interval';
@@ -36,13 +37,13 @@ export function saveNotifySettings(settings: MonitorNotifySettings): void {
 
 // ============== Map Image URL ==============
 
-function persistMonitorRulesToFile(rules: MonitorRule[]): void {
-  (async () => {
-    try {
-      await invokeDesktop('save_monitor_data', { data: JSON.stringify(rules) });
-    } catch { /* Tauri not available or save failed — localStorage is the fallback */ }
-  })();
-}
+const persistMonitorRulesToFile = createLatestSerialWriter(async (rules: MonitorRule[]) => {
+  try {
+    await invokeDesktop('save_monitor_data', { data: JSON.stringify(rules) });
+  } catch {
+    // Tauri not available or save failed — localStorage is the fallback.
+  }
+});
 
 /**
  * Load monitor rules from the file in the app data directory.

@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Bot, Menu, RotateCcw, Send, Settings2, Square } from 'lucide-react';
+import { Bot, Menu, RotateCcw, Send, Settings2, Square } from '@/components/lucideIcons';
 import { AIChatSessionSidebar } from '@/components/AIChatSessionSidebar';
 import { CloudLoginPanel } from '@/components/CloudLoginPanel';
 import { AIMessageList } from '@/components/AIMessageList';

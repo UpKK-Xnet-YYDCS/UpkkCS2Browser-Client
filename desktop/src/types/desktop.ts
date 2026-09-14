@@ -16,6 +16,7 @@ export interface A2SQueryResult {
   vac: boolean;
   version: string;
   latency_ms?: number;
+  queue_wait_ms?: number;
 }
 
 export interface A2SQueryTarget {

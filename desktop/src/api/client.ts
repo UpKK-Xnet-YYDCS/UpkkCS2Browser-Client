@@ -1,21 +1,22 @@
-import { setCloudApiTokenInMemory } from '@/services/cloudToken';
-import { invalidateRequestCache } from './clientCache';
-import { getBaseUrl, writeApiBaseUrl } from './clientConfig';
+import { setCloudApiTokenInMemory } from '../services/cloudToken.ts';
+import { invalidateRequestCache } from './clientCache.ts';
+import { getBaseUrl, writeApiBaseUrl } from './clientConfig.ts';
 
 export {
   XPROJ_USER_AGENT,
   getBaseUrl,
   getApiBaseUrl,
   getApiToken,
-} from './clientConfig';
-export { buildQuery } from './clientQuery';
-export type { GeoFilterParams } from './clientQuery';
+} from './clientConfig.ts';
+export { buildQuery } from './clientQuery.ts';
+export type { GeoFilterParams } from './clientQuery.ts';
 
 export {
   clearResponseCache,
   clearCacheForEndpoint,
   hasCachedResponse,
-} from './clientCache';
+  getRequestCacheStats,
+} from './clientCache.ts';
 
 export {
   getPrefetchDelay,
@@ -25,13 +26,15 @@ export {
   cancelPrefetch,
   startPrefetchSequence,
   isPrefetchSequenceCurrent,
-} from './clientPrefetch';
+  collectPrefetchPageNumbers,
+} from './clientPrefetch.ts';
 
 export {
   fetchApi,
   fetchWithRetry,
   refreshEndpoint,
-} from './clientRequest';
+} from './clientRequest.ts';
+export type { ApiCallOptions } from './clientRequest.ts';
 
 export const setApiBaseUrl = (url: string) => {
   if (url !== getBaseUrl()) invalidateRequestCache();

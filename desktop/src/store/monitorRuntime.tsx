@@ -22,6 +22,8 @@ import {
   setMonitorEnabled,
 } from '@/services/monitorPersistence';
 import type { MatchedServer, MonitorRule, MonitorStatus } from '@/services/monitorTypes';
+import { pruneMonitorMatchState } from '@/services/monitorMatchState';
+import { isDocumentHidden, remainingCountdownSeconds } from '@/services/deadlineCountdown';
 
 const initialStatus: MonitorStatus = {
   isRunning: false,
@@ -46,9 +48,11 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
   const [countdown, setCountdown] = useState(0);
   const rulesRef = useRef(rules);
   const runCheckRef = useRef<() => Promise<void>>(async () => undefined);
+  const countdownDeadlineRef = useRef(0);
 
   useEffect(() => {
     rulesRef.current = rules;
+    pruneMonitorMatchState(rules.map(rule => rule.id));
   }, [rules]);
 
   useEffect(() => {
@@ -123,18 +127,19 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
 
     const scheduleNext = () => {
       if (cancelled) return;
+      if (countdownTimer) clearTimeout(countdownTimer);
+      countdownDeadlineRef.current = Date.now() + interval * 1000;
       setCountdown(interval);
       setStatus(previous => ({
         ...previous,
-        nextCheckTime: new Date(Date.now() + interval * 1000).toISOString(),
+        nextCheckTime: new Date(countdownDeadlineRef.current).toISOString(),
       }));
       const tick = () => {
         if (cancelled) return;
-        setCountdown(previous => {
-          if (previous <= 1) return 0;
-          countdownTimer = setTimeout(tick, 1000);
-          return previous - 1;
-        });
+        const remaining = remainingCountdownSeconds(countdownDeadlineRef.current, Date.now());
+        if (!isDocumentHidden()) setCountdown(remaining);
+        if (remaining <= 0) return;
+        countdownTimer = setTimeout(tick, 1000);
       };
       countdownTimer = setTimeout(tick, 1000);
       checkTimer = setTimeout(() => {
@@ -152,8 +157,15 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
       });
     }, 100);
 
+    const onVisibility = () => {
+      if (cancelled || isDocumentHidden()) return;
+      setCountdown(remainingCountdownSeconds(countdownDeadlineRef.current, Date.now()));
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+
     return () => {
       cancelled = true;
+      document.removeEventListener('visibilitychange', onVisibility);
       clearTimeout(initialTimer);
       if (checkTimer) clearTimeout(checkTimer);
       if (countdownTimer) clearTimeout(countdownTimer);

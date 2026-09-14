@@ -59,8 +59,8 @@ pub async fn open_steam_login(app: tauri::AppHandle, login_url: String) -> Resul
                 println!("[Login] Emitting login-token-ready event");
                 let _ = app_handle.emit("login-token-ready", user_json);
                 let app_close = app_handle.clone();
-                std::thread::spawn(move || {
-                    std::thread::sleep(std::time::Duration::from_millis(300));
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                     if let Some(window) = app_close.get_webview_window("steam_login") {
                         let _ = window.close();
                     }

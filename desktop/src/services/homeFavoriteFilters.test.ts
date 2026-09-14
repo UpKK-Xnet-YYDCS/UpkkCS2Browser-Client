@@ -47,6 +47,16 @@ test('favorite filters compose online, game, and search stages', () => {
   assert.equal(filterFavoriteServersBySearch(servers, '2.2.2.2').length, 1);
 });
 
+test('no-op favorite filters keep the original array', () => {
+  const servers = [
+    server({ name: 'ZE Box', game: 'cs2', map_name: 'ze_a', online: true }),
+    server({ name: 'Old', ip: '2.2.2.2', game: 'csgo', online: false, is_online: false, server_offline: true }),
+  ];
+  assert.equal(filterFavoriteServersByOnline(servers, true), servers);
+  assert.equal(filterFavoriteServersByGame(servers, ''), servers);
+  assert.equal(filterFavoriteServersBySearch(servers, '   '), servers);
+});
+
 test('parseImportedFavoriteAddresses accepts wrapped and raw arrays', () => {
   assert.deepEqual(
     parseImportedFavoriteAddresses(JSON.stringify({ favorites: ['8.8.8.8:27015', 'bad', 12] })),

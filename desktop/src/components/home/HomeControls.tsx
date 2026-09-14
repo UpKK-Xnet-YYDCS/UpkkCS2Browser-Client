@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { CountdownProgressBar } from '@/components/CountdownProgressBar';
+import { isDocumentHidden, remainingCountdownSeconds } from '@/services/deadlineCountdown';
 import {
   CARD_MIN_WIDTH_DEFAULT,
   CARD_MIN_WIDTH_MAX,
@@ -43,16 +44,28 @@ function AutoRefreshCountdown({ interval, isLoading, onRefresh }: AutoRefreshCou
 
   useEffect(() => {
     if (interval <= 0) return undefined;
-    const timer = window.setInterval(() => {
-      setRemaining(current => {
-        if (current <= 1) {
-          refreshRef.current();
-          return interval;
-        }
-        return current - 1;
-      });
+    let deadline = Date.now() + interval * 1000;
+    const refreshTimer = window.setInterval(() => {
+      refreshRef.current();
+      deadline = Date.now() + interval * 1000;
+      setRemaining(interval);
+    }, interval * 1000);
+    const displayTimer = window.setInterval(() => {
+      if (!isDocumentHidden()) {
+        setRemaining(remainingCountdownSeconds(deadline, Date.now()));
+      }
     }, 1000);
-    return () => window.clearInterval(timer);
+    const syncDisplay = () => {
+      if (!isDocumentHidden()) {
+        setRemaining(remainingCountdownSeconds(deadline, Date.now()));
+      }
+    };
+    document.addEventListener('visibilitychange', syncDisplay);
+    return () => {
+      window.clearInterval(refreshTimer);
+      window.clearInterval(displayTimer);
+      document.removeEventListener('visibilitychange', syncDisplay);
+    };
   }, [interval]);
 
   return <CountdownProgressBar secondsRemaining={remaining} totalSeconds={interval} isLoading={isLoading} />;

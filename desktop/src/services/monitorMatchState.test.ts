@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   evaluateMatchGate,
   isDuplicateNotification,
+  pruneMonitorMatchState,
   recordMatchNotification,
   resetConsecutiveMatch,
   resetMonitorMatchState,
@@ -52,6 +53,24 @@ test('match gate waits for required hits, then cooldown and duplicate suppressio
   updatePreviousSeenMap('r1', '1.1.1.1:27015', 'ze_b');
   assert.equal(evaluateMatchGate({
     ruleId: 'r1', serverKey: '1.1.1.1:27015', mapName: 'ze_a',
+    requiredMatches: 1, cooldownSeconds: 60,
+  }), 'notify');
+});
+
+test('pruning removes deleted rules and keeps live cooldown state', () => {
+  resetMonitorMatchState();
+  let current = 1_000;
+  setMonitorMatchNow(() => current);
+  recordMatchNotification('keep', '1.1.1.1:27015', 'ze_a');
+  recordMatchNotification('drop', '2.2.2.2:27015', 'ze_b');
+  pruneMonitorMatchState(['keep']);
+  current += 10_000;
+  assert.equal(evaluateMatchGate({
+    ruleId: 'keep', serverKey: '1.1.1.1:27015', mapName: 'ze_a',
+    requiredMatches: 1, cooldownSeconds: 60,
+  }), 'cooldown');
+  assert.equal(evaluateMatchGate({
+    ruleId: 'drop', serverKey: '2.2.2.2:27015', mapName: 'ze_b',
     requiredMatches: 1, cooldownSeconds: 60,
   }), 'notify');
 });

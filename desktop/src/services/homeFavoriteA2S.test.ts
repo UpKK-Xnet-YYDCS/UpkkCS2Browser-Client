@@ -86,6 +86,13 @@ test('replaceFavoriteServerInPlace updates only the matching address and keeps o
   assert.deepEqual(next.map(server => `${server.ip}:${server.port}`), ['1.1.1.1:27015', '2.2.2.2:27015']);
 });
 
+test('replaceFavoriteServerInPlace keeps the original array when the patch is identity', () => {
+  const first = makeOfflinePlaceholder('1.1.1.1', '27015', { now, latencyStatus: 'queued' });
+  const second = makeOfflinePlaceholder('2.2.2.2', '27015', { now, latencyStatus: 'queued' });
+  const servers = [first, second];
+  assert.equal(replaceFavoriteServerInPlace(servers, parsed, current => current), servers);
+});
+
 test('queryFavoriteServerWithRetry returns the first success without sleeping', async () => {
   const calls: string[] = [];
   const result = await queryFavoriteServerWithRetry(parsed, {

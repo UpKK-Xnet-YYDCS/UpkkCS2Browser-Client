@@ -5,6 +5,7 @@ import {
   refreshEndpoint,
   type GeoFilterParams,
 } from '@/api/client';
+import { isRequestAbortError } from '@/api/clientAbort';
 import {
   buildServerListEndpoint,
   getServers,
@@ -20,6 +21,8 @@ export function createFetchServers(
   stateRef: MutableRefObject<AppState>,
   requestVersionRef: MutableRefObject<number>,
 ) {
+  let activeAbort: AbortController | null = null;
+
   return async (page = 1, filters?: FetchFilters, options?: FetchOptions) => {
     const silent = options?.silent ?? false;
 
@@ -31,6 +34,10 @@ export function createFetchServers(
     // Increment request version to invalidate any in-flight requests
     requestVersionRef.current += 1;
     const currentVersion = requestVersionRef.current;
+    activeAbort?.abort();
+    const abort = new AbortController();
+    activeAbort = abort;
+    const callOptions = { signal: abort.signal };
     
     // Use provided filters or fall back to current state
     const currentState = stateRef.current;
@@ -75,20 +82,20 @@ export function createFetchServers(
     const fetchEndpoint = async (bypassCache: boolean) => {
       if (bypassCache) {
         if (searchQuery) {
-          return { type: 'search' as const, data: await refreshEndpoint<import('@/types').SearchResponse>(endpoint) };
+          return { type: 'search' as const, data: await refreshEndpoint<import('@/types').SearchResponse>(endpoint, 3, abort.signal) };
         } else if (selectedCategory) {
-          return { type: 'category' as const, data: await refreshEndpoint<import('@/types').PaginatedResponse<import('@/types').ServerStatus>>(endpoint) };
+          return { type: 'category' as const, data: await refreshEndpoint<import('@/types').PaginatedResponse<import('@/types').ServerStatus>>(endpoint, 3, abort.signal) };
         } else {
-          return { type: 'default' as const, data: await refreshEndpoint<import('@/types').ServerStatus[] | import('@/types').PaginatedResponse<import('@/types').ServerStatus>>(endpoint) };
+          return { type: 'default' as const, data: await refreshEndpoint<import('@/types').ServerStatus[] | import('@/types').PaginatedResponse<import('@/types').ServerStatus>>(endpoint, 3, abort.signal) };
         }
       }
       // Normal mode: uses cache-aware fetchWithRetry via the public API functions
       if (searchQuery) {
-        return { type: 'search' as const, data: await searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter) };
+        return { type: 'search' as const, data: await searchServers(searchQuery, selectedRegion, page, perPage, selectedGameType, geoFilter, callOptions) };
       } else if (selectedCategory) {
-        return { type: 'category' as const, data: await getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType, geoFilter) };
+        return { type: 'category' as const, data: await getServersByCategory(selectedCategory, selectedRegion, page, perPage, selectedGameType, geoFilter, callOptions) };
       } else {
-        return { type: 'default' as const, data: await getServers(selectedRegion, page, perPage, selectedGameType, geoFilter) };
+        return { type: 'default' as const, data: await getServers(selectedRegion, page, perPage, selectedGameType, geoFilter, callOptions) };
       }
     };
 
@@ -126,10 +133,10 @@ export function createFetchServers(
       // schedule a deferred silent refresh so the user sees up-to-date data.
       if (!silent && isCacheHit) {
         setTimeout(async () => {
-          if (requestVersionRef.current !== currentVersion) return;
+          if (requestVersionRef.current !== currentVersion || abort.signal.aborted) return;
           try {
             const freshResult = await fetchEndpoint(/* bypassCache */ true);
-            if (requestVersionRef.current !== currentVersion) return;
+            if (requestVersionRef.current !== currentVersion || abort.signal.aborted) return;
             dispatchServers(freshResult, page);
           } catch {
             // Silently ignore background refresh errors
@@ -139,6 +146,7 @@ export function createFetchServers(
     } catch (error) {
       // Silent mode: swallow errors — background refresh failures should not disrupt UX
       if (silent) return;
+      if (isRequestAbortError(error)) return;
 
       // Only dispatch error if this is still the latest request
       if (requestVersionRef.current !== currentVersion) {

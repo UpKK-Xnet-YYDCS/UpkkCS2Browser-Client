@@ -16,6 +16,8 @@ import {
   isFavoritesAuthError,
   favoriteAddressSetChanged,
   nextAutoRefreshCountdown,
+  createStableFavoriteRowProjector,
+  type FavoriteRow,
 } from './favoritesPageQuery.ts';
 
 function row(overrides: Record<string, string> = {}) {
@@ -52,6 +54,7 @@ test('searchFavoriteRows matches name, address, map, and category', () => {
   assert.equal(searchFavoriteRows(rows, '8.8.8.8:27016').length, 1);
   assert.equal(searchFavoriteRows(rows, 'de_dust')[0].fav.category, 'dm');
   assert.equal(searchFavoriteRows(rows, 'ze').length, 1);
+  assert.equal(searchFavoriteRows(rows, '  '), rows);
 });
 
 test('pagination helpers keep a minimum of one page and a 5-number window', () => {
@@ -103,4 +106,22 @@ test('auto-refresh countdown only fires when the remaining second elapses', () =
   assert.deepEqual(nextAutoRefreshCountdown(3, 60), { next: 2, shouldRefresh: false });
   assert.deepEqual(nextAutoRefreshCountdown(1, 60), { next: 60, shouldRefresh: true });
   assert.deepEqual(nextAutoRefreshCountdown(0, 45), { next: 45, shouldRefresh: true });
+});
+
+test('favorite row latency projection reuses rows that are not in the filtered set', () => {
+  const rows: FavoriteRow[] = [
+    { fav: row().fav as FavoriteRow['fav'], sourceIndex: 0, server: { ip: '1.1.1.1', port: '27015', display_address: '1.1.1.1', local_latency_status: 'success', local_latency_ms: 40 } as FavoriteRow['server'] },
+    { fav: row({ server_ip: '8.8.8.8' }).fav as FavoriteRow['fav'], sourceIndex: 1, server: { ip: '8.8.8.8', port: '27015', display_address: '8.8.8.8', local_latency_status: 'success', local_latency_ms: 400 } as FavoriteRow['server'] },
+  ];
+  const snapshots = {
+    '1.1.1.1:27015': { status: 'success' as const, latencyMs: 40, updatedAt: 1 },
+    '8.8.8.8:27015': { status: 'success' as const, latencyMs: 400, updatedAt: 1 },
+  };
+  const project = createStableFavoriteRowProjector();
+  const first = project(rows, snapshots, 'le80');
+  snapshots['8.8.8.8:27015'] = { status: 'success', latencyMs: 500, updatedAt: 2 };
+  const second = project(rows, snapshots, 'le80');
+  assert.equal(second, first);
+  assert.equal(second.length, 1);
+  assert.equal(second[0], first[0]);
 });

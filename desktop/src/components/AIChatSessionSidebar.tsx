@@ -1,4 +1,4 @@
-import { MessageSquare, Plus, Trash2, X } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, X } from '@/components/lucideIcons';
 import type { AIChatSession } from '@/services/aiChatSessions';
 import { countAIChatTurns } from '@/services/aiChatSessions';
 import type { Language } from '@/store/i18n';

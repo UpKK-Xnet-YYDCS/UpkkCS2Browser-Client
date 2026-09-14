@@ -12,6 +12,7 @@ import {
   renameAIChatSessionFromMessage,
   saveAIChatSessionState,
   selectAIChatSessionState,
+  aiChatPersistSignature,
   startAIChatSessionState,
   type AIChatSessionStorage,
   type DesktopChatMessage,
@@ -83,4 +84,28 @@ test('starts, selects, and deletes sessions without changing unrelated ones', ()
   const last = deleteAIChatSessionState(deleted, 'one', 'New chat', { id: 'fresh', now: 3 });
   assert.equal(last.activeSessionId, 'fresh');
   assert.equal(last.sessions.length, 1);
+});
+
+test('persist signature ignores thinkingOpen and other non-stored UI flags', () => {
+  const session = createAIChatSession('New chat', { id: 'one', now: 10 });
+  session.messages.push({ id: 'u', role: 'user', content: 'hello' });
+  session.messages.push({
+    id: 'a',
+    role: 'assistant',
+    content: 'world',
+    thinking: 'scratch',
+    thinkingOpen: true,
+    pending: true,
+  });
+  const open = { sessions: [session], activeSessionId: session.id };
+  const closed = {
+    ...open,
+    sessions: [{
+      ...session,
+      messages: session.messages.map(message => (
+        message.id === 'a' ? { ...message, thinkingOpen: false } : message
+      )),
+    }],
+  };
+  assert.equal(aiChatPersistSignature(open), aiChatPersistSignature(closed));
 });

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useCloudAuth } from '@/hooks/useCloudAuth';
 import { useI18n } from '@/hooks/useI18n';
 import type { AIChatEvent } from '@/services/aiChat';
@@ -10,6 +10,7 @@ import {
   readInstructions,
   updateAIChatMessage,
 } from '@/services/aiChatPresentation';
+import { createAIChatStreamCoalescer, type AIChatStreamCoalescer } from '@/services/aiChatStream';
 import { useAIChatSessions } from '@/hooks/useAIChatSessions';
 import { useAIChatSubmit } from '@/hooks/useAIChatSubmit';
 import { useAIChatToolWorkspace } from '@/hooks/useAIChatToolWorkspace';
@@ -30,6 +31,13 @@ export function useAIChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const messageScrollRef = useRef<HTMLDivElement | null>(null);
+  const labelsRef = useRef(labels);
+  const coalescerRef = useRef<AIChatStreamCoalescer | null>(null);
+  const streamTargetRef = useRef<{ sessionId: string; assistantId: string } | null>(null);
+
+  useEffect(() => {
+    labelsRef.current = labels;
+  }, [labels]);
 
   const workspace = useAIChatToolWorkspace({ language, isLoggedIn });
   const {
@@ -85,13 +93,15 @@ export function useAIChatPage() {
     }
   }, [instructions]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const messageScroller = messageScrollRef.current;
     if (!messageScroller) return;
     messageScroller.scrollTo({ top: messageScroller.scrollHeight, behavior: 'smooth' });
   }, [activeMessages, activeStatus]);
 
   useEffect(() => () => {
+    coalescerRef.current?.dispose();
+    coalescerRef.current = null;
     abortRef.current?.abort();
     localToolOperationRef.current += 1;
   }, [localToolOperationRef]);
@@ -108,13 +118,22 @@ export function useAIChatPage() {
     setSidebarOpen(false);
   }, [selectSessionState]);
 
-  const updateAssistant = useCallback((sessionId: string, id: string, event: AIChatEvent) => {
-    updateMessages(sessionId, current => updateAIChatMessage(
-      current,
-      id,
-      message => applyAIChatAssistantEvent(message, event),
-    ));
-  }, [updateMessages]);
+  const applyFlushedEvents = useCallback((sessionId: string, assistantId: string, events: AIChatEvent[]) => {
+    if (events.length === 0) return;
+    updateMessages(sessionId, current => {
+      let next = current;
+      for (const event of events) {
+        next = updateAIChatMessage(next, assistantId, message => applyAIChatAssistantEvent(message, event));
+      }
+      return next;
+    });
+    for (const event of events) {
+      const status = statusForAIChatEvent(event, labelsRef.current);
+      if (!status) continue;
+      setSessionStatus(status.text === null ? null : { sessionId, text: status.text });
+      if (status.requireLogin) void invalidate();
+    }
+  }, [invalidate, updateMessages]);
 
   const setThinkingOpen = useCallback((id: string, open: boolean) => {
     if (!activeSessionId) return;
@@ -122,16 +141,24 @@ export function useAIChatPage() {
       current,
       id,
       message => ({ ...message, thinkingOpen: open }),
-    ));
+    ), { persist: false });
   }, [activeSessionId, updateMessages]);
 
   const eventHandler = useCallback((sessionId: string, assistantId: string, event: AIChatEvent) => {
-    updateAssistant(sessionId, assistantId, event);
-    const status = statusForAIChatEvent(event, labels);
-    if (!status) return;
-    setSessionStatus(status.text === null ? null : { sessionId, text: status.text });
-    if (status.requireLogin) void invalidate();
-  }, [invalidate, labels, updateAssistant]);
+    const target = streamTargetRef.current;
+    if (!coalescerRef.current || target?.sessionId !== sessionId || target.assistantId !== assistantId) {
+      coalescerRef.current?.dispose();
+      streamTargetRef.current = { sessionId, assistantId };
+      coalescerRef.current = createAIChatStreamCoalescer({
+        onFlush(events) {
+          const active = streamTargetRef.current;
+          if (!active) return;
+          applyFlushedEvents(active.sessionId, active.assistantId, events);
+        },
+      });
+    }
+    coalescerRef.current.push(event);
+  }, [applyFlushedEvents]);
 
   const submit = useAIChatSubmit({
     input,
@@ -161,7 +188,10 @@ export function useAIChatPage() {
     invalidate,
   });
 
-  const stop = () => abortRef.current?.abort();
+  const stop = () => {
+    coalescerRef.current?.flush();
+    abortRef.current?.abort();
+  };
 
   return {
     language, labels, isLoggedIn, isReady, sessionState, input, setInput, instructions, setInstructions,

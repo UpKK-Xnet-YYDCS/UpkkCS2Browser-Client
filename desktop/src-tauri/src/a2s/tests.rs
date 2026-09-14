@@ -145,3 +145,60 @@ fn batch_returns_failure_placeholder_when_a_query_task_panics() {
         .unwrap()
         .contains("Query task failed"));
 }
+
+#[test]
+fn mixed_batches_share_the_process_wide_a2s_limit() {
+    let active = Arc::new(AtomicUsize::new(0));
+    let maximum = Arc::new(AtomicUsize::new(0));
+    let make_query = || {
+        let active = Arc::clone(&active);
+        let maximum = Arc::clone(&maximum);
+        move |target: A2SQueryTarget| {
+            let current = active.fetch_add(1, Ordering::SeqCst) + 1;
+            maximum.fetch_max(current, Ordering::SeqCst);
+            thread::sleep(Duration::from_millis(15));
+            active.fetch_sub(1, Ordering::SeqCst);
+            A2SQueryResult {
+                success: true,
+                ip: target.ip,
+                port: target.port,
+                ..Default::default()
+            }
+        }
+    };
+    let first_targets = (0..8)
+        .map(|index| A2SQueryTarget {
+            ip: format!("batch-a-{index}"),
+            port: "27015".to_string(),
+            timeout_ms: None,
+        })
+        .collect();
+    let second_targets = (0..8)
+        .map(|index| A2SQueryTarget {
+            ip: format!("batch-b-{index}"),
+            port: "27015".to_string(),
+            timeout_ms: None,
+        })
+        .collect();
+
+    runtime().block_on(async {
+        let first = query_targets_with(first_targets, Some(6), make_query());
+        let second = query_targets_with(second_targets, Some(6), make_query());
+        let (first_results, second_results) = tokio::join!(first, second);
+        assert_eq!(first_results.len(), 8);
+        assert_eq!(second_results.len(), 8);
+        assert!(first_results.iter().all(|result| result.success));
+        assert!(second_results.iter().all(|result| result.success));
+        assert!(first_results
+            .iter()
+            .chain(second_results.iter())
+            .all(|result| result.queue_wait_ms.is_some()));
+    });
+
+    assert!(
+        maximum.load(Ordering::SeqCst) <= 6,
+        "observed A2S concurrency {}",
+        maximum.load(Ordering::SeqCst)
+    );
+    assert_eq!(active.load(Ordering::SeqCst), 0);
+}

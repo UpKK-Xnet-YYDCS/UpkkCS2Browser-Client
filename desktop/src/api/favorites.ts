@@ -1,5 +1,5 @@
-import { mapWithConcurrency } from '@/services/concurrency';
-import { buildQuery, fetchApi, fetchWithRetry } from './client';
+import { mapWithConcurrency } from '../services/concurrency.ts';
+import { buildQuery, fetchApi, fetchWithRetry, type ApiCallOptions } from './client.ts';
 
 export interface FavoriteServer {
   id: number;
@@ -38,15 +38,38 @@ export interface FavoriteListResponse {
 }
 
 // Get user's favorite servers list with optional pagination
-export const getFavorites = async (page?: number, perPage?: number): Promise<FavoriteListResponse> => {
+export const getFavorites = async (
+  page?: number,
+  perPage?: number,
+  options?: ApiCallOptions,
+): Promise<FavoriteListResponse> => {
   const query = buildQuery({ page, per_page: perPage });
-  return fetchWithRetry(`/api/favorites/list${query}`);
+  return fetchWithRetry(`/api/favorites/list${query}`, { signal: options?.signal });
 };
 
-// Fetch ALL favorites using server-side pagination to avoid truncation
-// Accumulates results across pages; returns total from the API
-export const getAllFavorites = async (perPage = 100): Promise<FavoriteListResponse> => {
-  const firstPage = await getFavorites(1, perPage);
+const allFavoritesInflight = new Map<number, Promise<FavoriteListResponse>>();
+
+export const getAllFavorites = async (
+  perPage = 100,
+  options?: ApiCallOptions,
+): Promise<FavoriteListResponse> => {
+  const existing = allFavoritesInflight.get(perPage);
+  if (existing) return existing;
+
+  const promise = loadAllFavoritePages(perPage, options).finally(() => {
+    if (allFavoritesInflight.get(perPage) === promise) {
+      allFavoritesInflight.delete(perPage);
+    }
+  });
+  allFavoritesInflight.set(perPage, promise);
+  return promise;
+};
+
+async function loadAllFavoritePages(
+  perPage: number,
+  options?: ApiCallOptions,
+): Promise<FavoriteListResponse> {
+  const firstPage = await getFavorites(1, perPage, options);
   const total = firstPage.total;
   const totalPages = firstPage.total_pages ?? Math.ceil(total / perPage);
 
@@ -54,9 +77,8 @@ export const getAllFavorites = async (perPage = 100): Promise<FavoriteListRespon
     return firstPage;
   }
 
-  // Fetch remaining pages in parallel
   const remainingPages = Array.from({ length: totalPages - 1 }, (_, index) => index + 2);
-  const pages = await mapWithConcurrency(remainingPages, 4, page => getFavorites(page, perPage));
+  const pages = await mapWithConcurrency(remainingPages, 4, page => getFavorites(page, perPage, options));
 
   const allFavorites = [
     ...firstPage.favorites,
@@ -64,7 +86,7 @@ export const getAllFavorites = async (perPage = 100): Promise<FavoriteListRespon
   ];
 
   return { success: true, favorites: allFavorites, total, page: 1, per_page: perPage, total_pages: 1 };
-};
+}
 
 // Add server to favorites
 export const addFavorite = async (

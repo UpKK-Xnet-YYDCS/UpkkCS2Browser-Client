@@ -1,4 +1,4 @@
-import { Bot, ChevronDown, Sparkles, UserRound } from 'lucide-react';
+import { Bot, ChevronDown, Sparkles, UserRound } from '@/components/lucideIcons';
 import { memo, type ComponentProps, type RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';

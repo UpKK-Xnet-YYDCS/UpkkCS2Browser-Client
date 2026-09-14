@@ -3,7 +3,7 @@ import { useAppActions } from '@/hooks/useAppSlices';
 import { useTheme } from '@/hooks/useTheme';
 import type { ColorRegion } from '@/store/theme';
 import { colorRegionLabels } from '@/store/themeUtils';
-import { getApiBaseUrl } from '@/api';
+import { getApiBaseUrl } from '@/api/client';
 import { RGBAColorPicker } from './RGBAColorPicker';
 
 // Settings icon

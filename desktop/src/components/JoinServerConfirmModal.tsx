@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Clock3, Play, X } from 'lucide-react';
+import { Clock3, Play, X } from '@/components/lucideIcons';
 import type { ServerStatus } from '@/types';
 import { useI18n } from '@/hooks/useI18n';
 import { openServerOnce } from '@/services/steamClient';

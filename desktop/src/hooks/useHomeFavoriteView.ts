@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LatencyFilterValue } from '@/types/ui';
 import {
   collectFavoriteGameNames,
@@ -6,12 +6,13 @@ import {
   filterFavoriteServersByOnline,
   filterFavoriteServersBySearch,
 } from '@/services/homeFavoriteFilters';
-import { filterServersByLatency } from '@/services/latencyDisplay';
+import { createStableLatencyProjector } from '@/services/latencyDisplay';
 import {
   favoritePageCount,
   paginateFavoriteRows,
 } from '@/services/favoritePagination';
-import type { LocalLatencySnapshot } from '@/services/a2sLatencyTypes';
+import { useLatencyProjection } from '@/hooks/useLatencyProjection';
+import type { LatencySnapshotStore } from '@/services/latencySnapshotStore';
 import type { ServerStatus } from '@/types';
 
 interface UseHomeFavoriteViewOptions {
@@ -19,7 +20,7 @@ interface UseHomeFavoriteViewOptions {
   servers: ServerStatus[];
   perPage: number;
   showFavoritesOnly: boolean;
-  latencyByKey: Record<string, LocalLatencySnapshot>;
+  latencyStore: LatencySnapshotStore;
 }
 
 export function useHomeFavoriteView({
@@ -27,7 +28,7 @@ export function useHomeFavoriteView({
   servers,
   perPage,
   showFavoritesOnly,
-  latencyByKey,
+  latencyStore,
 }: UseHomeFavoriteViewOptions) {
   const [favPage, setFavPage] = useState(1);
   const [favSearchQuery, setFavSearchQuery] = useState('');
@@ -35,6 +36,8 @@ export function useHomeFavoriteView({
   const [favGameFilter, setFavGameFilter] = useState('');
   const [showAllGameTags, setShowAllGameTags] = useState(false);
   const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
+  const [projectFavoriteLatency] = useState(createStableLatencyProjector);
+  const [projectDisplayedLatency] = useState(createStableLatencyProjector);
 
   // Extract unique game names from local favorites for filter tags (only when >1 game)
   // Sort by server count descending, include count for display
@@ -52,10 +55,11 @@ export function useHomeFavoriteView({
   // Stage 3: Search filter (depends on stage 2)
   const filteredFavServers = useMemo(() => filterFavoriteServersBySearch(gameFavServers, favSearchQuery), [gameFavServers, favSearchQuery]);
 
-  const latencyFilteredFavServers = useMemo(
-    () => filterServersByLatency(filteredFavServers, latencyByKey, latencyFilter),
-    [filteredFavServers, latencyByKey, latencyFilter],
+  const computeFiltered = useCallback(
+    () => projectFavoriteLatency(filteredFavServers, latencyStore.getSnapshots(), latencyFilter),
+    [filteredFavServers, latencyFilter, latencyStore, projectFavoriteLatency],
   );
+  const latencyFilteredFavServers = useLatencyProjection(latencyStore, computeFiltered);
 
   const favTotalPages = favoritePageCount(latencyFilteredFavServers.length, perPage);
 
@@ -83,10 +87,11 @@ export function useHomeFavoriteView({
     return result;
   }, [servers, showFavoritesOnly, latencyFilteredFavServers, favPage, perPage]);
 
-  const displayedServersWithLatency = useMemo(
-    () => filterServersByLatency(displayedServers, latencyByKey, latencyFilter),
-    [displayedServers, latencyByKey, latencyFilter],
+  const computeDisplayed = useCallback(
+    () => projectDisplayedLatency(displayedServers, latencyStore.getSnapshots(), latencyFilter),
+    [displayedServers, latencyFilter, latencyStore, projectDisplayedLatency],
   );
+  const displayedServersWithLatency = useLatencyProjection(latencyStore, computeDisplayed);
 
   return {
     favPage,

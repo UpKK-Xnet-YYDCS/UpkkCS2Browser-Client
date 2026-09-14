@@ -1,5 +1,5 @@
 import { createPortal } from 'react-dom';
-import { Server, X } from 'lucide-react';
+import { Server, X } from '@/components/lucideIcons';
 import type { ServerStatus } from '@/types';
 import { useI18n } from '@/hooks/useI18n';
 

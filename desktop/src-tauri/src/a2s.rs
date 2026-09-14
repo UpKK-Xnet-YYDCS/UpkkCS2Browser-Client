@@ -1,8 +1,9 @@
 use serde::{Deserialize, Serialize};
+use std::collections::VecDeque;
 use std::net::UdpSocket;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
-use tokio::sync::Semaphore;
+use tokio::sync::{Mutex as AsyncMutex, Semaphore};
 
 const A2S_INFO: [u8; 25] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x53, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x20, 0x45, 0x6e, 0x67, 0x69,
@@ -10,6 +11,15 @@ const A2S_INFO: [u8; 25] = [
 ];
 const DEFAULT_BATCH_CONCURRENCY: usize = 3;
 const MAX_BATCH_CONCURRENCY: usize = 6;
+const GLOBAL_A2S_LIMIT: usize = 6;
+
+static GLOBAL_A2S_LIMITER: OnceLock<Arc<Semaphore>> = OnceLock::new();
+
+fn global_a2s_limiter() -> Arc<Semaphore> {
+    GLOBAL_A2S_LIMITER
+        .get_or_init(|| Arc::new(Semaphore::new(GLOBAL_A2S_LIMIT)))
+        .clone()
+}
 
 fn batch_concurrency(concurrency: Option<usize>) -> usize {
     concurrency
@@ -36,6 +46,8 @@ pub struct A2SQueryResult {
     pub vac: bool,
     pub version: String,
     pub latency_ms: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub queue_wait_ms: Option<u64>,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -167,6 +179,7 @@ fn parse_a2s_info(
         vac,
         version,
         latency_ms: Some(latency_ms),
+        queue_wait_ms: None,
     })
 }
 
@@ -224,6 +237,30 @@ fn a2s_query(ip: &str, port: &str, timeout_ms: Option<u64>) -> A2SQueryResult {
         .unwrap_or_else(|error| failed_result(ip, port, error))
 }
 
+async fn run_blocking_a2s<T, F>(work: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce(u64) -> T + Send + 'static,
+{
+    let queued_at = Instant::now();
+    let permit = global_a2s_limiter()
+        .acquire_owned()
+        .await
+        .expect("global A2S limiter must remain open");
+    let queue_wait_ms = elapsed_millis(queued_at);
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        work(queue_wait_ms)
+    })
+    .await
+    .map_err(|error| format!("Query task failed: {error}"))
+}
+
+fn attach_queue_wait(mut result: A2SQueryResult, queue_wait_ms: u64) -> A2SQueryResult {
+    result.queue_wait_ms = Some(queue_wait_ms);
+    result
+}
+
 async fn query_targets_with<F>(
     targets: Vec<A2SQueryTarget>,
     concurrency: Option<usize>,
@@ -232,34 +269,67 @@ async fn query_targets_with<F>(
 where
     F: Fn(A2SQueryTarget) -> A2SQueryResult + Send + Sync + 'static,
 {
-    let worker_count = batch_concurrency(concurrency);
-    let semaphore = Arc::new(Semaphore::new(worker_count));
-    let query = Arc::new(query);
-    let mut handles = Vec::with_capacity(targets.len());
-
-    for target in targets {
-        let fallback_ip = target.ip.clone();
-        let fallback_port = target.port.clone();
-        let permit = semaphore
-            .clone()
-            .acquire_owned()
-            .await
-            .expect("batch semaphore must remain open");
-        let query = Arc::clone(&query);
-        let handle = tokio::task::spawn_blocking(move || {
-            let _permit = permit;
-            query(target)
-        });
-        handles.push((fallback_ip, fallback_port, handle));
+    let total = targets.len();
+    if total == 0 {
+        return Vec::new();
     }
 
-    let mut results = Vec::with_capacity(handles.len());
-    for (ip, port, handle) in handles {
-        results.push(handle.await.unwrap_or_else(|error| {
-            failed_result(&ip, &port, format!("Query task failed: {error}"))
+    let worker_count = batch_concurrency(concurrency).min(total);
+    let query = Arc::new(query);
+    let fallbacks: Vec<(String, String)> = targets
+        .iter()
+        .map(|target| (target.ip.clone(), target.port.clone()))
+        .collect();
+    let jobs = Arc::new(AsyncMutex::new(
+        targets.into_iter().enumerate().collect::<VecDeque<_>>(),
+    ));
+    let slots: Arc<Mutex<Vec<Option<A2SQueryResult>>>> =
+        Arc::new(Mutex::new((0..total).map(|_| None).collect()));
+
+    let mut workers = Vec::with_capacity(worker_count);
+    for _ in 0..worker_count {
+        let jobs = Arc::clone(&jobs);
+        let query = Arc::clone(&query);
+        let slots = Arc::clone(&slots);
+        workers.push(tokio::spawn(async move {
+            loop {
+                let job = { jobs.lock().await.pop_front() };
+                let Some((index, target)) = job else {
+                    break;
+                };
+                let fallback_ip = target.ip.clone();
+                let fallback_port = target.port.clone();
+                let query = Arc::clone(&query);
+                let outcome = run_blocking_a2s(move |queue_wait_ms| {
+                    attach_queue_wait(query(target), queue_wait_ms)
+                })
+                .await
+                .unwrap_or_else(|error| failed_result(&fallback_ip, &fallback_port, error));
+                slots.lock().expect("a2s result slots")[index] = Some(outcome);
+            }
         }));
     }
-    results
+
+    for worker in workers {
+        let _ = worker.await;
+    }
+
+    let mut slots = Arc::try_unwrap(slots)
+        .unwrap_or_else(|slots| {
+            Mutex::new(slots.lock().map(|guard| guard.clone()).unwrap_or_default())
+        })
+        .into_inner()
+        .unwrap_or_default();
+    slots
+        .iter_mut()
+        .enumerate()
+        .map(|(index, slot)| {
+            slot.take().unwrap_or_else(|| {
+                let (ip, port) = &fallbacks[index];
+                failed_result(ip, port, "Query task failed")
+            })
+        })
+        .collect()
 }
 
 #[tauri::command]
@@ -270,9 +340,11 @@ pub async fn query_server_a2s(
 ) -> Result<A2SQueryResult, String> {
     let fallback_ip = ip.clone();
     let fallback_port = port.clone();
-    tokio::task::spawn_blocking(move || a2s_query(&ip, &port, timeout_ms))
-        .await
-        .map_err(|error| format!("Query task failed for {fallback_ip}:{fallback_port}: {error}"))
+    run_blocking_a2s(move |queue_wait_ms| {
+        attach_queue_wait(a2s_query(&ip, &port, timeout_ms), queue_wait_ms)
+    })
+    .await
+    .map_err(|error| format!("Query task failed for {fallback_ip}:{fallback_port}: {error}"))
 }
 
 #[tauri::command]

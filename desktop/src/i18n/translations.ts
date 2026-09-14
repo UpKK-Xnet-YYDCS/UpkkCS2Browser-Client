@@ -1,16 +1,25 @@
 import type { Language, Translations } from './types';
-import { en } from './locales/en.ts';
-import { ja } from './locales/ja.ts';
-import { zhCN } from './locales/zh-CN.ts';
-import { zhTW } from './locales/zh-TW.ts';
-import { ko } from './locales/ko.ts';
+import { TRANSLATION_KEYS } from './locales/keys.ts';
+import { enValues } from './locales/en.ts';
+import { jaValues } from './locales/ja.ts';
+import { zhCNValues } from './locales/zh-CN.ts';
+import { zhTWValues } from './locales/zh-TW.ts';
+import { koValues } from './locales/ko.ts';
 
 export type { Language, Translations } from './types';
 
+function zipTranslations(values: readonly string[]): Translations {
+  const result: Record<string, string> = {};
+  for (let index = 0; index < TRANSLATION_KEYS.length; index += 1) {
+    result[TRANSLATION_KEYS[index]] = values[index] ?? '';
+  }
+  return result as unknown as Translations;
+}
+
 export const translations: Record<Language, Translations> = {
-  'en': en,
-  'ja': ja,
-  'zh-CN': zhCN,
-  'zh-TW': zhTW,
-  'ko': ko,
+  'en': zipTranslations(enValues),
+  'ja': zipTranslations(jaValues),
+  'zh-CN': zipTranslations(zhCNValues),
+  'zh-TW': zipTranslations(zhTWValues),
+  'ko': zipTranslations(koValues),
 };

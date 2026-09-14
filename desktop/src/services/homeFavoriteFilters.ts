@@ -17,7 +17,7 @@ export function filterFavoriteServersByOnline<T extends ServerStatus>(
   servers: readonly T[],
   showOfflineServers: boolean,
 ): T[] {
-  if (showOfflineServers) return [...servers];
+  if (showOfflineServers) return servers as T[];
   return servers.filter(server => isServerOnline(server));
 }
 
@@ -25,7 +25,7 @@ export function filterFavoriteServersByGame<T extends { game?: string }>(
   servers: readonly T[],
   gameFilter: string,
 ): T[] {
-  if (!gameFilter) return [...servers];
+  if (!gameFilter) return servers as T[];
   return servers.filter(server => (server.game?.trim() || '') === gameFilter);
 }
 
@@ -33,7 +33,7 @@ export function filterFavoriteServersBySearch<T extends Pick<ServerStatus, 'name
   servers: readonly T[],
   query: string,
 ): T[] {
-  if (!query.trim()) return [...servers];
+  if (!query.trim()) return servers as T[];
   const needle = query.toLowerCase();
   return servers.filter(server => {
     const name = (server.name || '').toLowerCase();

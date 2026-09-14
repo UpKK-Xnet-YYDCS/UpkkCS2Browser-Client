@@ -1,6 +1,24 @@
 import type { AIChatEvent } from './aiChat.ts';
 import type { DesktopChatMessage } from './aiChatSessions.ts';
-import { estimateAIChatOutputTokens } from '../utils/aiTokens.ts';
+import { createAITokenAccumulator, type AITokenAccumulator } from '../utils/aiTokens.ts';
+
+const outputTokenAccumulators = new Map<string, { thinking: string; content: string; accumulator: AITokenAccumulator }>();
+
+function outputTokensFor(message: DesktopChatMessage, thinking: string, content: string): number {
+  const existing = outputTokenAccumulators.get(message.id);
+  if (existing && existing.thinking === thinking && content.startsWith(existing.content)) {
+    existing.accumulator.append(content.slice(existing.content.length));
+    existing.content = content;
+    return existing.accumulator.value();
+  }
+  const accumulator = createAITokenAccumulator(thinking + content);
+  outputTokenAccumulators.set(message.id, { thinking, content, accumulator });
+  return accumulator.value();
+}
+
+function clearOutputTokens(messageId: string): void {
+  outputTokenAccumulators.delete(messageId);
+}
 
 export function applyAIChatAssistantEvent(message: DesktopChatMessage, event: AIChatEvent): DesktopChatMessage {
   switch (event.type) {
@@ -10,7 +28,7 @@ export function applyAIChatAssistantEvent(message: DesktopChatMessage, event: AI
         ...message,
         content,
         pending: false,
-        tokenOutput: estimateAIChatOutputTokens(content, message.thinking ?? ''),
+        tokenOutput: outputTokensFor(message, message.thinking ?? '', content),
       };
     }
     case 'thinking': {
@@ -20,11 +38,15 @@ export function applyAIChatAssistantEvent(message: DesktopChatMessage, event: AI
         thinking,
         thinkingOpen: true,
         pending: false,
-        tokenOutput: estimateAIChatOutputTokens(message.content, thinking),
+        tokenOutput: outputTokensFor(message, thinking, message.content),
       };
     }
-    case 'reset': return { ...message, content: '', thinking: '', thinkingOpen: false, pending: true, tokenOutput: 0 };
-    case 'complete': return { ...message, pending: false, thinkingOpen: false };
+    case 'reset':
+      clearOutputTokens(message.id);
+      return { ...message, content: '', thinking: '', thinkingOpen: false, pending: true, tokenOutput: 0 };
+    case 'complete':
+      clearOutputTokens(message.id);
+      return { ...message, pending: false, thinkingOpen: false };
     case 'retry': return { ...message, pending: true };
     default: return message;
   }

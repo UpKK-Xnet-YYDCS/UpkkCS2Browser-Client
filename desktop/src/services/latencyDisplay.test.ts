@@ -9,12 +9,14 @@ import {
   applyLatencySnapshotToServer,
   applyLatencySnapshots,
   filterServersByLatency,
+  createStableLatencyProjector,
   getLatencyFilterLabel,
   matchesLatencyFilter,
   LATENCY_FILTERS,
   type LatencyFilter,
 } from './latencyDisplay.ts';
 import type { ServerStatus } from '../types/server.ts';
+import { PERFORMANCE_FIXTURE_COUNTS, createLatencyFixtureServers } from './performanceFixtures.ts';
 
 function server(latencyMs?: number, status: ServerStatus['local_latency_status'] = 'success'): ServerStatus {
   return {
@@ -168,4 +170,54 @@ test('applies and filters latency snapshots across a server list', () => {
   const filtered = filterServersByLatency([online, pending], snapshots, 'le80');
   assert.equal(filtered.length, 2);
   assert.equal(filtered[0].local_latency_ms, 72);
+});
+
+for (const count of PERFORMANCE_FIXTURE_COUNTS) {
+  test(`reuses unchanged latency projections among ${count} servers when one snapshot changes`, () => {
+    const servers = createLatencyFixtureServers(count);
+    const snapshots: Record<string, { status: 'success'; latencyMs: number; updatedAt: number }> = {};
+    for (const item of servers) {
+      snapshots[`${item.ip}:27015`] = { status: 'success', latencyMs: 80, updatedAt: 1_700_000_000_000 };
+    }
+
+    const project = createStableLatencyProjector();
+    const first = project(servers, snapshots, 'all');
+    const changedKey = `${servers[0].ip}:27015`;
+    snapshots[changedKey] = { status: 'success', latencyMs: 120, updatedAt: 1_700_000_000_001 };
+    const second = project(servers, snapshots, 'all');
+
+    assert.equal(second.length, count);
+    assert.equal(second[0].local_latency_ms, 120);
+    assert.notEqual(second[0], first[0]);
+    for (let index = 1; index < count; index += 1) {
+      assert.equal(second[index], first[index]);
+    }
+    assert.equal(project(servers, snapshots, 'all'), second);
+  });
+}
+
+test('empty server lists stay empty without allocating a new projection array', () => {
+  const project = createStableLatencyProjector();
+  const empty: ServerStatus[] = [];
+  const first = project(empty, {}, 'all');
+  assert.deepEqual(first, []);
+  assert.equal(project(empty, {}, 'all'), first);
+});
+
+test('latency filter membership reuse ignores snapshots that cannot change the visible set', () => {
+  const visible = server(60);
+  const hidden = server(400);
+  hidden.ip = '10.0.0.2';
+  hidden.display_address = hidden.ip;
+  const snapshots = {
+    '10.0.0.1:27015': { status: 'success' as const, latencyMs: 60, updatedAt: 1 },
+    '10.0.0.2:27015': { status: 'success' as const, latencyMs: 400, updatedAt: 1 },
+  };
+  const project = createStableLatencyProjector();
+  const first = project([visible, hidden], snapshots, 'le80');
+  snapshots['10.0.0.2:27015'] = { status: 'success', latencyMs: 500, updatedAt: 2 };
+  const second = project([visible, hidden], snapshots, 'le80');
+  assert.equal(second, first);
+  assert.equal(second.length, 1);
+  assert.equal(second[0], first[0]);
 });

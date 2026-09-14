@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ServerStatus } from '@/types';
 import type { LocalLatencyScheduler, LocalLatencySnapshot } from '@/services/a2sLatencyTypes';
-import { isSameLatencySnapshot } from '@/services/latencyDisplay';
+import { isDocumentHidden } from '@/services/deadlineCountdown';
+import { createLatencySnapshotStore, type LatencySnapshotStore } from '@/services/latencySnapshotStore';
 import { excludeForegroundTargets, getUniqueLatencyTargets } from '@/services/latencyTargets';
 import {
   useLatencyDetectionSettings,
@@ -21,7 +22,7 @@ interface MeasureServersOptions {
 }
 
 interface UseLocalLatencyQueueResult {
-  latencyByKey: Record<string, LocalLatencySnapshot>;
+  latencyStore: LatencySnapshotStore;
   latencyDetectionSettings: LatencyDetectionSettings;
   latencySchedulerOptions: LocalLatencySchedulerOptions;
   measureServers: (servers: ServerStatus[], options?: MeasureServersOptions) => () => void;
@@ -40,7 +41,7 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     latencyDetectionSettings.retryDelayMs,
     latencyDetectionSettings.workerCount,
   ]);
-  const [latencyByKey, setLatencyByKey] = useState<Record<string, LocalLatencySnapshot>>({});
+  const [latencyStore] = useState(createLatencySnapshotStore);
   const latencySchedulerRef = useRef<LocalLatencyScheduler | null>(null);
   const schedulerOptionsRef = useRef(latencySchedulerOptions);
   const boundSchedulerOptionsRef = useRef<LocalLatencySchedulerOptions | null>(null);
@@ -51,6 +52,7 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     const { createDesktopA2SLatencyScheduler } = await import('@/services/a2s');
     const options = schedulerOptionsRef.current;
     if (!latencySchedulerRef.current || boundSchedulerOptionsRef.current !== options) {
+      latencySchedulerRef.current?.release();
       latencySchedulerRef.current = createDesktopA2SLatencyScheduler(options);
       boundSchedulerOptionsRef.current = options;
     }
@@ -64,7 +66,17 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
 
   useEffect(() => () => {
     if (updateFrameRef.current !== null) window.cancelAnimationFrame(updateFrameRef.current);
+    latencySchedulerRef.current?.release();
+    latencySchedulerRef.current = null;
   }, []);
+
+  useEffect(() => {
+    const flush = () => {
+      if (!isDocumentHidden()) latencyStore.flushNotify();
+    };
+    document.addEventListener('visibilitychange', flush);
+    return () => document.removeEventListener('visibilitychange', flush);
+  }, [latencyStore]);
 
   const queueSnapshotUpdate = useCallback((key: string, snapshot: LocalLatencySnapshot) => {
     pendingUpdatesRef.current[key] = snapshot;
@@ -73,17 +85,9 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
       updateFrameRef.current = null;
       const updates = pendingUpdatesRef.current;
       pendingUpdatesRef.current = {};
-      setLatencyByKey(previous => {
-        let next = previous;
-        for (const [updateKey, update] of Object.entries(updates)) {
-          if (isSameLatencySnapshot(previous[updateKey], update)) continue;
-          if (next === previous) next = { ...previous };
-          next[updateKey] = update;
-        }
-        return next;
-      });
+      latencyStore.apply(updates, { notify: !isDocumentHidden() });
     });
-  }, []);
+  }, [latencyStore]);
 
   const measureServers = useCallback((servers: ServerStatus[], options: MeasureServersOptions = {}) => {
     const targets = excludeForegroundTargets(
@@ -93,24 +97,26 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     let cancelled = false;
 
     const measureOptions = options.mode ? { mode: options.mode } : undefined;
+    const listener = (key: string, snapshot: LocalLatencySnapshot) => {
+      if (cancelled) return;
+      queueSnapshotUpdate(key, snapshot);
+    };
 
     void ensureScheduler().then(scheduler => {
       if (cancelled) return;
-      return scheduler.measure(targets, (key, snapshot) => {
-        if (cancelled) return;
-        queueSnapshotUpdate(key, snapshot);
-      }, measureOptions);
+      return scheduler.measure(targets, listener, measureOptions);
     }).catch(error => {
       console.error("[" + logPrefix + "] Failed to measure local A2S latency:", error);
     });
 
     return () => {
       cancelled = true;
+      latencySchedulerRef.current?.cancelListener(listener);
     };
   }, [logPrefix, queueSnapshotUpdate, ensureScheduler]);
 
   return {
-    latencyByKey,
+    latencyStore,
     latencyDetectionSettings,
     latencySchedulerOptions,
     measureServers,

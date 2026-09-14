@@ -38,11 +38,42 @@ export function playNotificationSound(sound?: NotificationSound): void {
   const type = sound || getNotificationSound();
   if (type === 'none') return;
 
+  let ctx: AudioContext | null = null;
+  const oscillators: OscillatorNode[] = [];
+  const gains: GainNode[] = [];
+  let remaining = 0;
+  let cleaned = false;
+
+  const cleanup = () => {
+    if (cleaned) return;
+    cleaned = true;
+    for (const oscillator of oscillators) {
+      try { oscillator.disconnect(); } catch { /* already stopped */ }
+    }
+    for (const gain of gains) {
+      try { gain.disconnect(); } catch { /* already stopped */ }
+    }
+    if (ctx && ctx.state !== 'closed') {
+      void ctx.close().catch(() => undefined);
+    }
+  };
+
+  const trackOscillator = (oscillator: OscillatorNode, gain: GainNode) => {
+    oscillators.push(oscillator);
+    gains.push(gain);
+    remaining += 1;
+    oscillator.onended = () => {
+      remaining -= 1;
+      if (remaining <= 0) cleanup();
+    };
+  };
+
   try {
-    const ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
+    ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)();
 
     if (type === 'chime') {
       const playTone = (freq: number, start: number, dur: number) => {
+        if (!ctx) return;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
@@ -50,6 +81,7 @@ export function playNotificationSound(sound?: NotificationSound): void {
         gain.gain.setValueAtTime(0.25, ctx.currentTime + start);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dur);
         osc.connect(gain).connect(ctx.destination);
+        trackOscillator(osc, gain);
         osc.start(ctx.currentTime + start);
         osc.stop(ctx.currentTime + start + dur);
       };
@@ -65,10 +97,12 @@ export function playNotificationSound(sound?: NotificationSound): void {
       gain.gain.setValueAtTime(0.3, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
       osc.connect(gain).connect(ctx.destination);
+      trackOscillator(osc, gain);
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.3);
     } else if (type === 'bell') {
       const playHarmonic = (freq: number, vol: number, dur: number) => {
+        if (!ctx) return;
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         osc.type = 'sine';
@@ -76,6 +110,7 @@ export function playNotificationSound(sound?: NotificationSound): void {
         gain.gain.setValueAtTime(vol, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
         osc.connect(gain).connect(ctx.destination);
+        trackOscillator(osc, gain);
         osc.start(ctx.currentTime);
         osc.stop(ctx.currentTime + dur);
       };
@@ -84,7 +119,7 @@ export function playNotificationSound(sound?: NotificationSound): void {
       playHarmonic(2490, 0.03, 0.2);
     }
   } catch {
-    // Audio is optional; unsupported environments simply skip the sound.
+    cleanup();
   }
 }
 

@@ -14,6 +14,7 @@ dist-ssr
 
 # Tauri build output
 src-tauri/target/
+.acceptance/
 
 # Editor directories and files
 .vscode/*

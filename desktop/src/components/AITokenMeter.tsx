@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Zap } from 'lucide-react';
+import { Zap } from '@/components/lucideIcons';
 import { formatCompactTokenCount } from '@/utils/aiTokens';
 
 export type AITokenMeterLabels = {

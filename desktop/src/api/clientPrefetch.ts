@@ -4,6 +4,7 @@ const PREFETCH_PAGES_KEY = 'prefetchPages';
 const DEFAULT_PREFETCH_PAGES = 5;
 
 let prefetchVersion = 0;
+let prefetchAbort: AbortController | null = null;
 
 export function getPrefetchDelay(): number {
   try {
@@ -35,14 +36,32 @@ export function setPrefetchPages(n: number): void {
   localStorage.setItem(PREFETCH_PAGES_KEY, String(Math.max(0, Math.floor(n))));
 }
 
-export function cancelPrefetch(): void {
-  prefetchVersion++;
+function abortPrefetchController(): void {
+  prefetchAbort?.abort();
+  prefetchAbort = null;
 }
 
-export function startPrefetchSequence(): number {
-  return ++prefetchVersion;
+export function cancelPrefetch(): void {
+  prefetchVersion++;
+  abortPrefetchController();
+}
+
+export function startPrefetchSequence(): { version: number; signal: AbortSignal } {
+  prefetchVersion++;
+  abortPrefetchController();
+  prefetchAbort = new AbortController();
+  return { version: prefetchVersion, signal: prefetchAbort.signal };
 }
 
 export function isPrefetchSequenceCurrent(version: number): boolean {
   return prefetchVersion === version;
+}
+
+export function collectPrefetchPageNumbers(currentPage: number, totalPages: number, count: number): number[] {
+  if (count <= 0) return [];
+  const pages: number[] = [];
+  for (let i = 1; i <= count && currentPage + i <= totalPages; i++) {
+    pages.push(currentPage + i);
+  }
+  return pages;
 }

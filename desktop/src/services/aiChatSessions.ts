@@ -122,10 +122,15 @@ export function updateAIChatSessionMessages(
   sessionId: string,
   update: (messages: DesktopChatMessage[]) => DesktopChatMessage[],
   now = Date.now(),
+  touchUpdatedAt = true,
 ): AIChatSession[] {
-  return sessions.map(session => session.id === sessionId
-    ? { ...session, messages: update(session.messages), updatedAt: now }
-    : session);
+  return sessions.map(session => {
+    if (session.id !== sessionId) return session;
+    const messages = update(session.messages);
+    return touchUpdatedAt
+      ? { ...session, messages, updatedAt: now }
+      : { ...session, messages };
+  });
 }
 
 export function renameAIChatSessionFromMessage(
@@ -222,6 +227,19 @@ function normalizeMessages(value: unknown): DesktopChatMessage[] {
 
 function persistentMessages(messages: DesktopChatMessage[]): DesktopChatMessage[] {
   return normalizeMessages(messages.map(({ id, role, content }) => ({ id, role, content })));
+}
+
+export function aiChatPersistSignature(state: AIChatSessionState): string {
+  return JSON.stringify({
+    activeSessionId: state.activeSessionId,
+    sessions: state.sessions.slice(0, AI_CHAT_MAX_SESSIONS).map(session => ({
+      id: session.id,
+      title: session.title,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      messages: persistentMessages(session.messages).map(message => [message.id, message.role, message.content]),
+    })),
+  });
 }
 
 function welcomeMessage(): DesktopChatMessage {

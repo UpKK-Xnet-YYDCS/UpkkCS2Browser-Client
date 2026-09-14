@@ -441,3 +441,151 @@ test('marks targets unavailable without querying when the Tauri runtime is missi
   assert.equal(calls, 0);
   assert.deepEqual(updates.map((snapshot) => snapshot.status), ['unavailable']);
 });
+
+test('cancelPending drops not-yet-started display probes without querying them', async () => {
+  let releaseFirst: (() => void) | undefined;
+  const calls: string[] = [];
+
+  const scheduler = createLocalLatencyScheduler({
+    concurrency: 1,
+    isAvailable: () => true,
+    query: async (ip) => {
+      calls.push(ip);
+      if (ip === '10.0.10.1') {
+        await new Promise<void>(resolve => {
+          releaseFirst = resolve;
+        });
+      }
+      return { success: true, latency_ms: 9 };
+    },
+  });
+
+  const batch = scheduler.measure([
+    { key: 'one', ip: '10.0.10.1', port: '27015' },
+    { key: 'two', ip: '10.0.10.2', port: '27015' },
+  ], () => undefined);
+
+  await delay(1);
+  scheduler.cancelPending();
+  releaseFirst?.();
+  await batch;
+
+  assert.deepEqual(calls, ['10.0.10.1']);
+});
+
+test('cancelListener removes a queued consumer without aborting other listeners', async () => {
+  let releaseFirst: (() => void) | undefined;
+  const calls: string[] = [];
+  const kept: LocalLatencySnapshot[] = [];
+  const dropped: LocalLatencySnapshot[] = [];
+
+  const scheduler = createLocalLatencyScheduler({
+    concurrency: 1,
+    isAvailable: () => true,
+    query: async (ip) => {
+      calls.push(ip);
+      if (ip === '10.0.11.1') {
+        await new Promise<void>(resolve => {
+          releaseFirst = resolve;
+        });
+      }
+      return { success: true, latency_ms: Number(ip.split('.').at(-1)) };
+    },
+  });
+
+  const keepListener = (_key: string, snapshot: LocalLatencySnapshot) => {
+    kept.push(snapshot);
+  };
+  const dropListener = (_key: string, snapshot: LocalLatencySnapshot) => {
+    dropped.push(snapshot);
+  };
+
+  const first = scheduler.measure([
+    { key: 'active', ip: '10.0.11.1', port: '27015' },
+  ], () => undefined);
+  await delay(1);
+  const second = scheduler.measure([
+    { key: 'queued', ip: '10.0.11.2', port: '27015' },
+  ], keepListener);
+  const third = scheduler.measure([
+    { key: 'dropped', ip: '10.0.11.2', port: '27015' },
+  ], dropListener);
+
+  scheduler.cancelListener(dropListener);
+  releaseFirst?.();
+  await Promise.all([first, second, third]);
+
+  assert.deepEqual(calls, ['10.0.11.1', '10.0.11.2']);
+  assert.equal(kept.some(snapshot => snapshot.status === 'success'), true);
+  assert.equal(dropped.some(snapshot => snapshot.status === 'success'), false);
+});
+
+test('realtime measurements skip stale display cache and do not merge with ttl probes', async () => {
+  let now = 1_000;
+  let calls = 0;
+
+  const scheduler = createLocalLatencyScheduler({
+    ttlMs: 60_000,
+    now: () => now,
+    isAvailable: () => true,
+    query: async () => {
+      calls += 1;
+      return { success: true, latency_ms: calls * 10 };
+    },
+  });
+
+  const target = { key: 'cached', ip: '10.0.12.4', port: '27015' };
+  await scheduler.measure([target], () => undefined);
+  assert.equal(calls, 1);
+
+  now += 10_000;
+  await scheduler.measure([target], () => undefined, { mode: 'realtime' });
+  assert.equal(calls, 2);
+});
+
+test('release drops queued probes and stops notifying detached listeners', async () => {
+  let startedFirst!: () => void;
+  const firstStarted = new Promise<void>(resolve => {
+    startedFirst = resolve;
+  });
+  let releaseFirst: (() => void) | undefined;
+  const calls: string[] = [];
+  const updates: LocalLatencySnapshot[] = [];
+
+  const scheduler = createLocalLatencyScheduler({
+    concurrency: 1,
+    isAvailable: () => true,
+    query: async (ip) => {
+      calls.push(ip);
+      if (ip === '10.0.13.1') {
+        startedFirst();
+        await new Promise<void>(resolve => {
+          releaseFirst = resolve;
+        });
+      }
+      return { success: true, latency_ms: 13 };
+    },
+  });
+
+  const first = scheduler.measure([
+    { key: 'active', ip: '10.0.13.1', port: '27015' },
+    { key: 'queued', ip: '10.0.13.2', port: '27015' },
+  ], (_key, snapshot) => {
+    updates.push(snapshot);
+  });
+
+  await firstStarted;
+  scheduler.release();
+  releaseFirst?.();
+  await first;
+
+  assert.deepEqual(calls, ['10.0.13.1']);
+  assert.equal(updates.some(snapshot => snapshot.status === 'success'), false);
+
+  const afterRelease: LocalLatencySnapshot[] = [];
+  await scheduler.measure([{ key: 'next', ip: '10.0.13.3', port: '27015' }], (_key, snapshot) => {
+    afterRelease.push(snapshot);
+  });
+  assert.equal(calls.includes('10.0.13.3'), true);
+  assert.equal(afterRelease.some(snapshot => snapshot.status === 'success'), true);
+});

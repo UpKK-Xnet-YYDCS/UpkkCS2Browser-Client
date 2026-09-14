@@ -124,8 +124,13 @@ export function replaceFavoriteServerInPlace(
   parsed: FavoriteA2SAddress,
   next: ServerStatus | ((current: ServerStatus) => ServerStatus),
 ): ServerStatus[] {
-  return servers.map(server => {
+  let changed = false;
+  const nextServers = servers.map(server => {
     if (server.ip !== parsed.ip || server.port !== parsed.port) return server;
-    return typeof next === 'function' ? next(server) : next;
+    const updated = typeof next === 'function' ? next(server) : next;
+    if (updated === server) return server;
+    changed = true;
+    return updated;
   });
+  return changed ? nextServers : servers as ServerStatus[];
 }

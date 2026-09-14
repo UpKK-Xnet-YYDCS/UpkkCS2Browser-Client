@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { ServerStatus } from '../types/server.ts';
-import { getServerEntityKey, normalizeServerStatus, reconcileServerEntities } from './serverEntities.ts';
+import { getServerEntityKey, normalizeServerStatus, reconcileServerEntities, reuseArrayIfIdentical } from './serverEntities.ts';
 
 function server(overrides: Partial<ServerStatus> = {}): ServerStatus {
   return {
@@ -31,4 +31,25 @@ test('reuses unchanged entities and replaces only changed servers', () => {
   assert.equal(reconciled[0], first);
   assert.notEqual(reconciled[1], second);
   assert.equal(reconciled[1].players, 2);
+});
+
+test('identical server refreshes keep the previous entity array', () => {
+  const first = server();
+  const second = server({ ip: '127.0.0.2' });
+  const previous = [first, second];
+  const reconciled = reconcileServerEntities(previous, [{ ...first }, { ...second }]);
+  assert.equal(reconciled, previous);
+  assert.equal(reuseArrayIfIdentical(previous, [first, second]), previous);
+});
+
+test('reordering reuses entity objects and empty pages drop the previous array', () => {
+  const first = server();
+  const second = server({ ip: '127.0.0.2' });
+  const reordered = reconcileServerEntities([first, second], [{ ...second }, { ...first }]);
+  assert.equal(reordered[0], second);
+  assert.equal(reordered[1], first);
+
+  const empty = [] as ServerStatus[];
+  assert.deepEqual(reconcileServerEntities([first, second], []), []);
+  assert.equal(reconcileServerEntities(empty, []), empty);
 });

@@ -1,3 +1,4 @@
+// File and credential I/O use dedicated blocking tasks, not the A2S UDP limiter.
 use std::path::PathBuf;
 use tauri::Manager;
 

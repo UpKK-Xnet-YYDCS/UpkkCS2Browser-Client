@@ -20,13 +20,13 @@ import {
   autoJoinAvailableSlots,
   clampAutoJoinInterval,
   clampAutoJoinMinSlots,
-  nextAutoJoinCountdown,
   readStoredAutoJoinInterval,
   readStoredAutoJoinMinSlots,
 } from '@/services/autoJoinPolicy';
 import { openExternalUrl } from '@/services/desktopRuntime';
 import { resolveServerAddress } from '@/services/serverPresentation';
 import { createSequentialPoller, type SequentialPoller } from '@/services/sequentialPoller';
+import { isDocumentHidden, remainingCountdownSeconds } from '@/services/deadlineCountdown';
 import { buildJoinUrl } from '@/services/steamClient';
 import { logDebug, logError, logInfo, logWarn } from '@/services/operationLog';
 import type { Translations } from '@/store/i18n';
@@ -54,6 +54,8 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
 
   const pollerRef = useRef<SequentialPoller | null>(null);
   const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const countdownDeadlineRef = useRef(0);
+  const countdownVisibilityRef = useRef<(() => void) | null>(null);
   const isMonitoringRef = useRef(false);
   const autoStartedRef = useRef(false);
 
@@ -71,12 +73,19 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
       clearInterval(countdownIntervalRef.current);
       countdownIntervalRef.current = null;
     }
+    if (countdownVisibilityRef.current) {
+      document.removeEventListener('visibilitychange', countdownVisibilityRef.current);
+      countdownVisibilityRef.current = null;
+    }
   }, []);
 
   useEffect(() => {
     return () => {
       pollerRef.current?.stop();
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (countdownVisibilityRef.current) {
+        document.removeEventListener('visibilitychange', countdownVisibilityRef.current);
+      }
     };
   }, []);
 
@@ -133,6 +142,7 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
       setStatusText(t.autoJoinCheckFailed);
     }
 
+    countdownDeadlineRef.current = Date.now() + checkInterval * 1000;
     setCountdown(checkInterval);
     return true;
   }, [serverIp, serverPort, baseAddress, minSlots, onClose, t, checkInterval, server.game_id, server.GameID, server.game, server.name, doStopMonitoring]);
@@ -142,13 +152,32 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
     localStorage.setItem(AUTO_JOIN_INTERVAL_KEY, String(checkInterval));
     isMonitoringRef.current = true;
     setIsMonitoring(true);
+    countdownDeadlineRef.current = Date.now() + checkInterval * 1000;
     setCountdown(checkInterval);
     pollerRef.current?.stop();
     pollerRef.current = createSequentialPoller(checkServer, checkInterval * 1000);
     pollerRef.current.start();
+    if (countdownIntervalRef.current) {
+      clearInterval(countdownIntervalRef.current);
+      countdownIntervalRef.current = null;
+    }
+    if (countdownVisibilityRef.current) {
+      document.removeEventListener('visibilitychange', countdownVisibilityRef.current);
+      countdownVisibilityRef.current = null;
+    }
+    const syncDisplay = () => {
+      if (isDocumentHidden()) return;
+      const remaining = remainingCountdownSeconds(countdownDeadlineRef.current, Date.now());
+      setCountdown(remaining > 0 ? remaining : checkInterval);
+    };
     countdownIntervalRef.current = setInterval(() => {
-      setCountdown(prev => nextAutoJoinCountdown(prev, checkInterval));
+      if (remainingCountdownSeconds(countdownDeadlineRef.current, Date.now()) <= 0) {
+        countdownDeadlineRef.current = Date.now() + checkInterval * 1000;
+      }
+      syncDisplay();
     }, 1000);
+    document.addEventListener('visibilitychange', syncDisplay);
+    countdownVisibilityRef.current = syncDisplay;
   }, [minSlots, checkInterval, checkServer]);
 
   useEffect(() => {

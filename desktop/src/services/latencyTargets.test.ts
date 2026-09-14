@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { excludeForegroundTargets, getUniqueLatencyTargets, latencyTargetAddress } from './latencyTargets.ts';
+import { excludeForegroundTargets, getUniqueLatencyTargets, latencyTargetAddress, latencyTargetSignature } from './latencyTargets.ts';
 import type { ServerStatus } from '../types/index.ts';
 
 function server(overrides: Partial<ServerStatus> = {}): ServerStatus {
@@ -64,4 +64,14 @@ test('excludeForegroundTargets removes visible addresses and keeps the original 
   assert.deepEqual(remaining.map(latencyTargetAddress), ['8.8.8.8:27015']);
   const copied = excludeForegroundTargets(all, []);
   assert.equal(copied, all);
+});
+
+test('latencyTargetSignature depends on probe keys, not object identity', () => {
+  const first = server({ ip: '1.1.1.1', port: '27015', display_address: '1.1.1.1' });
+  const second = server({ ip: '1.1.1.1', port: '27015', display_address: '1.1.1.1', players: 9 });
+  assert.equal(latencyTargetSignature([first]), latencyTargetSignature([second]));
+  assert.notEqual(
+    latencyTargetSignature([first]),
+    latencyTargetSignature([server({ ip: '8.8.8.8', port: '27015', display_address: '8.8.8.8' })]),
+  );
 });

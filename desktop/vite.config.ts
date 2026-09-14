@@ -40,17 +40,61 @@ export default defineConfig({
     rolldownOptions: {
       output: {
         manualChunks(id: string) {
-          // Separate vendor chunk for React (cached independently by the browser/WebView)
-          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/')) {
+          const moduleId = id.replaceAll('\\', '/');
+          if (moduleId.includes('node_modules/react-dom') || moduleId.includes('node_modules/react/')) {
             return 'vendor';
           }
-          // Separate chunk for Tauri plugins
-          if (id.includes('@tauri-apps/plugin-')) {
+          if (moduleId.includes('@tauri-apps/plugin-') || moduleId.includes('@tauri-apps/api')) {
             return 'tauri';
           }
-          // Separate chunk for Tauri core API (used by many pages)
-          if (id.includes('@tauri-apps/api')) {
-            return 'tauri';
+          if (
+            moduleId.includes('/src/api/clientConfig.') ||
+            moduleId.includes('/src/api/clientQuery.') ||
+            moduleId.includes('/src/api/clientPrefetch.') ||
+            moduleId.includes('/src/api/client.') ||
+            moduleId.includes('/src/services/boundedLru.') ||
+            moduleId.includes('/src/services/operationLog.') ||
+            moduleId.includes('/src/services/desktopRuntime.')
+          ) {
+            return 'boot';
+          }
+          if (
+            moduleId.includes('/src/services/forumConstants.') ||
+            moduleId.includes('/src/services/forumLoginParse.') ||
+            moduleId.includes('/src/services/forumAuthFlow.') ||
+            moduleId.includes('/src/services/forumWindow.') ||
+            moduleId.includes('/src/services/forumLogin.')
+          ) {
+            return 'forum';
+          }
+          if (
+            moduleId.includes('/src/components/lucideIcons.') ||
+            moduleId.includes('/src/components/JoinServerConfirmModal.') ||
+            moduleId.includes('/src/components/JoinServerPickerModal.')
+          ) {
+            return 'joinUi';
+          }
+          if (
+            moduleId.includes('/src/services/canvasChartHover.') ||
+            moduleId.includes('/src/services/canvasLineChart.') ||
+            moduleId.includes('/src/components/PlayerHistoryChart.') ||
+            moduleId.includes('/src/components/MapHistory.') ||
+            moduleId.includes('/src/components/QueryRecords.')
+          ) {
+            return 'history';
+          }
+          if (
+            moduleId.includes('/src/services/updatePrompt.') ||
+            moduleId.includes('/src/services/update.') ||
+            moduleId.includes('/src/components/UpdateModal.')
+          ) {
+            return 'updateUi';
+          }
+          if (
+            moduleId.includes('/src/components/home/AddLocalServerModal.') ||
+            moduleId.includes('/src/components/AddServerModal.')
+          ) {
+            return 'addServer';
           }
         },
       },

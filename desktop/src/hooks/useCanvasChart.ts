@@ -27,6 +27,9 @@ export function useCanvasChart(
     let rafId: number | null = null;
     let retryCount = 0;
     const MAX_RETRIES = 20; // ~330 ms total across rAF frames
+    let lastWidth = 0;
+    let lastHeight = 0;
+    let lastDpr = 0;
 
     const draw = () => {
       rafId = null;
@@ -46,10 +49,17 @@ export function useCanvasChart(
       // Reset retry counter on successful draw (for future resize triggers)
       retryCount = 0;
 
+      const dpr = window.devicePixelRatio || 1;
+      if (rect.width === lastWidth && rect.height === lastHeight && dpr === lastDpr) {
+        return;
+      }
+
       const ctx = cvs.getContext('2d');
       if (!ctx) return;
 
-      const dpr = window.devicePixelRatio || 1;
+      lastWidth = rect.width;
+      lastHeight = rect.height;
+      lastDpr = dpr;
       cvs.width = rect.width * dpr;
       cvs.height = rect.height * dpr;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -58,16 +68,18 @@ export function useCanvasChart(
       drawFn(ctx, rect.width, rect.height);
     };
 
+    const scheduleDraw = () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(draw);
+    };
+
     // Initial draw (via rAF to ensure layout is settled after React commit)
-    rafId = requestAnimationFrame(draw);
+    scheduleDraw();
 
     // Re-draw whenever the canvas element resizes (container resize, window resize, etc.)
     let observer: ResizeObserver | undefined;
     if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(() => {
-        if (rafId !== null) cancelAnimationFrame(rafId);
-        rafId = requestAnimationFrame(draw);
-      });
+      observer = new ResizeObserver(scheduleDraw);
       observer.observe(canvas);
     }
 

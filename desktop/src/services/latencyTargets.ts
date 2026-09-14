@@ -7,6 +7,10 @@ export function latencyTargetAddress(target: Pick<LocalLatencyTarget, 'ip' | 'po
   return latencyAddressKey(target.ip, target.port);
 }
 
+export function latencyTargetSignature(servers: readonly ServerStatus[]): string {
+  return servers.map(server => getServerLatencyTarget(server)?.key ?? '').join('\0');
+}
+
 export function getUniqueLatencyTargets(servers: readonly ServerStatus[]): LocalLatencyTarget[] {
   const targetsByAddress = new Map<string, LocalLatencyTarget>();
 

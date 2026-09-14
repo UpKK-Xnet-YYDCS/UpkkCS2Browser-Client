@@ -5,6 +5,7 @@ import {
   loadAIChatSessionState,
   renameAIChatSessionFromMessage,
   saveAIChatSessionState,
+  aiChatPersistSignature,
   selectAIChatSessionState,
   startAIChatSessionState,
   updateAIChatSessionMessages,
@@ -36,12 +37,17 @@ export function useAIChatSessions({
   const activeMessages = useMemo(() => activeSession?.messages ?? [], [activeSession]);
   const activeTurnCount = countAIChatTurns(activeMessages);
 
+  const persistSignatureRef = useRef('');
+
   useEffect(() => {
     sessionStateRef.current = sessionState;
   }, [sessionState]);
 
   useEffect(() => {
+    const signature = aiChatPersistSignature(sessionState);
+    if (signature === persistSignatureRef.current) return undefined;
     const timer = window.setTimeout(() => {
+      persistSignatureRef.current = signature;
       saveAIChatSessionState(getChatStorage(), sessionState);
     }, 250);
     return () => window.clearTimeout(timer);
@@ -54,10 +60,17 @@ export function useAIChatSessions({
   const updateMessages = useCallback((
     sessionId: string,
     update: (messages: DesktopChatMessage[]) => DesktopChatMessage[],
+    options?: { persist?: boolean },
   ) => {
     setSessionState(current => ({
       ...current,
-      sessions: updateAIChatSessionMessages(current.sessions, sessionId, update),
+      sessions: updateAIChatSessionMessages(
+        current.sessions,
+        sessionId,
+        update,
+        Date.now(),
+        options?.persist !== false,
+      ),
     }));
   }, []);
 

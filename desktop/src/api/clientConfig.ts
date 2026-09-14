@@ -1,6 +1,8 @@
-import { getCloudApiToken } from '@/services/cloudToken';
+import { getCloudApiToken } from '../services/cloudToken.ts';
 
-export const XPROJ_USER_AGENT = __XPROJ_HTTP_USER_AGENT__;
+export const XPROJ_USER_AGENT = typeof __XPROJ_HTTP_USER_AGENT__ === 'string'
+  ? __XPROJ_HTTP_USER_AGENT__
+  : 'XProj-Desktop-HTTP';
 
 let cachedBaseUrl: string | null = null;
 

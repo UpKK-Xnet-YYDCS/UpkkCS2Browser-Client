@@ -52,9 +52,11 @@ interface LatencyListener {
 }
 
 interface LatencyProbe {
+  identity: string;
   address: string;
   target: LocalLatencyTarget;
   priority: number;
+  fresh: boolean;
   listeners: LatencyListener[];
   started: boolean;
   promise: Promise<LocalLatencySnapshot>;
@@ -86,6 +88,22 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
   const inFlight = new Map<string, LatencyProbe>();
   const queue: LatencyProbe[] = [];
   let activeCount = 0;
+
+  function probeIdentity(address: string, fresh: boolean): string {
+    return address + '|t' + String(timeoutMs) + (fresh ? '|fresh' : '|ttl');
+  }
+
+  function cancelledSnapshot(): LocalLatencySnapshot {
+    return { status: 'failed', error: 'Cancelled', updatedAt: now() };
+  }
+
+  function dropQueuedProbe(probe: LatencyProbe, snapshot: LocalLatencySnapshot): void {
+    inFlight.delete(probe.identity);
+    const index = queue.indexOf(probe);
+    if (index >= 0) queue.splice(index, 1);
+    probe.listeners = [];
+    probe.resolve(snapshot);
+  }
 
   function notify(probe: LatencyProbe, snapshot: LocalLatencySnapshot): void {
     for (const listener of probe.listeners) {
@@ -125,14 +143,15 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
         probe.resolve(snapshot);
       }).finally(() => {
         activeCount -= 1;
-        inFlight.delete(probe.address);
+        inFlight.delete(probe.identity);
         pumpQueue();
       });
     }
   }
 
-  function enqueue(job: LatencyJob, onUpdate: LocalLatencyUpdate): Promise<LocalLatencySnapshot> {
-    const existing = inFlight.get(job.address);
+  function enqueue(job: LatencyJob, onUpdate: LocalLatencyUpdate, fresh: boolean): Promise<LocalLatencySnapshot> {
+    const identity = probeIdentity(job.address, fresh);
+    const existing = inFlight.get(identity);
     if (existing) {
       existing.listeners.push({ keys: job.keys, onUpdate });
       if (!existing.started) {
@@ -148,15 +167,17 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
       resolveProbe = resolve;
     });
     const probe: LatencyProbe = {
+      identity,
       address: job.address,
       target: job.target,
       priority: job.priority,
+      fresh,
       listeners: [{ keys: job.keys, onUpdate }],
       started: false,
       promise,
       resolve: resolveProbe,
     };
-    inFlight.set(job.address, probe);
+    inFlight.set(identity, probe);
     updateKeys(job.keys, { status: 'queued' }, onUpdate);
     queue.push(probe);
     queue.sort((a, b) => a.priority - b.priority);
@@ -171,31 +192,32 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     const prioritizedAddresses = Array.from(grouped.values())
       .sort((a, b) => a.priority - b.priority)
       .map(job => job.address);
-    const queuedByAddress = new Map(queue.map(probe => [probe.address, probe]));
     const superseded: LocalLatencySnapshot = {
       status: 'failed',
       error: 'Superseded by newer latency batch',
       updatedAt: now(),
     };
+    const queuedByIdentity = new Map(queue.map(probe => [probe.identity, probe]));
 
-    for (const probe of queue) {
+    for (const probe of [...queue]) {
       if (!currentAddresses.has(probe.address)) {
-        inFlight.delete(probe.address);
-        probe.resolve(superseded);
+        dropQueuedProbe(probe, superseded);
       }
     }
 
     queue.length = 0;
     for (const address of prioritizedAddresses) {
-      const probe = queuedByAddress.get(address);
-      if (probe && !probe.started && inFlight.get(address) === probe) {
+      const probe = queuedByIdentity.get(probeIdentity(address, false))
+        ?? queuedByIdentity.get(probeIdentity(address, true));
+      if (probe && !probe.started && inFlight.get(probe.identity) === probe) {
         queue.push(probe);
       }
     }
   }
 
   async function measure(targets: LocalLatencyTarget[], onUpdate: LocalLatencyUpdate, measureOptions: LocalLatencyMeasureOptions = {}): Promise<void> {
-    const shouldReplacePending = measureOptions.mode !== 'background';
+    const fresh = measureOptions.mode === 'realtime';
+    const shouldReplacePending = measureOptions.mode !== 'background' && !fresh;
 
     if (targets.length === 0) {
       if (shouldReplacePending) {
@@ -222,18 +244,45 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     const prioritizedJobs = Array.from(grouped.values()).sort((a, b) => a.priority - b.priority);
     for (const job of prioritizedJobs) {
       const cached = cache.get(job.address);
-      if (cached?.updatedAt && currentTime - cached.updatedAt < ttlMs) {
+      if (!fresh && cached?.updatedAt && currentTime - cached.updatedAt < ttlMs) {
         updateKeys(job.keys, cached, onUpdate);
         continue;
       }
-      jobs.push(enqueue(job, onUpdate));
+      jobs.push(enqueue(job, onUpdate, fresh));
     }
 
     await Promise.all(jobs);
   }
 
+  function cancelListener(onUpdate: LocalLatencyUpdate): void {
+    const cancelled = cancelledSnapshot();
+    for (const probe of [...inFlight.values()]) {
+      probe.listeners = probe.listeners.filter(listener => listener.onUpdate !== onUpdate);
+      if (probe.started || probe.listeners.length > 0) continue;
+      dropQueuedProbe(probe, cancelled);
+    }
+  }
+
+  function cancelPending(): void {
+    const cancelled = cancelledSnapshot();
+    for (const probe of [...queue]) {
+      dropQueuedProbe(probe, cancelled);
+    }
+  }
+
+  function release(): void {
+    cancelPending();
+    for (const probe of inFlight.values()) {
+      probe.listeners = [];
+    }
+    cache.clear();
+  }
+
   return {
     measure,
     clearCache: () => cache.clear(),
+    cancelListener,
+    cancelPending,
+    release,
   };
 }

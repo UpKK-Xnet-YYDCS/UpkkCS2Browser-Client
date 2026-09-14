@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { clearResponseCache } from '@/api/client';
-import { nextAutoRefreshCountdown } from '@/services/favoritesPageQuery';
+import { isDocumentHidden, remainingCountdownSeconds } from '@/services/deadlineCountdown';
 
 export function useFavoritesAutoRefresh({
   loggedIn,
@@ -12,44 +12,45 @@ export function useFavoritesAutoRefresh({
   loadFavorites: (showLoadingOverlay?: boolean) => void | Promise<void>;
 }) {
   const [countdown, setCountdown] = useState(refreshInterval);
-  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const resetSignalRef = useRef(0);
+  const displayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const deadlineRef = useRef(0);
 
   useEffect(() => {
-    if (!loggedIn || refreshInterval <= 0) return;
+    if (!loggedIn || refreshInterval <= 0) return undefined;
 
-    if (countdownRef.current) {
-      clearInterval(countdownRef.current);
-    }
+    deadlineRef.current = Date.now() + refreshInterval * 1000;
 
-    let lastResetSignal = resetSignalRef.current;
-
-    countdownRef.current = setInterval(() => {
-      if (resetSignalRef.current !== lastResetSignal) {
-        lastResetSignal = resetSignalRef.current;
-        setCountdown(refreshInterval);
-        return;
+    const syncDisplay = () => {
+      if (!isDocumentHidden()) {
+        setCountdown(remainingCountdownSeconds(deadlineRef.current, Date.now()));
       }
+    };
 
-      setCountdown(prev => {
-        const tick = nextAutoRefreshCountdown(prev, refreshInterval);
-        if (tick.shouldRefresh) {
-          clearResponseCache();
-          loadFavorites();
-        }
-        return tick.next;
-      });
-    }, 1000);
+    const tick = () => {
+      syncDisplay();
+      displayTimerRef.current = setTimeout(tick, 1000);
+    };
+
+    refreshTimerRef.current = setInterval(() => {
+      clearResponseCache();
+      loadFavorites();
+      deadlineRef.current = Date.now() + refreshInterval * 1000;
+      setCountdown(refreshInterval);
+    }, refreshInterval * 1000);
+    displayTimerRef.current = setTimeout(tick, 1000);
+    document.addEventListener('visibilitychange', syncDisplay);
 
     return () => {
-      if (countdownRef.current) {
-        clearInterval(countdownRef.current);
-      }
+      if (refreshTimerRef.current) clearInterval(refreshTimerRef.current);
+      if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
+      document.removeEventListener('visibilitychange', syncDisplay);
     };
   }, [refreshInterval, loggedIn, loadFavorites]);
 
   const bumpRefreshSignal = () => {
-    resetSignalRef.current += 1;
+    deadlineRef.current = Date.now() + refreshInterval * 1000;
+    setCountdown(refreshInterval);
   };
 
   const handleRefresh = () => {

@@ -87,3 +87,15 @@ export function recordMatchNotification(ruleId: string, serverKey: string, mapNa
   setCooldown(ruleId, serverKey);
   setNotifiedMap(ruleId, serverKey, mapName);
 }
+
+export function pruneMonitorMatchState(activeRuleIds: Iterable<string>): void {
+  const active = new Set(activeRuleIds);
+  const tables = [cooldownMap, lastMatchedMapMap, matchCounterMap, lastNotifiedMapMap, previousSeenMapMap];
+  for (const table of tables) {
+    for (const key of [...table.keys()]) {
+      const separator = key.indexOf(':');
+      const ruleId = separator < 0 ? key : key.slice(0, separator);
+      if (!active.has(ruleId)) table.delete(key);
+    }
+  }
+}

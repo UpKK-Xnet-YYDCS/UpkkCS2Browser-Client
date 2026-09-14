@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getAllFavorites, updateFavoriteSortOrder, type FavoriteServer } from '@/api/favorites';
 import type { LatencyFilterValue, ViewMode } from '@/types/ui';
 import { useCloudAuth } from '@/hooks/useCloudAuth';
@@ -35,7 +35,7 @@ export function useFavoritesPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [latencyFilter, setLatencyFilter] = useState<LatencyFilterValue>('all');
   const {
-    latencyByKey,
+    latencyStore,
     latencyDetectionSettings,
     latencySchedulerOptions,
     measureServers,
@@ -45,8 +45,10 @@ export function useFavoritesPage() {
   const [viewMode, setViewMode] = useState<ViewMode>(() => readFavoritesViewMode(localStorage.getItem(FAVORITES_VIEW_MODE_KEY)));
   const [refreshInterval] = useState(() => readAutoRefreshInterval(localStorage.getItem(AUTO_REFRESH_INTERVAL_KEY)));
 
+  const loadGenerationRef = useRef(0);
   const loadFavorites = useCallback(async (showLoadingOverlay = false) => {
     if (!authStatus.logged_in) {
+      loadGenerationRef.current += 1;
       setIsLoading(false);
       return;
     }
@@ -56,14 +58,17 @@ export function useFavoritesPage() {
     }
     setIsLoading(true);
     setError(null);
+    const generation = ++loadGenerationRef.current;
 
     try {
       const result = await getAllFavorites();
+      if (generation !== loadGenerationRef.current) return;
       if (result.favorites && Array.isArray(result.favorites)) {
         setFavorites(result.favorites);
         setTotalFavorites(result.total);
       }
     } catch (err) {
+      if (generation !== loadGenerationRef.current) return;
       console.error('[Favorites] Failed to load favorites:', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       if (isFavoritesAuthError(errMsg)) {
@@ -72,8 +77,10 @@ export function useFavoritesPage() {
         setError(errMsg);
       }
     } finally {
-      setIsLoading(false);
-      setIsManualRefresh(false);
+      if (generation === loadGenerationRef.current) {
+        setIsLoading(false);
+        setIsManualRefresh(false);
+      }
     }
   }, [authStatus.logged_in, invalidate]);
 
@@ -127,7 +134,7 @@ export function useFavoritesPage() {
     favorites,
     searchQuery,
     latencyFilter,
-    latencyByKey,
+    latencyStore,
     currentPage,
     itemsPerPage,
     loggedIn: authStatus.logged_in,

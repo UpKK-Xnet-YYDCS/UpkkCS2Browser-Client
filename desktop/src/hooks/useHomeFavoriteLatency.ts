@@ -1,5 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { ServerStatus } from '@/types';
+import { latencyTargetSignature } from '@/services/latencyTargets';
 
 interface MeasureServersOptions {
   mode?: 'replace' | 'background';
@@ -25,17 +26,41 @@ export function useHomeFavoriteLatency({
   latencySchedulerOptions,
   measureServers,
 }: UseHomeFavoriteLatencyOptions) {
+  const displayedRef = useRef(displayedServers);
+  const filteredRef = useRef(filteredFavServers);
+  const serversRef = useRef(servers);
+  const displayedSignature = latencyTargetSignature(displayedServers);
+  const backfillSource = showFavoritesOnly ? filteredFavServers : servers;
+  const backfillSignature = shouldBackfillLatency ? latencyTargetSignature(backfillSource) : '';
+
   useEffect(() => {
-    return measureServers(displayedServers);
-  }, [displayedServers, latencySchedulerOptions, measureServers]);
+    displayedRef.current = displayedServers;
+  }, [displayedServers]);
+
+  useEffect(() => {
+    filteredRef.current = filteredFavServers;
+  }, [filteredFavServers]);
+
+  useEffect(() => {
+    serversRef.current = servers;
+  }, [servers]);
+
+  useEffect(() => {
+    return measureServers(displayedRef.current);
+  }, [displayedSignature, latencySchedulerOptions, measureServers]);
 
   useEffect(() => {
     if (!shouldBackfillLatency) return undefined;
-
-    const sourceServers = showFavoritesOnly ? filteredFavServers : servers;
-    return measureServers(sourceServers, {
+    return measureServers(showFavoritesOnly ? filteredRef.current : serversRef.current, {
       mode: 'background',
-      excludeServers: displayedServers,
+      excludeServers: displayedRef.current,
     });
-  }, [shouldBackfillLatency, showFavoritesOnly, filteredFavServers, servers, displayedServers, latencySchedulerOptions, measureServers]);
+  }, [
+    shouldBackfillLatency,
+    showFavoritesOnly,
+    backfillSignature,
+    displayedSignature,
+    latencySchedulerOptions,
+    measureServers,
+  ]);
 }

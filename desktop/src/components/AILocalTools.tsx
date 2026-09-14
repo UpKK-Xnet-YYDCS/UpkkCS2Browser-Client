@@ -1,4 +1,4 @@
-import { Play, X } from 'lucide-react';
+import { Play, X } from '@/components/lucideIcons';
 import type { Language } from '@/store/i18n';
 import type { LocalLatencyResult } from '@/services/desktopTools';
 import { recommendedServerToStatus } from '@/services/desktopTools';

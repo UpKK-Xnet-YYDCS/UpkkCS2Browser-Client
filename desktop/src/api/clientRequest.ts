@@ -1,7 +1,19 @@
-import { logInfo, logWarn, logError, logDebug } from '@/services/operationLog';
-import { getOptionalDesktopHttpFetch } from '@/services/desktopRuntime';
-import { getCached, runDedupedGet, setCache } from './clientCache';
-import { XPROJ_USER_AGENT, getApiToken, getBaseUrl } from './clientConfig';
+import { logInfo, logWarn, logError, logDebug } from '../services/operationLog.ts';
+import {
+  delayWithSignal,
+  isRequestAbortError,
+  mergeAbortSignals,
+  throwIfRequestAborted,
+} from './clientAbort.ts';
+import {
+  getCached,
+  runDedupedGet,
+  setCacheIfCurrent,
+  snapshotRequest,
+  type RequestSnapshot,
+} from './clientCache.ts';
+import { XPROJ_USER_AGENT } from './clientConfig.ts';
+import { apiHttpFetch } from './clientTransport.ts';
 
 class ApiError extends Error {
   status: number;
@@ -12,79 +24,55 @@ class ApiError extends Error {
   }
 }
 
-export async function refreshEndpoint<T>(endpoint: string, maxRetries = 3): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      const result = await fetchApi<T>(endpoint);
-      setCache(endpoint, result);
-      return result;
-    } catch (error) {
-      lastError = error;
-      if (attempt < maxRetries - 1 && isRetryableError(error)) {
-        const delay = 1000 * Math.pow(2, attempt);
-        logWarn('API', 'refreshEndpoint retry ' + (attempt + 1) + '/' + maxRetries + ' ' + endpoint);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      } else {
-        throw error;
-      }
-    }
-  }
-  throw lastError;
+export async function refreshEndpoint<T>(endpoint: string, maxRetries = 3, signal?: AbortSignal): Promise<T> {
+  return fetchWithRetryAttempts<T>(endpoint, undefined, maxRetries, signal, true);
 }
 
 export async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const method = options?.method || 'GET';
-  if (method === 'GET') {
-    return runDedupedGet(endpoint, () => fetchApiImpl<T>(endpoint, options));
-  }
-  return fetchApiImpl<T>(endpoint, options);
+  const { data } = await fetchApiResult<T>(endpoint, options);
+  return data;
 }
 
-async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise<T> {
-  const baseUrl = getBaseUrl();
-  const url = baseUrl + endpoint;
+async function fetchApiResult<T>(
+  endpoint: string,
+  options?: RequestInit,
+): Promise<{ data: T; snapshot: RequestSnapshot }> {
   const method = options?.method || 'GET';
-  logInfo('API', method + ' ' + endpoint);
+  const snapshot = snapshotRequest(endpoint);
+  const { signal, ...transportOptions } = options ?? {};
+  const consumerSignal = signal ?? undefined;
+  if (method === 'GET') {
+    const data = await runDedupedGet(
+      endpoint,
+      sharedSignal => fetchApiImpl<T>(snapshot, transportOptions, sharedSignal),
+      consumerSignal,
+    );
+    return { data, snapshot };
+  }
+  const data = await fetchApiImpl<T>(snapshot, transportOptions, consumerSignal);
+  return { data, snapshot };
+}
+
+async function fetchApiImpl<T>(
+  snapshot: RequestSnapshot,
+  options: RequestInit | undefined,
+  transportSignal?: AbortSignal,
+): Promise<T> {
+  throwIfRequestAborted(transportSignal);
+  const url = snapshot.baseUrl + snapshot.endpoint;
+  const method = options?.method || 'GET';
+  logInfo('API', method + ' ' + snapshot.endpoint);
   logDebug('API', method + ' ' + url);
 
-  const token = getApiToken();
   const authHeaders: Record<string, string> = {};
-  if (token) {
-    authHeaders['Authorization'] = 'Bearer ' + token;
+  if (snapshot.token) {
+    authHeaders['Authorization'] = 'Bearer ' + snapshot.token;
   }
 
   try {
-    const tauriFetch = await getOptionalDesktopHttpFetch();
-    if (tauriFetch) {
-      const response = await tauriFetch(url, {
-        ...options,
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': XPROJ_USER_AGENT,
-          'X-Client-UA': XPROJ_USER_AGENT,
-          ...authHeaders,
-          ...options?.headers,
-        },
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => '');
-        throw new ApiError(
-          'API请求失败: ' + url + ' - 状态码: ' + response.status + ' ' + response.statusText + (errorText ? ' - 响应: ' + errorText.substring(0, 200) : ''),
-          response.status,
-        );
-      }
-
-      const data = await response.json();
-      logDebug('API', '响应成功');
-      return data;
-    } else {
-      logDebug('API', 'Tauri HTTP 不可用, 回退到 fetch...');
-    }
-
-    const response = await fetch(url, {
+    const response = await apiHttpFetch(url, {
       ...options,
+      signal: mergeAbortSignals(options?.signal ?? undefined, transportSignal),
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': XPROJ_USER_AGENT,
@@ -102,25 +90,27 @@ async function fetchApiImpl<T>(endpoint: string, options?: RequestInit): Promise
       );
     }
 
-    const data = await response.json();
+    const data = await response.json() as T;
     logDebug('API', '响应成功');
     return data;
   } catch (error) {
+    if (isRequestAbortError(error)) throw error;
     if (error instanceof TypeError && error.message.includes('fetch')) {
-      logError('API', 'Network error: ' + endpoint);
+      logError('API', 'Network error: ' + snapshot.endpoint);
       throw new Error(
-        '网络请求失败: ' + url + ' - 无法连接到服务器。请检查网络连接和API地址配置。当前API地址: ' + baseUrl,
+        '网络请求失败: ' + url + ' - 无法连接到服务器。请检查网络连接和API地址配置。当前API地址: ' + snapshot.baseUrl,
         { cause: error },
       );
     }
     if (error instanceof ApiError) {
-      logError('API', method + ' ' + endpoint + ' → ' + error.status);
+      logError('API', method + ' ' + snapshot.endpoint + ' → ' + error.status);
     }
     throw error;
   }
 }
 
 function isRetryableError(error: unknown): boolean {
+  if (isRequestAbortError(error)) return false;
   if (error instanceof TypeError) return true;
   if (error instanceof ApiError) {
     return error.status >= 500;
@@ -128,31 +118,47 @@ function isRetryableError(error: unknown): boolean {
   return true;
 }
 
-export async function fetchWithRetry<T>(endpoint: string, options?: RequestInit, maxRetries = 3): Promise<T> {
+async function fetchWithRetryAttempts<T>(
+  endpoint: string,
+  options: RequestInit | undefined,
+  maxRetries: number,
+  signal: AbortSignal | undefined,
+  bypassCache: boolean,
+): Promise<T> {
   const method = options?.method || 'GET';
 
-  if (method === 'GET') {
+  if (method === 'GET' && !bypassCache) {
     const cached = getCached<T>(endpoint);
     if (cached !== undefined) return cached;
   }
 
   let lastError: unknown;
+  const requestInit = signal ? { ...options, signal } : options;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
+    throwIfRequestAborted(signal);
     try {
-      const result = await fetchApi<T>(endpoint, options);
-      if (method === 'GET') setCache(endpoint, result);
-      return result;
+      const { data, snapshot } = await fetchApiResult<T>(endpoint, requestInit);
+      if (method === 'GET') setCacheIfCurrent(snapshot, data);
+      return data;
     } catch (error) {
       lastError = error;
       if (attempt < maxRetries - 1 && isRetryableError(error)) {
         const delay = 1000 * Math.pow(2, attempt);
         logWarn('API', 'Retry ' + (attempt + 1) + '/' + maxRetries + ' ' + endpoint);
         logWarn('API', 'Attempt ' + (attempt + 1) + '/' + maxRetries + ' failed, retrying in ' + delay + 'ms: ' + (error instanceof Error ? error.message : String(error)));
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await delayWithSignal(delay, signal);
       } else {
         throw error;
       }
     }
   }
   throw lastError;
+}
+
+export async function fetchWithRetry<T>(endpoint: string, options?: RequestInit, maxRetries = 3): Promise<T> {
+  return fetchWithRetryAttempts<T>(endpoint, options, maxRetries, options?.signal ?? undefined, false);
+}
+
+export interface ApiCallOptions {
+  signal?: AbortSignal;
 }
