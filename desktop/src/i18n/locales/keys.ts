@@ -509,4 +509,6 @@ export const TRANSLATION_KEYS = [
   'soundType_chime',
   'soundType_bubble',
   'soundType_bell',
+  'skipJoinConfirm',
+  'skipJoinConfirmDesc',
 ];

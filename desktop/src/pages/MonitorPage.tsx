@@ -12,6 +12,7 @@ import { useI18n } from '@/hooks/useI18n';
 import { useMonitorPage } from '@/hooks/useMonitorPage';
 import { useTheme } from '@/hooks/useTheme';
 import { createDefaultRule } from '@/services/monitor';
+import { startJoinServer } from '@/services/joinServerAction';
 import { matchedServerToStatus } from '@/services/monitorPresentation';
 import { rgbaToCss } from '@/store/themeUtils';
 
@@ -62,7 +63,7 @@ export function MonitorPage() {
           t={t}
           currentMatches={page.currentMatches}
           recentMatches={page.status.matchedServers}
-          onJoin={(match) => page.setJoinTarget(matchedServerToStatus(match))}
+          onJoin={(match) => startJoinServer(matchedServerToStatus(match), page.setJoinTarget)}
         />
         <MonitorControlPanel
           t={t}

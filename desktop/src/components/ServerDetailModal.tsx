@@ -22,7 +22,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
     t, players, loadingPlayers, isAuthenticated, copied,
     showAutoJoinModal, showJoinConfirm, showLatencyProbeModal,
     setShowAutoJoinModal, setShowLatencyProbeModal,
-    openJoinConfirm, closeAutoJoin, closeJoinConfirm, closeLatency,
+    handleJoin, closeAutoJoin, closeJoinConfirm, closeLatency,
     showRemoveConfirm, setShowRemoveConfirm, removing, cloudFavState, cloudFavLoading,
     displayAddress, serverName, serverMap, serverPlayers, serverMaxPlayers, serverBots,
     serverCountry, serverVac, serverGame, serverCategory, serverVersion, serverOnline,
@@ -150,7 +150,7 @@ export function ServerDetailModal({ server, onClose, isCloudFavorite, onFavorite
             <AutoJoinIcon />
           </button>
           <button
-            onClick={() => openJoinConfirm()}
+            onClick={handleJoin}
             className="flex-1 flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg hover:shadow-xl"
           >
             <PlayIcon />

@@ -16,6 +16,8 @@ import {
 } from '@/services/desktopTools';
 import { collectJoinableServers } from '@/services/aiChatWorkspace';
 import { formatLocalStatus, localToolStatus } from '@/services/aiChatPresentation';
+import { getSkipJoinConfirm } from '@/services/joinConfirmPreference';
+import { startJoinServer } from '@/services/joinServerAction';
 
 interface UseAIChatToolWorkspaceOptions {
   language: Language;
@@ -79,7 +81,7 @@ export function useAIChatToolWorkspace({
   const requestJoin = useCallback((server: ServerStatus, latencyMs?: number) => {
     setLastSelectedServer(server);
     setJoinLatency(latencyMs ?? server.local_latency_ms);
-    setJoinTarget(server);
+    startJoinServer(server, setJoinTarget);
   }, []);
 
   const handleJoinIntent = useCallback(async (
@@ -113,7 +115,7 @@ export function useAIChatToolWorkspace({
     }
     if (resolution.kind !== 'resolved') return localToolStatus(language, 'unresolved');
     requestJoin(resolution.server, resolution.server.local_latency_ms);
-    return localToolStatus(language, 'confirmJoin');
+    return localToolStatus(language, getSkipJoinConfirm() ? 'joining' : 'confirmJoin');
   }, [joinableServers, language, lastSelectedServer, requestJoin]);
 
   return {

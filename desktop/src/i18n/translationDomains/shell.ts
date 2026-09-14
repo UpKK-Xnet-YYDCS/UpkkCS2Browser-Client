@@ -63,6 +63,8 @@ export interface ShellTranslations {
   prefetchEnabled: string;
   prefetchDelayDesc: string;
   prefetchDelayHint: string;
+  skipJoinConfirm: string;
+  skipJoinConfirmDesc: string;
   
   // Clear data modal
   confirmClearData: string;

@@ -1,5 +1,6 @@
 import { A2STestSection } from '@/components/settings/A2STestSection';
 import { ClearDataSection } from '@/components/settings/ClearDataSection';
+import { JoinConfirmSettingsSection } from '@/components/settings/JoinConfirmSettingsSection';
 import { NotificationSoundSection } from '@/components/settings/NotificationSoundSection';
 import { SettingsSaveButton } from '@/components/settings/SettingsSaveButton';
 import { SteamClientSettingsSection } from '@/components/settings/SteamClientSettingsSection';
@@ -43,6 +44,7 @@ export function GeneralDataSoundSection(props: GeneralDataSoundSectionProps) {
         soundType={props.soundType}
         setSoundType={props.setSoundType}
       />
+      <JoinConfirmSettingsSection />
       <SteamClientSettingsSection
         t={props.t}
         steamClient={props.steamClient}

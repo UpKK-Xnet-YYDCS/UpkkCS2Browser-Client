@@ -1,4 +1,5 @@
 import type { MouseEvent as ReactMouseEvent } from 'react';
+import { startJoinServer } from '@/services/joinServerAction';
 import type { ServerStatus } from '@/types';
 import { buildAlternateAutoJoinTarget, buildAlternateJoinTarget, useServerActionModals } from './useServerActionModals';
 
@@ -9,7 +10,7 @@ export function useServerJoinActions(server: ServerStatus, closeDropdown: () => 
 
   const handleConnect = (event: ReactMouseEvent) => {
     event.stopPropagation();
-    modals.setJoinTarget(server);
+    startJoinServer(server, modals.setJoinTarget);
   };
 
   const handleAutoJoin = (event: ReactMouseEvent) => {
@@ -38,7 +39,7 @@ export function useServerJoinActions(server: ServerStatus, closeDropdown: () => 
   const handleConnectAlternate = (ip: string, port: string, event: ReactMouseEvent) => {
     event.stopPropagation();
     const alternate = alternates?.find((item) => item.ip === ip && String(item.port) === String(port));
-    modals.setJoinTarget(buildAlternateJoinTarget(server, ip, port, alternate));
+    startJoinServer(buildAlternateJoinTarget(server, ip, port, alternate), modals.setJoinTarget);
     closeDropdown();
   };
 

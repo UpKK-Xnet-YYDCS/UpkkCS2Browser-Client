@@ -9,6 +9,7 @@ import {
   SERVER_DETAIL_COPY_FEEDBACK_MS,
   buildServerDetailHistoryKeys,
 } from '@/services/serverDetailQuery';
+import { startJoinServer } from '@/services/joinServerAction';
 import type { ServerStatus } from '@/types';
 import { formatServerDate, getLastResponseTimestamp, getOfflineDuration, isServerOnline } from '@/utils/serverStatus';
 
@@ -110,6 +111,8 @@ export function useServerDetailModal({
     return () => window.removeEventListener('keydown', handleEscape);
   }, [onClose]);
 
+  const handleJoin = () => startJoinServer(server, () => openJoinConfirm());
+
   return {
     t,
     players,
@@ -121,7 +124,7 @@ export function useServerDetailModal({
     showLatencyProbeModal,
     setShowAutoJoinModal,
     setShowLatencyProbeModal,
-    openJoinConfirm,
+    handleJoin,
     closeAutoJoin,
     closeJoinConfirm,
     closeLatency,
