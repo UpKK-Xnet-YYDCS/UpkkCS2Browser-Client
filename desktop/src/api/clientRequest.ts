@@ -2,7 +2,7 @@ import { logInfo, logWarn, logError, logDebug } from '../services/operationLog.t
 import {
   delayWithSignal,
   isRequestAbortError,
-  mergeAbortSignals,
+  startRequestDeadline,
   throwIfRequestAborted,
 } from './clientAbort.ts';
 import {
@@ -23,6 +23,14 @@ class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+
+/**
+ * Generous upper bound for one attempt (headers and body). plugin-http has no
+ * read timeout, and a request that never settles would pin its entry in the
+ * shared GET and favorites dedupe maps; on expiry the attempt fails like a
+ * network error, so the existing retry and cleanup paths release them.
+ */
+export const API_REQUEST_DEADLINE_MS = 60_000;
 
 export async function refreshEndpoint<T>(endpoint: string, maxRetries = 3, signal?: AbortSignal): Promise<T> {
   return fetchWithRetryAttempts<T>(endpoint, undefined, maxRetries, signal, true);
@@ -69,10 +77,11 @@ async function fetchApiImpl<T>(
     authHeaders['Authorization'] = 'Bearer ' + snapshot.token;
   }
 
+  const deadline = startRequestDeadline(API_REQUEST_DEADLINE_MS, options?.signal ?? undefined, transportSignal);
   try {
     const response = await apiHttpFetch(url, {
       ...options,
-      signal: mergeAbortSignals(options?.signal ?? undefined, transportSignal),
+      signal: deadline.signal,
       headers: {
         'Content-Type': 'application/json',
         'User-Agent': XPROJ_USER_AGENT,
@@ -94,8 +103,9 @@ async function fetchApiImpl<T>(
     logDebug('API', '响应成功');
     return data;
   } catch (error) {
-    if (isRequestAbortError(error)) throw error;
-    if (error instanceof TypeError && error.message.includes('fetch')) {
+    const timedOut = deadline.expired && !(error instanceof ApiError);
+    if (!timedOut && isRequestAbortError(error)) throw error;
+    if (timedOut || (error instanceof TypeError && error.message.includes('fetch'))) {
       logError('API', 'Network error: ' + snapshot.endpoint);
       throw new Error(
         '网络请求失败: ' + url + ' - 无法连接到服务器。请检查网络连接和API地址配置。当前API地址: ' + snapshot.baseUrl,
@@ -106,6 +116,8 @@ async function fetchApiImpl<T>(
       logError('API', method + ' ' + snapshot.endpoint + ' → ' + error.status);
     }
     throw error;
+  } finally {
+    deadline.dispose();
   }
 }
 

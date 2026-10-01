@@ -1,16 +1,15 @@
-import { isTauriAvailable } from '@/services/a2s';
-import { buildJoinUrl } from '@/services/steamClient';
-import { compileMapPattern, queryMonitorServers } from './monitorQuery.ts';
-import { dispatchMonitorNotificationsInOrder } from './monitorNotifications.ts';
+import { isTauriAvailable } from './a2s.ts';
+import { buildJoinUrl } from './steamClient.ts';
+import { compileMapPattern, queryMonitorServers, type MonitorServerInfo } from './monitorQuery.ts';
+import { dispatchMonitorNotificationsInOrder, type MonitorNotificationSenders } from './monitorNotifications.ts';
 import {
   formatNotificationMessage,
   sendCustomWebhook,
   sendDesktopNotification,
   sendDiscordWebhook,
   sendServerChanNotification,
-} from './monitorChannels';
-import { loadNotifySettings } from './monitorPersistence';
-import type { MatchedServer, MonitorRule } from './monitorTypes';
+} from './monitorChannels.ts';
+import type { MatchedServer, MonitorNotifySettings, MonitorRule } from './monitorTypes';
 import {
   evaluateMatchGate,
   recordMatchNotification,
@@ -18,16 +17,81 @@ import {
   updatePreviousSeenMap,
 } from './monitorMatchState.ts';
 
+export interface MonitorCheckResult {
+  matched: MatchedServer[];
+  currentMatches: MatchedServer[];
+  autoJoined: MatchedServer | null;
+  error: string | null;
+  servers: MonitorServerInfo[];
+}
+
+export interface MonitorCheckDependencies {
+  queryServers?: typeof queryMonitorServers;
+  notify?: (entries: readonly MatchedServer[]) => Promise<void>;
+  openJoinUrl?: (url: string) => Promise<void>;
+  loadSettings?: () => MonitorNotifySettings;
+  /** True once the monitoring run this check belongs to was stopped or restarted. */
+  isCancelled?: () => boolean;
+}
+
+const emptyMonitorCheck = (): MonitorCheckResult => ({
+  matched: [],
+  currentMatches: [],
+  autoJoined: null,
+  error: null,
+  servers: [],
+});
+
+async function openMonitorJoinUrl(url: string): Promise<void> {
+  if (isTauriAvailable()) {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open(url);
+    return;
+  }
+  window.location.href = url;
+}
+
+async function monitorNotificationSenders(
+  notifySettings: MonitorNotifySettings,
+): Promise<MonitorNotificationSenders<MatchedServer>> {
+  return {
+    desktop: async (entry) => {
+      const customMsg = formatNotificationMessage(notifySettings.customMessageTemplate, entry);
+      const resolvedAlertTitle = notifySettings.alertTitle || undefined;
+      const desktopTitle = resolvedAlertTitle
+        ? formatNotificationMessage(resolvedAlertTitle, entry)
+        : `🎮 ${entry.serverName}`;
+      await sendDesktopNotification(desktopTitle, customMsg);
+    },
+    discord: async (entry) => sendDiscordWebhook(
+      notifySettings.discordWebhookUrl, entry, notifySettings.alertTitle || undefined,
+    ),
+    serverChan: async (entry) => sendServerChanNotification(
+      notifySettings.serverChanKey, entry, notifySettings.alertTitle || undefined,
+    ),
+    customWebhook: async (entry) => sendCustomWebhook(
+      notifySettings.customWebhookUrl,
+      entry,
+      formatNotificationMessage(notifySettings.customMessageTemplate, entry),
+    ),
+  };
+}
+
 export async function performMonitorCheck(
-  rules: MonitorRule[]
-): Promise<{ matched: MatchedServer[]; currentMatches: MatchedServer[]; autoJoined: MatchedServer | null; error: string | null }> {
+  rules: MonitorRule[],
+  dependencies: MonitorCheckDependencies = {},
+): Promise<MonitorCheckResult> {
+  const queryServers = dependencies.queryServers ?? queryMonitorServers;
+  const openJoinUrl = dependencies.openJoinUrl ?? openMonitorJoinUrl;
+  const loadSettings = dependencies.loadSettings ?? (await import('./monitorPersistence.ts')).loadNotifySettings;
+  const isCancelled = dependencies.isCancelled ?? (() => false);
   const enabledRules = rules.filter(r => r.enabled && r.mapPatterns.length > 0);
   if (enabledRules.length === 0) {
-    return { matched: [], currentMatches: [], autoJoined: null, error: null };
+    return emptyMonitorCheck();
   }
 
   // Load global notification settings
-  const notifySettings = loadNotifySettings();
+  const notifySettings = loadSettings();
 
   try {
     // Collect all selected server keys across rules
@@ -37,13 +101,15 @@ export async function performMonitorCheck(
     }
 
     if (allSelectedKeys.size === 0) {
-      return { matched: [], currentMatches: [], autoJoined: null, error: null };
+      return emptyMonitorCheck();
     }
 
-    const allServers = await queryMonitorServers(allSelectedKeys);
+    const allServers = await queryServers(allSelectedKeys);
 
-    if (allServers.length === 0) {
-      return { matched: [], currentMatches: [], autoJoined: null, error: null };
+    // A check cancelled while querying leaves no trace: no consecutive-match
+    // counts, cooldowns, auto-join or notifications.
+    if (allServers.length === 0 || isCancelled()) {
+      return emptyMonitorCheck();
     }
 
     const matched: MatchedServer[] = [];
@@ -103,44 +169,12 @@ export async function performMonitorCheck(
             matched.push(matchEntry);
             recordMatchNotification(rule.id, serverKey, mapName);
 
-            // Send notifications using global settings (all async, errors won't interrupt monitoring)
-            const customMsg = formatNotificationMessage(notifySettings.customMessageTemplate, matchEntry);
-            const resolvedAlertTitle = notifySettings.alertTitle || undefined;
-
-            await dispatchMonitorNotificationsInOrder([matchEntry], {
-              desktop: notifySettings.notifyDesktop,
-              discord: notifySettings.notifyDiscord && Boolean(notifySettings.discordWebhookUrl),
-              serverChan: notifySettings.notifyServerChan && Boolean(notifySettings.serverChanKey),
-              customWebhook: notifySettings.notifyCustomWebhook && Boolean(notifySettings.customWebhookUrl),
-            }, {
-              desktop: async () => {
-                const desktopTitle = resolvedAlertTitle
-                  ? formatNotificationMessage(resolvedAlertTitle, matchEntry)
-                  : `🎮 ${serverName}`;
-                await sendDesktopNotification(desktopTitle, customMsg);
-              },
-              discord: async () => sendDiscordWebhook(
-                notifySettings.discordWebhookUrl, matchEntry, resolvedAlertTitle,
-              ),
-              serverChan: async () => sendServerChanNotification(
-                notifySettings.serverChanKey, matchEntry, resolvedAlertTitle,
-              ),
-              customWebhook: async () => sendCustomWebhook(
-                notifySettings.customWebhookUrl, matchEntry, customMsg,
-              ),
-            });
-
-            // Auto-join: open Steam to connect to the FIRST matched server only
-            if (rule.autoJoin && !autoJoined) {
+            // Auto-join the first match without waiting for notification delivery.
+            if (rule.autoJoin && !autoJoined && !isCancelled()) {
               const [ip, port] = serverKey.split(':');
               const steamUrl = buildJoinUrl(ip, port, undefined, server.gameName);
               try {
-                if (isTauriAvailable()) {
-                  const { open } = await import('@tauri-apps/plugin-shell');
-                  await open(steamUrl);
-                } else {
-                  window.location.href = steamUrl;
-                }
+                await openJoinUrl(steamUrl);
               } catch {
                 window.location.href = steamUrl;
               }
@@ -159,11 +193,23 @@ export async function performMonitorCheck(
       }
     }
 
-    return { matched, currentMatches, autoJoined, error: null };
+    if (matched.length > 0 && !isCancelled()) {
+      if (dependencies.notify) {
+        await dependencies.notify(matched);
+      } else {
+        await dispatchMonitorNotificationsInOrder(matched, {
+          desktop: notifySettings.notifyDesktop,
+          discord: notifySettings.notifyDiscord && Boolean(notifySettings.discordWebhookUrl),
+          serverChan: notifySettings.notifyServerChan && Boolean(notifySettings.serverChanKey),
+          customWebhook: notifySettings.notifyCustomWebhook && Boolean(notifySettings.customWebhookUrl),
+        }, await monitorNotificationSenders(notifySettings));
+      }
+    }
+
+    return { matched, currentMatches, autoJoined, error: null, servers: allServers };
   } catch (err) {
     const errorMsg = err instanceof Error ? err.message : String(err);
     console.error('[Monitor] Check failed:', errorMsg);
-    return { matched: [], currentMatches: [], autoJoined: null, error: errorMsg };
+    return { matched: [], currentMatches: [], autoJoined: null, error: errorMsg, servers: [] };
   }
 }
-

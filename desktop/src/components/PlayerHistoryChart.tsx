@@ -46,25 +46,32 @@ export function PlayerHistoryChart({ serverId }: PlayerHistoryChartProps) {
     { value: '30d', label: t.period30d },
   ];
 
-  const loadData = useCallback(async () => {
+  // `isStale` turns true once a newer period/server request replaced this one.
+  const loadData = useCallback(async (isStale: () => boolean) => {
     setLoading(true);
     setError(null);
     try {
       const response = await getServerPlayerHistory(serverId, period);
+      if (isStale()) return;
       setStats(response.stats || []);
     } catch (err) {
+      if (isStale()) return;
       setError(err instanceof Error ? err.message : t.loadFailed);
       setStats([]);
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [period, serverId, t.loadFailed]);
 
   useEffect(() => {
+    let cancelled = false;
     const timer = window.setTimeout(() => {
-      void loadData();
+      void loadData(() => cancelled);
     }, 0);
-    return () => window.clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, [loadData]);
 
   const drawChart = useCallback((ctx: CanvasRenderingContext2D, width: number, height: number) => {

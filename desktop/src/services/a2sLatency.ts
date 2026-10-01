@@ -7,9 +7,10 @@ import {
   normalizeLatencyRetryDelayMs,
   normalizeLatencyTimeoutMs,
 } from './a2sLatencyPolicy.ts';
-import { queryLatencyWithRetry } from './a2sLatencyQuery.ts';
+import { queryLatencyBatchWithRetry, queryLatencyWithRetry } from './a2sLatencyQuery.ts';
 import type {
   GroupedLatencyJob,
+  LocalLatencyBatchQuery,
   LocalLatencyMeasureOptions,
   LocalLatencyQuery,
   LocalLatencyScheduler,
@@ -32,6 +33,7 @@ export type {
 
 interface LocalLatencySchedulerOptions {
   query: LocalLatencyQuery;
+  queryBatch?: LocalLatencyBatchQuery;
   concurrency?: number;
   ttlMs?: number;
   timeoutMs?: number;
@@ -123,30 +125,89 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     });
   }
 
-  function pumpQueue(): void {
-    while (activeCount < concurrency && queue.length > 0) {
-      const probe = queue.shift();
-      if (!probe) return;
+  function finishProbe(probe: LatencyProbe, snapshot: LocalLatencySnapshot): void {
+    cache.set(probe.address, snapshot);
+    notify(probe, snapshot);
+    probe.resolve(snapshot);
+  }
 
-      activeCount += 1;
+  function startSingleProbe(probe: LatencyProbe): void {
+    activeCount += 1;
+    probe.started = true;
+    notify(probe, { status: 'checking' });
+    void queryJob({
+      address: probe.address,
+      target: probe.target,
+      keys: [],
+      priority: probe.priority,
+    }).then(snapshot => {
+      finishProbe(probe, snapshot);
+    }).finally(() => {
+      activeCount -= 1;
+      inFlight.delete(probe.identity);
+      pumpQueue();
+    });
+  }
+
+  function startBatch(probes: LatencyProbe[]): void {
+    const queryBatch = options.queryBatch;
+    if (!queryBatch || probes.length === 0) return;
+    activeCount += probes.length;
+    for (const probe of probes) {
       probe.started = true;
       notify(probe, { status: 'checking' });
-
-      void queryJob({
-        address: probe.address,
-        target: probe.target,
-        keys: [],
-        priority: probe.priority,
-      }).then(snapshot => {
-        cache.set(probe.address, snapshot);
-        notify(probe, snapshot);
-        probe.resolve(snapshot);
-      }).finally(() => {
-        activeCount -= 1;
-        inFlight.delete(probe.identity);
-        pumpQueue();
-      });
     }
+    void queryLatencyBatchWithRetry({
+      query: options.query,
+      queryBatch,
+      targets: probes.map(probe => probe.target),
+      timeoutMs,
+      concurrency: probes.length,
+      retryCount,
+      retryDelayMs,
+      now,
+      sleep,
+    }).then(snapshots => {
+      probes.forEach((probe, index) => {
+        finishProbe(probe, snapshots[index] ?? {
+          status: 'failed',
+          error: 'A2S latency unavailable',
+          updatedAt: now(),
+        });
+      });
+    }).finally(() => {
+      activeCount -= probes.length;
+      for (const probe of probes) inFlight.delete(probe.identity);
+      pumpQueue();
+    });
+  }
+
+  function pumpQueue(): void {
+    while (activeCount < concurrency && queue.length > 0) {
+      const available = concurrency - activeCount;
+      if (!options.queryBatch || available <= 1 || queue.length === 1) {
+        const probe = queue.shift();
+        if (!probe) return;
+        startSingleProbe(probe);
+        continue;
+      }
+      const probes: LatencyProbe[] = [];
+      while (probes.length < available && queue.length > 0) {
+        const probe = queue.shift();
+        if (!probe) break;
+        probes.push(probe);
+      }
+      startBatch(probes);
+      return;
+    }
+  }
+
+  function remember(address: string, snapshot: LocalLatencySnapshot): void {
+    if (!address || snapshot.status !== 'success' || !Number.isFinite(snapshot.latencyMs)) return;
+    if (snapshot.updatedAt === undefined) return;
+    const existing = cache.get(address);
+    if (existing?.updatedAt !== undefined && existing.updatedAt >= snapshot.updatedAt) return;
+    cache.set(address, snapshot);
   }
 
   function enqueue(job: LatencyJob, onUpdate: LocalLatencyUpdate, fresh: boolean): Promise<LocalLatencySnapshot> {
@@ -181,7 +242,6 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
     updateKeys(job.keys, { status: 'queued' }, onUpdate);
     queue.push(probe);
     queue.sort((a, b) => a.priority - b.priority);
-    pumpQueue();
     return promise;
   }
 
@@ -251,6 +311,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
       jobs.push(enqueue(job, onUpdate, fresh));
     }
 
+    pumpQueue();
     await Promise.all(jobs);
   }
 
@@ -280,6 +341,7 @@ export function createLocalLatencyScheduler(options: LocalLatencySchedulerOption
 
   return {
     measure,
+    remember,
     clearCache: () => cache.clear(),
     cancelListener,
     cancelPending,

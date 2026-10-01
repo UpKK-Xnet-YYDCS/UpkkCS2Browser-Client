@@ -99,17 +99,20 @@ export async function queryFavoriteServerWithRetry(
   let lastResult: A2SQueryResult | null = null;
 
   for (let attempt = 0; attempt <= options.retryCount; attempt += 1) {
+    let raceTimer: ReturnType<typeof setTimeout> | undefined;
     try {
       const result = await Promise.race([
         query(parsed.ip, parsed.port, { timeoutMs: options.timeoutMs }),
-        new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error('timeout')), options.timeoutMs)
-        ),
+        new Promise<null>((_, reject) => {
+          raceTimer = setTimeout(() => reject(new Error('timeout')), options.timeoutMs);
+        }),
       ]);
       if (result?.success) return result;
       lastResult = result;
     } catch (error) {
       lastResult = failedFavoriteQuery(parsed, error);
+    } finally {
+      clearTimeout(raceTimer);
     }
     if (attempt < options.retryCount && options.retryDelayMs > 0) {
       await sleep(options.retryDelayMs);

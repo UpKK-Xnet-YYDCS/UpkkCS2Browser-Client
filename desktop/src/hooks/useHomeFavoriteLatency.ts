@@ -12,9 +12,11 @@ interface UseHomeFavoriteLatencyOptions {
   filteredFavServers: ServerStatus[];
   servers: ServerStatus[];
   showFavoritesOnly: boolean;
+  favLoading: boolean;
   shouldBackfillLatency: boolean;
   latencySchedulerOptions: unknown;
   measureServers: (servers: ServerStatus[], options?: MeasureServersOptions) => () => void;
+  seedMeasuredServers: (servers: readonly ServerStatus[]) => Promise<void>;
 }
 
 export function useHomeFavoriteLatency({
@@ -22,9 +24,11 @@ export function useHomeFavoriteLatency({
   filteredFavServers,
   servers,
   showFavoritesOnly,
+  favLoading,
   shouldBackfillLatency,
   latencySchedulerOptions,
   measureServers,
+  seedMeasuredServers,
 }: UseHomeFavoriteLatencyOptions) {
   const displayedRef = useRef(displayedServers);
   const filteredRef = useRef(filteredFavServers);
@@ -46,8 +50,19 @@ export function useHomeFavoriteLatency({
   }, [servers]);
 
   useEffect(() => {
-    return measureServers(displayedRef.current);
-  }, [displayedSignature, latencySchedulerOptions, measureServers]);
+    if (showFavoritesOnly && favLoading) return undefined;
+    let cancelled = false;
+    let cancelMeasure: () => void = () => undefined;
+    const start = async () => {
+      if (showFavoritesOnly) await seedMeasuredServers(displayedRef.current);
+      if (!cancelled) cancelMeasure = measureServers(displayedRef.current);
+    };
+    void start();
+    return () => {
+      cancelled = true;
+      cancelMeasure();
+    };
+  }, [displayedSignature, favLoading, latencySchedulerOptions, measureServers, seedMeasuredServers, showFavoritesOnly]);
 
   useEffect(() => {
     if (!shouldBackfillLatency) return undefined;

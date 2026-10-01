@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useAppActions, useServerFiltersStore } from '@/hooks/useAppSlices';
 import { useI18n } from '@/hooks/useI18n';
 
@@ -21,9 +21,15 @@ export function SearchBar() {
   const { t } = useI18n();
   const [localQuery, setLocalQuery] = useState(searchQuery);
   const [isFocused, setIsFocused] = useState(false);
+  // Value this component last pushed to the store. Its echo must not overwrite
+  // keystrokes typed while that update was in flight.
+  const pushedQueryRef = useRef<string | null>(null);
 
   // Sync local query with store query (for external changes)
   useEffect(() => {
+    const isOwnEcho = searchQuery === pushedQueryRef.current;
+    pushedQueryRef.current = null;
+    if (isOwnEcho) return undefined;
     const timer = window.setTimeout(() => setLocalQuery(searchQuery), 0);
     return () => window.clearTimeout(timer);
   }, [searchQuery]);
@@ -32,6 +38,7 @@ export function SearchBar() {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (localQuery !== searchQuery) {
+        pushedQueryRef.current = localQuery;
         setSearchQuery(localQuery);
       }
     }, 300);
@@ -40,6 +47,7 @@ export function SearchBar() {
 
   const handleClear = useCallback(() => {
     setLocalQuery('');
+    pushedQueryRef.current = '';
     setSearchQuery('');
   }, [setSearchQuery]);
 

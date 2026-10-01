@@ -1,8 +1,23 @@
 import type { AIChatEvent } from './aiChat.ts';
 import type { DesktopChatMessage } from './aiChatSessions.ts';
 import { createAITokenAccumulator, type AITokenAccumulator } from '../utils/aiTokens.ts';
+import { BoundedLruMap } from './boundedLru.ts';
 
-const outputTokenAccumulators = new Map<string, { thinking: string; content: string; accumulator: AITokenAccumulator }>();
+/**
+ * Incremental output-token counters for streaming answers, keyed by message
+ * id and dropped on reset/complete. Stopped or failed answers never complete,
+ * so the cache is an LRU of OUTPUT_TOKEN_ACCUMULATOR_LIMIT entries. No TTL:
+ * each use checks that the cached text is still a prefix of the message and
+ * recounts otherwise, so eviction only costs a recount.
+ */
+export const OUTPUT_TOKEN_ACCUMULATOR_LIMIT = 32;
+const outputTokenAccumulators = new BoundedLruMap<string, { thinking: string; content: string; accumulator: AITokenAccumulator }>(
+  OUTPUT_TOKEN_ACCUMULATOR_LIMIT,
+);
+
+export function getOutputTokenAccumulatorCount(): number {
+  return outputTokenAccumulators.size;
+}
 
 function outputTokensFor(message: DesktopChatMessage, thinking: string, content: string): number {
   const existing = outputTokenAccumulators.get(message.id);

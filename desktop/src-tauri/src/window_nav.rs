@@ -49,13 +49,21 @@ pub(crate) fn generate_post_form_js(url: &str, uid: &str, auth: &str) -> String 
     )
 }
 
+const TRUSTED_NAVIGATION_HOSTS: [&str; 2] = ["bbs.upkk.com", "servers.upkk.com"];
+
+/// Forum/browser window navigation guard. Compares the parsed host exactly so
+/// lookalike hosts (`bbs.upkk.com.evil.example`, `bbs.upkk.com@evil.example`,
+/// `servers.upkk.company`) are rejected; `about:` pages stay allowed.
 pub(crate) fn trusted_navigation(url: &Url) -> bool {
-    let url = url.as_str();
-    url.starts_with("about:")
-        || url.starts_with("https://bbs.upkk.com")
-        || url.starts_with("http://bbs.upkk.com")
-        || url.starts_with("https://servers.upkk.com")
-        || url.starts_with("http://servers.upkk.com")
+    if url.scheme() == "about" {
+        return true;
+    }
+    matches!(url.scheme(), "http" | "https")
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url
+            .host_str()
+            .is_some_and(|host| TRUSTED_NAVIGATION_HOSTS.contains(&host))
 }
 
 pub(crate) fn create_tab_script(url: &Url) -> String {
@@ -96,6 +104,66 @@ mod tests {
             "https://steamcommunity.com"
         )));
         assert!(!trusted_navigation(&parse_url("file:///tmp/index.html")));
+    }
+
+    #[test]
+    fn trusted_navigation_rejects_lookalike_hosts_and_userinfo() {
+        for value in [
+            "https://bbs.upkk.com.evil.example/",
+            "https://bbs.upkk.com.evil.example/plugin.php?id=xnet_core_api:xproj_sign",
+            "https://bbs.upkk.com@evil.example/",
+            "https://bbs.upkk.com:secret@evil.example/",
+            "http://servers.upkk.company/",
+            "https://servers.upkk.company/api",
+            "https://bbs.upkk.comevil.example/",
+            "https://user@bbs.upkk.com/",
+            "https://user:secret@servers.upkk.com/",
+            "ftp://bbs.upkk.com/",
+            "wss://bbs.upkk.com/",
+        ] {
+            assert!(!trusted_navigation(&parse_url(value)), "{value}");
+        }
+        for value in [
+            "https://bbs.upkk.com.evil.example/",
+            "https://bbs.upkk.com@evil.example/",
+            "http://servers.upkk.company/",
+        ] {
+            assert!(legacy_prefix_navigation(&parse_url(value)), "{value}");
+        }
+    }
+
+    /// The previous prefix guard; every URL it allowed on the exact trusted
+    /// hosts must still be allowed by the parsed-host guard.
+    fn legacy_prefix_navigation(url: &Url) -> bool {
+        let url = url.as_str();
+        url.starts_with("about:")
+            || url.starts_with("https://bbs.upkk.com")
+            || url.starts_with("http://bbs.upkk.com")
+            || url.starts_with("https://servers.upkk.com")
+            || url.starts_with("http://servers.upkk.com")
+    }
+
+    #[test]
+    fn trusted_navigation_keeps_every_legitimately_allowed_url() {
+        for value in [
+            "about:blank",
+            "about:srcdoc",
+            "https://bbs.upkk.com",
+            "https://bbs.upkk.com/",
+            "http://bbs.upkk.com/",
+            "https://bbs.upkk.com/plugin.php?id=xnet_core_api:xproj_login_to_bbs",
+            "https://bbs.upkk.com/forum.php?mod=viewthread&tid=1&page=2#pid3",
+            "https://BBS.UPKK.COM/Forum.php",
+            "https://bbs.upkk.com:443/home.php",
+            "https://bbs.upkk.com:8443/home.php",
+            "https://servers.upkk.com/",
+            "http://servers.upkk.com/api/servers?page=1",
+            "https://servers.upkk.com/#/detail",
+        ] {
+            let url = parse_url(value);
+            assert!(legacy_prefix_navigation(&url), "legacy {value}");
+            assert!(trusted_navigation(&url), "{value}");
+        }
     }
 
     #[test]

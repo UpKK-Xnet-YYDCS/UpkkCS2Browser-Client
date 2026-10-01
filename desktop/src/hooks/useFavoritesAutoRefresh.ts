@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { clearResponseCache } from '@/api/client';
+import { clearFavoritesResponseCache } from '@/services/favoritesCache';
 import { isDocumentHidden, remainingCountdownSeconds } from '@/services/deadlineCountdown';
 
 export function useFavoritesAutoRefresh({
@@ -12,6 +12,8 @@ export function useFavoritesAutoRefresh({
   loadFavorites: (showLoadingOverlay?: boolean) => void | Promise<void>;
 }) {
   const [countdown, setCountdown] = useState(refreshInterval);
+  // Bumped with the deadline so the refresh interval restarts in phase with it.
+  const [resetToken, setResetToken] = useState(0);
   const displayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const deadlineRef = useRef(0);
@@ -33,7 +35,7 @@ export function useFavoritesAutoRefresh({
     };
 
     refreshTimerRef.current = setInterval(() => {
-      clearResponseCache();
+      clearFavoritesResponseCache();
       loadFavorites();
       deadlineRef.current = Date.now() + refreshInterval * 1000;
       setCountdown(refreshInterval);
@@ -46,15 +48,16 @@ export function useFavoritesAutoRefresh({
       if (displayTimerRef.current) clearTimeout(displayTimerRef.current);
       document.removeEventListener('visibilitychange', syncDisplay);
     };
-  }, [refreshInterval, loggedIn, loadFavorites]);
+  }, [refreshInterval, loggedIn, loadFavorites, resetToken]);
 
   const bumpRefreshSignal = () => {
     deadlineRef.current = Date.now() + refreshInterval * 1000;
     setCountdown(refreshInterval);
+    setResetToken(token => token + 1);
   };
 
   const handleRefresh = () => {
-    clearResponseCache();
+    clearFavoritesResponseCache();
     loadFavorites(true);
     bumpRefreshSignal();
   };

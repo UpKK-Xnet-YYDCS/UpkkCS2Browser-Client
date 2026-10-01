@@ -1,4 +1,5 @@
 import { createContext, type Dispatch, type SetStateAction } from 'react';
+import type { CheckedMonitorServers } from '@/services/monitoredServerDetails';
 import type { MatchedServer, MonitorRule, MonitorStatus } from '@/services/monitorTypes';
 
 export interface MonitorRuntimeValue {
@@ -11,6 +12,7 @@ export interface MonitorRuntimeValue {
   status: MonitorStatus;
   setStatus: Dispatch<SetStateAction<MonitorStatus>>;
   currentMatches: MatchedServer[];
+  checkedServers: CheckedMonitorServers | null;
   setCountdown: Dispatch<SetStateAction<number>>;
 }
 

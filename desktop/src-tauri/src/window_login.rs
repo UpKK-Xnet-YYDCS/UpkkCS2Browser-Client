@@ -54,7 +54,8 @@ pub async fn open_steam_login(app: tauri::AppHandle, login_url: String) -> Resul
     .on_navigation(move |url| {
         let url = url.to_string();
         if url.starts_with(LOGIN_CALLBACK_PREFIX) {
-            println!("[Login] Token redirect intercepted: {}", url);
+            // Never log the callback URL: its query carries the login token.
+            println!("[Login] Token redirect intercepted");
             if let Some(user_json) = login_callback_payload(&url) {
                 println!("[Login] Emitting login-token-ready event");
                 let _ = app_handle.emit("login-token-ready", user_json);

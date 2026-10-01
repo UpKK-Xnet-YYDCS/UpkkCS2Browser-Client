@@ -80,4 +80,4 @@ Recorded **2026-09-14** from `npm run build` on this workspace (Vite 8.3.0 / Rol
 `npm run check:performance` keeps the existing hard budgets and emits CI warnings when total gzip grows by
 more than 1 KiB or an existing chunk grows by more than 5 KiB.
 
-Windows native timings, 8-hour stability, and four-platform CI packages are still pending on the acceptance machine. A local ad-hoc macOS ARM DMG (5.0 MiB, not notarized) was produced on 2026-09-14. Host default `rustc` remains 1.97.0. Named-toolchain `cargo +1.89.0` (MSRV) and `cargo +1.98.1` check/test both passed locally; CI `dtolnay/rust-toolchain@1.89.0` remains the authoritative MSRV gate.
+Windows native timings, 8-hour stability, and four-platform CI packages are still pending on the acceptance machine. A local ad-hoc macOS ARM DMG (5.0 MiB, not notarized) was produced on 2026-09-14. Host default `rustc` remains 1.97.0. Named-toolchain `cargo +1.89.0` (the former MSRV) and `cargo +1.98.1` check/test both passed locally; Tauri 2.12 raises the current project floor to Rust 1.90, enforced by `.github/workflows/desktop-check.yml`.

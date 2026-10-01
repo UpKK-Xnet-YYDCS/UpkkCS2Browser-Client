@@ -154,3 +154,47 @@ test('cancels an active stream without retrying', async () => {
   );
   assert.equal(calls, 1);
 });
+
+test('failed AI responses release their unread body before retrying or failing', async () => {
+  let cancels = 0;
+  const failed = (status: number) => new Response(new ReadableStream<Uint8Array>({
+    pull() {},
+    cancel() {
+      cancels += 1;
+    },
+  }), { status });
+  let calls = 0;
+  const content = await streamAIChat(
+    { message: 'retry', history: [], language: 'en' },
+    {
+      signal: new AbortController().signal,
+      onEvent: () => undefined,
+      fetcher: async () => {
+        calls += 1;
+        return calls === 1 ? failed(503) : sseResponse(['data: {"type":"message","content":"ok"}\n\ndata: {"type":"complete"}\n\n']);
+      },
+      baseUrl: 'https://example.test',
+      token: 'token',
+      retryWait: async () => undefined,
+    },
+  );
+  assert.equal(content, 'ok');
+  assert.equal(calls, 2);
+  assert.equal(cancels, 1);
+
+  await assert.rejects(
+    streamAIChat(
+      { message: 'login', history: [], language: 'en' },
+      {
+        signal: new AbortController().signal,
+        onEvent: () => undefined,
+        fetcher: async () => failed(401),
+        baseUrl: 'https://example.test',
+        token: null,
+        retryWait: async () => undefined,
+      },
+    ),
+    (error: unknown) => error instanceof AIChatRequestError && error.message === 'Login required to use AI chat',
+  );
+  assert.equal(cancels, 2);
+});

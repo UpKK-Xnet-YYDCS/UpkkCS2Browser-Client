@@ -30,6 +30,21 @@ export type LocalLatencyQuery = (
   options: LocalLatencyQueryOptions,
 ) => Promise<LocalLatencyQueryResult>;
 
+export interface LocalLatencyBatchTarget {
+  ip: string;
+  port: string;
+}
+
+export interface LocalLatencyBatchOptions {
+  timeoutMs: number;
+  concurrency?: number;
+}
+
+export type LocalLatencyBatchQuery = (
+  targets: LocalLatencyBatchTarget[],
+  options: LocalLatencyBatchOptions,
+) => Promise<LocalLatencyQueryResult[]>;
+
 export type LocalLatencyUpdate = (key: string, snapshot: LocalLatencySnapshot) => void;
 
 export interface LocalLatencyMeasureOptions {
@@ -38,6 +53,7 @@ export interface LocalLatencyMeasureOptions {
 
 export interface LocalLatencyScheduler {
   measure: (targets: LocalLatencyTarget[], onUpdate: LocalLatencyUpdate, options?: LocalLatencyMeasureOptions) => Promise<void>;
+  remember: (address: string, snapshot: LocalLatencySnapshot) => void;
   clearCache: () => void;
   cancelListener: (onUpdate: LocalLatencyUpdate) => void;
   cancelPending: () => void;

@@ -7,8 +7,42 @@ import {
   defaultLightColors,
   defaultTheme,
   loadThemeSettings,
+  persistThemeSettings,
   resetColorRegionValue,
+  THEME_STORAGE_KEY,
 } from './themePersist.ts';
+
+function installLocalStorage(setItem: (key: string, value: string) => void) {
+  const previous = Object.getOwnPropertyDescriptor(globalThis, 'localStorage');
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    value: { setItem },
+  });
+  return () => {
+    if (previous) Object.defineProperty(globalThis, 'localStorage', previous);
+    else Reflect.deleteProperty(globalThis, 'localStorage');
+  };
+}
+
+test('persistThemeSettings writes the theme JSON under the existing key', (t) => {
+  const writes: Array<[string, string]> = [];
+  t.after(installLocalStorage((key, value) => { writes.push([key, value]); }));
+  const theme = { ...defaultTheme, backgroundImage: 'data:image/png;base64,AAAA' };
+  persistThemeSettings(theme);
+  assert.deepEqual(writes, [[THEME_STORAGE_KEY, JSON.stringify(theme)]]);
+  assert.equal(THEME_STORAGE_KEY, 'upkk-theme-settings');
+});
+
+test('persistThemeSettings logs instead of throwing when the quota is exceeded', (t) => {
+  const errors: unknown[][] = [];
+  t.mock.method(console, 'error', (...args: unknown[]) => { errors.push(args); });
+  t.after(installLocalStorage(() => {
+    throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+  }));
+  assert.doesNotThrow(() => persistThemeSettings({ ...defaultTheme, backgroundImage: 'x'.repeat(1024) }));
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0][0], 'Failed to save theme settings:');
+});
 
 test('loadThemeSettings returns the dark default when storage is empty or invalid', (t) => {
   t.mock.method(console, 'error', () => undefined);

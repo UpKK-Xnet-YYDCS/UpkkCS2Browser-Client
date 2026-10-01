@@ -149,3 +149,52 @@ test('queryFavoriteServerWithRetry keeps the last failed result after retries', 
   assert.equal(result?.ip, parsed.ip);
   assert.equal(result?.port, parsed.port);
 });
+
+test('queryFavoriteServerWithRetry clears every race timer once an attempt settles', async () => {
+  const realSetTimeout = globalThis.setTimeout;
+  const realClearTimeout = globalThis.clearTimeout;
+  const pending = new Set<unknown>();
+  globalThis.setTimeout = ((...args: Parameters<typeof setTimeout>) => {
+    const id = realSetTimeout(...args);
+    pending.add(id);
+    return id;
+  }) as typeof setTimeout;
+  globalThis.clearTimeout = ((id?: Parameters<typeof clearTimeout>[0]) => {
+    pending.delete(id);
+    realClearTimeout(id);
+  }) as typeof clearTimeout;
+  try {
+    let attempt = 0;
+    const result = await queryFavoriteServerWithRetry(parsed, {
+      timeoutMs: 60_000,
+      retryCount: 2,
+      retryDelayMs: 0,
+      query: async () => {
+        attempt += 1;
+        if (attempt === 1) throw new Error('ipc failed');
+        if (attempt === 2) return a2sResult({ success: false, error: 'busy' });
+        return a2sResult();
+      },
+    });
+    assert.equal(result?.success, true);
+    assert.equal(attempt, 3);
+    assert.equal(pending.size, 0);
+  } finally {
+    globalThis.setTimeout = realSetTimeout;
+    globalThis.clearTimeout = realClearTimeout;
+  }
+});
+
+test('queryFavoriteServerWithRetry still reports a hung query as a timeout', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const pendingResult = queryFavoriteServerWithRetry(parsed, {
+    timeoutMs: 2_000,
+    retryCount: 0,
+    retryDelayMs: 0,
+    query: () => new Promise(() => {}),
+  });
+  t.mock.timers.tick(2_000);
+  const result = await pendingResult;
+  assert.equal(result?.success, false);
+  assert.equal(result?.error, 'timeout');
+});

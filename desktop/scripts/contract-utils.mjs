@@ -64,3 +64,36 @@ export function extractApiCalls(source) {
 export function routeKey(method, route) {
   return `${method.toUpperCase()} ${normalizeRoutePath(route)}`;
 }
+
+export function extractCargoLockVersions(source) {
+  const versions = new Map();
+  for (const block of source.split(/\n\[\[package\]\]\n/)) {
+    const name = block.match(/^name = "([^"]+)"$/m)?.[1];
+    const version = block.match(/^version = "([^"]+)"$/m)?.[1];
+    if (name && version && !versions.has(name)) versions.set(name, version);
+  }
+  return versions;
+}
+
+function majorMinor(version) {
+  return version.match(/^(\d+\.\d+)\./)?.[1] ?? version;
+}
+
+// Mirrors the `tauri build` / `tauri dev` guard, which refuses to run when an
+// npm package and its Rust crate are on different major/minor releases.
+export function findTauriVersionMismatches(npmVersions, crateVersions) {
+  const pairs = [['@tauri-apps/api', 'tauri']];
+  for (const name of npmVersions.keys()) {
+    const plugin = name.match(/^@tauri-apps\/plugin-(.+)$/)?.[1];
+    if (plugin) pairs.push([name, `tauri-plugin-${plugin}`]);
+  }
+  const mismatches = [];
+  for (const [npmName, crateName] of pairs) {
+    const npmVersion = npmVersions.get(npmName);
+    const crateVersion = crateVersions.get(crateName);
+    if (npmVersion && crateVersion && majorMinor(npmVersion) !== majorMinor(crateVersion)) {
+      mismatches.push(`${crateName} (v${crateVersion}) : ${npmName} (v${npmVersion})`);
+    }
+  }
+  return mismatches;
+}

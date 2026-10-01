@@ -1,6 +1,6 @@
-import { showToast } from '@/services/toast';
+import { showToast } from './toast.ts';
 import type { MatchedServer } from './monitorTypes';
-import { formatNotificationMessage, getMapPreviewUrl } from './monitorMessage';
+import { formatNotificationMessage, getMapPreviewUrl } from './monitorMessage.ts';
 import {
   buildCustomWebhookPayload,
   buildDiscordWebhookBody,
@@ -8,8 +8,8 @@ import {
   isServerChanAccepted,
   isValidServerChanSendKey,
   isWebhookAccepted,
-} from './monitorChannelPayloads';
-import { postMonitorJson } from './postMonitorJson';
+} from './monitorChannelPayloads.ts';
+import { postMonitorJson } from './postMonitorJson.ts';
 
 export { formatNotificationMessage, getMapPreviewUrl };
 
@@ -126,4 +126,3 @@ export async function sendCustomWebhook(
     return false;
   }
 }
-

@@ -28,7 +28,7 @@
 ### 环境要求
 
 - Node.js 24, 25, or 26
-- Rust 1.89.0 或更高版本（通过 [rustup](https://rustup.rs/) 安装）
+- Rust 1.90.0 或更高版本（通过 [rustup](https://rustup.rs/) 安装；Tauri 2.12 起不再支持 Windows 7）
 - Windows: Microsoft Visual Studio C++ Build Tools
 - Linux: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev`
 
@@ -94,6 +94,12 @@ bash scripts/desktop-check.sh
 该命令依次执行锁定依赖安装、ESLint、TypeScript 类型检查、单元测试、
 架构检查、Vite 生产构建、包体检查、高危生产依赖审计，以及 Rust 的
 格式、编译、测试和 Clippy 检查。单项命令仅用于开发阶段快速反馈。
+
+`npm test` 在每个 Node 测试进程启动时注入独立的内存 `localStorage`，
+不读取开发者持久化设置，也不依赖 Node 的实验性磁盘存储。生产 WebView
+继续使用原生浏览器存储。依赖安装脚本仅批准 `package.json` 中列出的明确版本。
+浏览器预览会在调用 HTTP 插件和检查加密凭据前识别 Tauri 运行环境，
+通过已有的浏览器 HTTP 回退处理请求；原生桌面端继续使用 IPC 与加密存储。
 
 架构与性能门禁也可以在 `desktop/` 中单独运行：
 
@@ -175,7 +181,7 @@ https://update-software.upkk.com/xproj-server-clients/update.json
 - macOS: 分别生成 Intel 与 Apple Silicon DMG
 
 普通构建与发布使用同一个四平台可复用打包工作流，避免平台参数、产物命名和
-签名配置在两套流程中漂移。Rust 同时由最新 stable 和 1.89.0 MSRV 作业验证。
+签名配置在两套流程中漂移。Rust 同时由最新 stable 和 1.90.0 MSRV 作业验证。
 
 ## 数据存储
 

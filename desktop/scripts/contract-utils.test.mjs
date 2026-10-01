@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   extractApiCalls,
+  extractCargoLockVersions,
   extractInterfaceKeys,
   extractRustEvents,
   extractRustHandlerCommands,
+  findTauriVersionMismatches,
   routeKey,
 } from './contract-utils.mjs';
 
@@ -50,4 +52,37 @@ test('normalizes API templates, queries, methods, and backend placeholders', () 
     routeKey('POST', '/api/server/:id/stats'),
     routeKey('GET', '/api/server/:id/stats'),
   );
+});
+
+test('flags Tauri npm packages whose crate is on another major.minor release', () => {
+  const crates = extractCargoLockVersions(`version = 4
+
+[[package]]
+name = "tauri"
+version = "2.12.0"
+
+[[package]]
+name = "tauri-plugin-http"
+version = "2.7.0"
+
+[[package]]
+name = "tauri-plugin-shell"
+version = "2.4.0"
+
+[[package]]
+name = "tauri-plugin-log"
+version = "2.9.2"
+`);
+  assert.equal(crates.get('tauri-plugin-http'), '2.7.0');
+  const npm = new Map([
+    ['@tauri-apps/api', '2.12.0'],
+    ['@tauri-apps/cli', '2.12.0'],
+    ['@tauri-apps/plugin-http', '2.6.1'],
+    ['@tauri-apps/plugin-shell', '2.4.0'],
+  ]);
+  assert.deepEqual(findTauriVersionMismatches(npm, crates), [
+    'tauri-plugin-http (v2.7.0) : @tauri-apps/plugin-http (v2.6.1)',
+  ]);
+  npm.set('@tauri-apps/plugin-http', '2.7.3');
+  assert.deepEqual(findTauriVersionMismatches(npm, crates), []);
 });

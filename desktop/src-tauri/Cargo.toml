@@ -6,7 +6,7 @@ authors = ["you"]
 license = ""
 repository = ""
 edition = "2021"
-rust-version = "1.89.0"
+rust-version = "1.90.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -28,26 +28,28 @@ codegen-units = 1
 strip = true
 
 [build-dependencies]
-tauri-build = { version = "2.6.3", features = [] }
+tauri-build = { version = "~2.7.1", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "2.11.5", features = [] }
-tauri-plugin-log = "2"
-tauri-plugin-shell = "2"
-tauri-plugin-http = "2"
-tauri-plugin-process = "2"
-tauri-plugin-notification = "2"
-tauri-plugin-dialog = "2"
+tauri = { version = "~2.12.1", features = [] }
+tauri-plugin-log = "~2.10"
+tauri-plugin-shell = "~2.4"
+# Keep on the same major.minor line as the npm `@tauri-apps/plugin-http`
+# package: `tauri build` refuses to run on a mismatch (checked by check:contracts).
+tauri-plugin-http = "~2.8"
+tauri-plugin-process = "~2.4"
+tauri-plugin-notification = "~2.5"
+tauri-plugin-dialog = "~2.8"
 url = "2.5.8"
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "time"] }
 # Secure credential storage
 aes-gcm = "0.11.1"
 sha2 = "0.11.0"
 base64 = "0.23.1"
-rand = "0.10.2"
+rand = "0.10.3"
 machine-uid = "0.6.0"
 hex = "0.4"
 dirs = "7.0"

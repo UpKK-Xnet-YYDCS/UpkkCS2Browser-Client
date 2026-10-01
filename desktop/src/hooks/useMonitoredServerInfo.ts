@@ -1,47 +1,50 @@
 import { useEffect, useState } from 'react';
-import { parseServerAddress, queryServerA2S } from '@/services/a2s';
+import {
+  addressesMissingFromCheck,
+  detailsFromMonitorServers,
+  queryMonitoredServerDetails,
+  type CheckedMonitorServers,
+  type MonitoredServerDetails,
+} from '@/services/monitoredServerDetails';
 
-export interface MonitoredServerDetails {
-  name: string;
-  map: string;
-  players: number;
-  maxPlayers: number;
-  updatedAt: string;
-}
+export type { MonitoredServerDetails } from '@/services/monitoredServerDetails';
 
-export function useMonitoredServerInfo(allMonitoredServers: string[], lastCheckTime: string | null) {
+export function useMonitoredServerInfo(
+  allMonitoredServers: string[],
+  lastCheckTime: string | null,
+  checkedServers: CheckedMonitorServers | null,
+) {
   const [monitoredServerInfo, setMonitoredServerInfo] = useState<Map<string, MonitoredServerDetails>>(new Map());
+  const addressKey = allMonitoredServers.join('\n');
+  const checkedKey = checkedServers
+    ? checkedServers.at + '\n' + checkedServers.servers.map(server => server.key).join('\n')
+    : '';
 
   useEffect(() => {
-    if (allMonitoredServers.length === 0) return;
+    const addresses = addressKey ? addressKey.split('\n') : [];
+    if (addresses.length === 0) return;
+    const snapshot = checkedServers && checkedServers.at === lastCheckTime ? checkedServers.servers : null;
     let cancelled = false;
-    const fetchInfo = async () => {
+
+    const load = async () => {
+      const fromCheck = snapshot
+        ? detailsFromMonitorServers(snapshot, new Date().toLocaleTimeString())
+        : new Map<string, MonitoredServerDetails>();
+      const missing = snapshot ? addressesMissingFromCheck(addresses, snapshot) : addresses;
+      if (missing.length === 0) {
+        if (!cancelled) setMonitoredServerInfo(fromCheck);
+        return;
+      }
       try {
-        const infoMap = new Map<string, MonitoredServerDetails>();
-
-        // Query ALL monitored servers via local A2S protocol
-        for (const addr of allMonitoredServers) {
-          const parsed = parseServerAddress(addr);
-          if (!parsed) continue;
-          const result = await queryServerA2S(parsed.ip, parsed.port);
-          if (cancelled) return;
-          if (result.success) {
-            infoMap.set(addr, {
-              name: result.name || addr,
-              map: result.map_name || '--',
-              players: result.real_players ?? result.players ?? 0,
-              maxPlayers: result.max_players ?? 0,
-              updatedAt: new Date().toLocaleTimeString(),
-            });
-          }
-        }
-
-        setMonitoredServerInfo(infoMap);
+        const queried = await queryMonitoredServerDetails(missing);
+        if (cancelled) return;
+        for (const [key, value] of queried) fromCheck.set(key, value);
+        setMonitoredServerInfo(fromCheck);
       } catch { /* ignore */ }
     };
-    fetchInfo();
+    void load();
     return () => { cancelled = true; };
-  }, [allMonitoredServers, lastCheckTime]); // re-fetch when check completes
+  }, [addressKey, checkedKey, checkedServers, lastCheckTime]);
 
   return monitoredServerInfo;
 }

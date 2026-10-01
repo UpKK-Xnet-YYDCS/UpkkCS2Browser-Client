@@ -1,4 +1,6 @@
-@import "tailwindcss";
+/* Scan the UI sources, not Rust crates, documentation or build tooling. */
+@import "tailwindcss" source(".");
+@source "../index.html";
 
 /* Enable dark mode with selector strategy (using .dark class) */
 @custom-variant dark (&:where(.dark, .dark *));

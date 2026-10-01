@@ -67,12 +67,15 @@ export default defineConfig({
           ) {
             return 'forum';
           }
+          // These UI modules share shell dependencies. Rolldown coalesces their
+          // dependencies across named chunks; keep the measured assignment so
+          // both initial-load and all-asset budgets stay within limits.
           if (
             moduleId.includes('/src/components/lucideIcons.') ||
             moduleId.includes('/src/components/JoinServerConfirmModal.') ||
             moduleId.includes('/src/components/JoinServerPickerModal.')
           ) {
-            return 'joinUi';
+            return 'addServer';
           }
           if (
             moduleId.includes('/src/services/canvasChartHover.') ||
@@ -90,11 +93,21 @@ export default defineConfig({
           ) {
             return 'updateUi';
           }
+          // Monitor checks and notification channels are used together; one
+          // chunk avoids compressing their shared code in separate assets.
+          if (
+            moduleId.includes('/src/services/monitorCheck.') ||
+            moduleId.includes('/src/services/monitorChannels.') ||
+            moduleId.includes('/src/services/monitorChannelPayloads.') ||
+            moduleId.includes('/src/services/postMonitorJson.')
+          ) {
+            return 'monitorRuntime';
+          }
           if (
             moduleId.includes('/src/components/home/AddLocalServerModal.') ||
             moduleId.includes('/src/components/AddServerModal.')
           ) {
-            return 'addServer';
+            return 'joinUi';
           }
         },
       },

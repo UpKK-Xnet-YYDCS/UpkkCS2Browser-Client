@@ -57,6 +57,8 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
   const countdownDeadlineRef = useRef(0);
   const countdownVisibilityRef = useRef<(() => void) | null>(null);
   const isMonitoringRef = useRef(false);
+  // Bumped on start, stop and unmount; checks and timers of an older run bail out.
+  const runIdRef = useRef(0);
   const autoStartedRef = useRef(false);
 
   useEffect(() => {
@@ -64,6 +66,7 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
   }, [isMonitoring]);
 
   const doStopMonitoring = useCallback(() => {
+    runIdRef.current += 1;
     isMonitoringRef.current = false;
     setIsMonitoring(false);
     setStatusText('');
@@ -81,6 +84,9 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
 
   useEffect(() => {
     return () => {
+      runIdRef.current += 1;
+      // Lets a StrictMode remount auto-start again after this cleanup stopped the poller.
+      autoStartedRef.current = false;
       pollerRef.current?.stop();
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       if (countdownVisibilityRef.current) {
@@ -89,8 +95,8 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
     };
   }, []);
 
-  const checkServer = useCallback(async (): Promise<boolean> => {
-    if (!isMonitoringRef.current) return false;
+  const checkServer = useCallback(async (runId: number): Promise<boolean> => {
+    if (!isMonitoringRef.current || runId !== runIdRef.current) return false;
 
     setStatusText(t.autoJoinChecking);
 
@@ -102,6 +108,7 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
         queryA2S: queryServerA2S,
         refreshServer,
       });
+      if (runId !== runIdRef.current) return false;
 
       if (outcome.ok) {
         logInfo('AutoJoin', formatAutoJoinCountLog(outcome.source === 'a2s' ? 'A2S' : 'API', String(serverIp), String(serverPort), outcome.counts));
@@ -126,6 +133,7 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
             console.error('Failed to open Steam:', error);
           }
           setTimeout(() => {
+            if (runId !== runIdRef.current) return;
             doStopMonitoring();
             onClose();
           }, AUTO_JOIN_SUCCESS_CLOSE_MS);
@@ -137,6 +145,7 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
         setStatusText(t.autoJoinCheckFailed);
       }
     } catch (error) {
+      if (runId !== runIdRef.current) return false;
       logError('AutoJoin', 'Check failed: ' + (error instanceof Error ? error.message : String(error)));
       console.error('Auto-join check failed:', error);
       setStatusText(t.autoJoinCheckFailed);
@@ -154,8 +163,10 @@ export function useAutoJoinMonitor({ server, t, onClose, autoStart = false }: Us
     setIsMonitoring(true);
     countdownDeadlineRef.current = Date.now() + checkInterval * 1000;
     setCountdown(checkInterval);
+    runIdRef.current += 1;
+    const runId = runIdRef.current;
     pollerRef.current?.stop();
-    pollerRef.current = createSequentialPoller(checkServer, checkInterval * 1000);
+    pollerRef.current = createSequentialPoller(() => checkServer(runId), checkInterval * 1000);
     pollerRef.current.start();
     if (countdownIntervalRef.current) {
       clearInterval(countdownIntervalRef.current);

@@ -1,8 +1,13 @@
 import { XPROJ_USER_AGENT } from '@/api/clientConfig';
-import { getDesktopHttpFetch } from '@/services/desktopRuntime';
+import { isTauriAvailable } from '@/services/a2sQuery';
+import { getDesktopHttpFetch, releaseResponseBody } from '@/services/desktopRuntime';
 import { logDebug } from '@/services/operationLog';
 import { CHECK_IN_ENDPOINT, FORUM_URL } from './forumConstants';
-import { parseCheckInPayload, type CheckInResult } from './forumCheckInParse';
+import {
+  parseCheckInPayload,
+  shouldFallBackToWebViewCheckIn,
+  type CheckInResult,
+} from './forumCheckInParse';
 
 export type { CheckInResult } from './forumCheckInParse';
 export {
@@ -13,6 +18,7 @@ export {
 
 async function readCheckInResponse(response: Response): Promise<CheckInResult> {
   if (!response.ok) {
+    await releaseResponseBody(response);
     throw new Error('请求失败: ' + response.status);
   }
   const data = await response.json() as { status?: number; message?: string };
@@ -37,7 +43,8 @@ export async function requestForumCheckIn(uid: number, auth: string): Promise<Ch
       body: postBody,
     });
     return await readCheckInResponse(response);
-  } catch {
+  } catch (tauriErr) {
+    if (!shouldFallBackToWebViewCheckIn(tauriErr, isTauriAvailable())) throw tauriErr;
     logDebug('CheckIn', 'Tauri HTTP not available, falling back to fetch');
   }
 

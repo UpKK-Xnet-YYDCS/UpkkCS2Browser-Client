@@ -30,8 +30,10 @@ pub(crate) fn get_or_create_fallback_device_id() -> String {
         rand::fill(&mut random_bytes);
         let new_id = hex::encode(random_bytes);
 
-        // Try to save it (ignore errors - we'll just use the generated ID)
-        let _ = fs::write(&fallback_path, &new_id);
+        // Try to save it (ignore errors - we'll just use the generated ID).
+        // The encryption key derives from this ID, so keep it owner-only and
+        // never leave a truncated copy behind.
+        let _ = crate::secure_storage::write_private_file(&fallback_path, new_id.as_bytes());
 
         return new_id;
     }

@@ -3,6 +3,8 @@ import type { ServerStatus } from '@/types';
 import type { LocalLatencyScheduler, LocalLatencySnapshot } from '@/services/a2sLatencyTypes';
 import { isDocumentHidden } from '@/services/deadlineCountdown';
 import { createLatencySnapshotStore, type LatencySnapshotStore } from '@/services/latencySnapshotStore';
+import { DEFAULT_LATENCY_TTL_MS } from '@/services/a2sLatencyPolicy';
+import { rememberFreshServerLatency } from '@/services/latencySeed';
 import { excludeForegroundTargets, getUniqueLatencyTargets } from '@/services/latencyTargets';
 import {
   useLatencyDetectionSettings,
@@ -26,6 +28,7 @@ interface UseLocalLatencyQueueResult {
   latencyDetectionSettings: LatencyDetectionSettings;
   latencySchedulerOptions: LocalLatencySchedulerOptions;
   measureServers: (servers: ServerStatus[], options?: MeasureServersOptions) => () => void;
+  seedMeasuredServers: (servers: readonly ServerStatus[]) => Promise<void>;
 }
 
 export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueResult {
@@ -89,6 +92,11 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     });
   }, [latencyStore]);
 
+  const seedMeasuredServers = useCallback(async (servers: readonly ServerStatus[]) => {
+    const scheduler = await ensureScheduler();
+    await rememberFreshServerLatency(scheduler, servers, Date.now(), DEFAULT_LATENCY_TTL_MS);
+  }, [ensureScheduler]);
+
   const measureServers = useCallback((servers: ServerStatus[], options: MeasureServersOptions = {}) => {
     const targets = excludeForegroundTargets(
       getUniqueLatencyTargets(servers),
@@ -120,5 +128,6 @@ export function useLocalLatencyQueue(logPrefix: string): UseLocalLatencyQueueRes
     latencyDetectionSettings,
     latencySchedulerOptions,
     measureServers,
+    seedMeasuredServers,
   };
 }

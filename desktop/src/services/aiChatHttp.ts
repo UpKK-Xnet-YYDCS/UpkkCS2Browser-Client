@@ -11,6 +11,7 @@ import {
   type RecommendedServer,
 } from './aiChatTypes.ts';
 import { consumeAIChatSSE } from './aiChatSse.ts';
+import { releaseResponseBody } from './desktopRuntime.ts';
 
 export async function streamAIChat(request: AIChatRequest, options: AIChatStreamOptions): Promise<string> {
   const fetcher = options.fetcher ?? desktopFetch;
@@ -39,6 +40,7 @@ export async function streamAIChat(request: AIChatRequest, options: AIChatStream
         }),
       });
       if (!response.ok || !response.body) {
+        await releaseResponseBody(response);
         throw new AIChatRequestError(
           response.status === 401 ? 'Login required to use AI chat' : `AI request failed (${response.status})`,
           isTransientStatus(response.status),
@@ -87,7 +89,10 @@ export async function fetchRecommendedServers(
     signal,
     headers: requestHeaders(getApiToken(), language, false),
   });
-  if (!response.ok) throw new Error(`Recommendations failed (${response.status})`);
+  if (!response.ok) {
+    await releaseResponseBody(response);
+    throw new Error(`Recommendations failed (${response.status})`);
+  }
   const payload = await response.json() as { servers?: unknown[] };
   return (payload.servers ?? []).map(normalizeServer).filter((server) => server.ip && server.port);
 }

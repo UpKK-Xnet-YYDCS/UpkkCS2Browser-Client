@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { getFavorites, type FavoriteServer } from '@/api/favorites';
-import { parseServerAddress, queryServerA2S } from '@/services/a2s';
+import { resolveFavoriteServerNames } from '@/services/favoriteNameResolve';
 
 export function useRuleEditorFavoriteSources(isLoggedIn: boolean, localFavorites: string[]) {
   const [favoriteServers, setFavoriteServers] = useState<FavoriteServer[]>([]);
@@ -36,23 +36,12 @@ export function useRuleEditorFavoriteSources(isLoggedIn: boolean, localFavorites
 
     let cancelled = false;
     const resolveNames = async () => {
-      const resolved: Record<string, string> = {};
-      for (const addr of localOnly) {
-        if (cancelled) break;
-        const parsed = parseServerAddress(addr);
-        if (!parsed) continue;
-        try {
-          const result = await queryServerA2S(parsed.ip, parsed.port);
-          if (result.success && result.name) {
-            resolved[addr] = result.name;
-          }
-        } catch { /* keep the address when A2S name resolution fails */ }
-      }
-      if (!cancelled) {
-        setLocalServerNames(prev => ({ ...prev, ...resolved }));
-      }
+      try {
+        const resolved = await resolveFavoriteServerNames(localOnly);
+        if (!cancelled) setLocalServerNames(prev => ({ ...prev, ...resolved }));
+      } catch { /* keep the address when A2S name resolution fails */ }
     };
-    resolveNames();
+    void resolveNames();
     return () => { cancelled = true; };
   }, [favoritesLoaded, favoriteServers, localFavorites]);
 

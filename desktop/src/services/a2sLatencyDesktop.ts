@@ -1,5 +1,5 @@
 import { createLocalLatencyScheduler } from './a2sLatency.ts';
-import { isTauriAvailable, queryServerA2S } from './a2sQuery.ts';
+import { isTauriAvailable, queryServerA2S, queryServersA2S } from './a2sQuery.ts';
 
 export interface DesktopA2SLatencySchedulerOptions {
   workerCount?: number;
@@ -17,5 +17,6 @@ export function createDesktopA2SLatencyScheduler(options: DesktopA2SLatencySched
     retryDelayMs: options.retryDelayMs,
     isAvailable: isTauriAvailable,
     query: queryServerA2S,
+    queryBatch: (targets, options) => queryServersA2S(targets, options),
   });
 }

@@ -1,5 +1,5 @@
 import { normalizeCloudAuthResponse, type CloudAuthStatus, type CloudUserInfo } from '@/services/cloudAuthData';
-import { getOptionalDesktopHttpFetch } from '@/services/desktopRuntime';
+import { getOptionalDesktopHttpFetch, releaseResponseBody } from '@/services/desktopRuntime';
 import {
   XPROJ_USER_AGENT,
   clearApiToken,
@@ -49,20 +49,22 @@ export const logout = async (): Promise<void> => {
     // Try Tauri HTTP plugin first
     const tauriFetch = await getOptionalDesktopHttpFetch();
     if (tauriFetch) {
-      await tauriFetch(`${baseUrl}/auth/logout`, {
+      const response = await tauriFetch(`${baseUrl}/auth/logout`, {
         headers: {
           'User-Agent': XPROJ_USER_AGENT,
           'X-Client-UA': XPROJ_USER_AGENT,
         },
       });
+      await releaseResponseBody(response);
     } else {
       // Fallback to regular fetch
-      await fetch(`${baseUrl}/auth/logout`, {
+      const response = await fetch(`${baseUrl}/auth/logout`, {
         headers: {
           'User-Agent': XPROJ_USER_AGENT,
           'X-Client-UA': XPROJ_USER_AGENT,
         },
       });
+      await releaseResponseBody(response);
     }
   } catch {
     // Ignore logout errors

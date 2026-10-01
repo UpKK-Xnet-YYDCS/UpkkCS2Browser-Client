@@ -1,8 +1,51 @@
+use std::ffi::OsString;
 use std::fs;
-use std::path::PathBuf;
+use std::io::{self, Write};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::Manager;
 
 use crate::secure_crypto::{decrypt_data, derive_key, encrypt_data, get_device_id};
+
+static PRIVATE_WRITE_SEQUENCE: AtomicU64 = AtomicU64::new(0);
+
+/// Replaces `path` with `contents` without ever exposing a truncated file: the
+/// bytes go to a fresh sibling temp file (owner-only on unix), are synced, and
+/// the temp file is then renamed over the target.
+pub(crate) fn write_private_file(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "path has no file name"))?;
+    let mut temp_name = OsString::from(".");
+    temp_name.push(file_name);
+    temp_name.push(format!(
+        ".{}.{}.tmp",
+        std::process::id(),
+        PRIVATE_WRITE_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+    ));
+    let temp_path = path.with_file_name(temp_name);
+    // A leftover from a crashed process with a recycled pid; never reuse it.
+    let _ = fs::remove_file(&temp_path);
+    let result =
+        write_new_synced_file(&temp_path, contents).and_then(|()| fs::rename(&temp_path, path));
+    if result.is_err() {
+        let _ = fs::remove_file(&temp_path);
+    }
+    result
+}
+
+fn write_new_synced_file(path: &Path, contents: &[u8]) -> io::Result<()> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    file.write_all(contents)?;
+    file.sync_all()
+}
 
 /// Stored credentials structure
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -93,7 +136,7 @@ pub async fn save_api_token(
         let json = serde_json::to_string(&stored)
             .map_err(|e| format!("API token serialization failed: {}", e))?;
         let encrypted = encrypt_data(&json, derive_key())?;
-        fs::write(get_api_token_path(&app)?, encrypted)
+        write_private_file(&get_api_token_path(&app)?, encrypted.as_bytes())
             .map_err(|e| format!("Failed to save API token: {}", e))?;
 
         log::info!("[SecureStorage] Cloud API token saved with device binding");
@@ -179,7 +222,8 @@ pub async fn save_credentials(
         let encrypted = encrypt_data(&json, key)?;
 
         let path = get_credentials_path(&app)?;
-        fs::write(&path, encrypted).map_err(|e| format!("Failed to save credentials: {}", e))?;
+        write_private_file(&path, encrypted.as_bytes())
+            .map_err(|e| format!("Failed to save credentials: {}", e))?;
 
         log::info!("[SecureStorage] Credentials saved successfully with device binding");
 

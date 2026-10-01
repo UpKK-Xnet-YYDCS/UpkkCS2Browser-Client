@@ -1,15 +1,12 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { useHomeFavoriteIO } from '@/hooks/useHomeFavoriteIO';
 import { useHomeFavoriteLatency } from '@/hooks/useHomeFavoriteLatency';
 import { useHomeFavoriteQuery } from '@/hooks/useHomeFavoriteQuery';
 import { useHomeFavoriteView } from '@/hooks/useHomeFavoriteView';
 import { useI18n } from '@/hooks/useI18n';
 import { useLocalLatencyQueue } from '@/hooks/useLocalLatencyQueue';
-import {
-  favoritePageItemIndex,
-  favoriteReorderTargetIndex,
-  swapFavoriteOrder,
-} from '@/services/favoritePagination';
+import { resolveVisibleFavoriteReorder, swapFavoriteServers } from '@/hooks/homeFavoriteReorder';
+import { favoritePageItemIndex } from '@/services/favoritePagination';
 import type { ServerStatus } from '@/types';
 
 interface UseHomeFavoriteServersOptions {
@@ -35,6 +32,7 @@ export function useHomeFavoriteServers({
     latencyDetectionSettings,
     latencySchedulerOptions,
     measureServers,
+    seedMeasuredServers,
   } = useLocalLatencyQueue('HomePage');
   const {
     showFavoritesOnly,
@@ -75,37 +73,47 @@ export function useHomeFavoriteServers({
   });
   const shouldBackfillLatency = latencyDetectionSettings.deepScanEnabled || latencyFilter !== 'all';
 
+  // Latest fetcher for the toggle effect below; its identity changes with every
+  // favorites array, which must not re-trigger the toggle-on reset.
+  const fetchFavServersRef = useRef(fetchFavServers);
+  useEffect(() => {
+    fetchFavServersRef.current = fetchFavServers;
+  }, [fetchFavServers]);
+
   // When showFavoritesOnly is toggled on, fetch favorites via A2S; reset page
   useEffect(() => {
     if (showFavoritesOnly) {
       const timer = window.setTimeout(() => {
         setFavPage(1);
         setFavGameFilter('');
-        void fetchFavServers();
+        void fetchFavServersRef.current();
       }, 0);
       return () => window.clearTimeout(timer);
     }
     return undefined;
-  }, [showFavoritesOnly, fetchFavServers, setFavPage, setFavGameFilter]);
+  }, [showFavoritesOnly, setFavPage, setFavGameFilter]);
 
   useHomeFavoriteLatency({
     displayedServers,
     filteredFavServers,
     servers,
     showFavoritesOnly,
+    favLoading,
     shouldBackfillLatency,
     latencySchedulerOptions,
     measureServers,
+    seedMeasuredServers,
   });
 
   const handleLocalReorder = useCallback((index: number, direction: 'up' | 'down') => {
-    const globalIndex = favoritePageItemIndex(favPage, perPage, index);
-    const swapIndex = favoriteReorderTargetIndex(globalIndex, direction, favorites.length);
-    if (swapIndex === null) return;
-    reorderFavorites(globalIndex, swapIndex);
+    // `index` is on the filtered, paginated list; swap by address, not position.
+    const visibleIndex = favoritePageItemIndex(favPage, perPage, index);
+    const move = resolveVisibleFavoriteReorder(latencyFilteredFavServers, visibleIndex, direction, favorites);
+    if (!move) return;
+    reorderFavorites(move.from, move.to);
     // Also swap in the local favServers state so UI updates instantly
-    setFavServers(prev => swapFavoriteOrder(prev, globalIndex, direction) ?? prev);
-  }, [favPage, perPage, favorites.length, reorderFavorites, setFavServers]);
+    setFavServers(prev => swapFavoriteServers(prev, move.source, move.neighbour) ?? prev);
+  }, [favPage, perPage, latencyFilteredFavServers, favorites, reorderFavorites, setFavServers]);
 
   const {
     handleExportFavorites,

@@ -22,7 +22,9 @@ export function runSharedGet<T>(options: SharedGetOptions<T>): Promise<T> {
   }
 
   let entry = inflight.get(cacheKey) as InflightGetEntry<T> | undefined;
-  if (!entry) {
+  // An entry whose last consumer cancelled stays in the map until its transport
+  // settles; never hand that dead request to a new consumer.
+  if (!entry || entry.controller.signal.aborted) {
     const controller = new AbortController();
     const created: InflightGetEntry<T> = {
       controller,

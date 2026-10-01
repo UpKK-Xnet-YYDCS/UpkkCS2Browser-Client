@@ -2,6 +2,7 @@ import type { RecommendedServer } from './aiChat.ts';
 import type { A2SQueryResult } from './a2s.ts';
 import { isTauriAvailable, parseServerAddress, queryServerA2S } from './a2s.ts';
 import { getLatencyDetectionSettings, type LatencyDetectionSettings } from './latencySettings.ts';
+import { BoundedLruMap } from './boundedLru.ts';
 import { normalizePunctuation } from './desktopToolText.ts';
 import type { LocalLatencyResult } from './desktopToolTypes.ts';
 
@@ -20,8 +21,15 @@ interface CacheEntry {
   updatedAt: number;
 }
 
+/**
+ * Recent probe outcomes keyed by lower-cased `ip:port`. Capacity:
+ * LATENCY_PROBE_CACHE_LIMIT entries (LRU). TTL: CACHE_TTL_MS, measured with
+ * the probe's own clock (`ProbeOptions.now`); expired entries are dropped on
+ * lookup. Cancelled probes are never stored.
+ */
 const CACHE_TTL_MS = 60_000;
-const latencyCache = new Map<string, CacheEntry>();
+export const LATENCY_PROBE_CACHE_LIMIT = 256;
+const latencyCache = new BoundedLruMap<string, CacheEntry>(LATENCY_PROBE_CACHE_LIMIT);
 
 export async function probeRecommendedServers(
   candidates: RecommendedServer[],
@@ -79,7 +87,11 @@ async function probeRecommendedServer(
   const key = (server.ip + ':' + server.port).toLowerCase();
   const now = options.now ?? Date.now;
   const cached = latencyCache.get(key);
-  if (cached && now() - cached.updatedAt < CACHE_TTL_MS) return cached.result;
+  if (cached) {
+    // The cached probe outcome, reported for the current candidate details.
+    if (now() - cached.updatedAt < CACHE_TTL_MS) return { ...cached.result, server };
+    latencyCache.delete(key);
+  }
 
   const queryResult = await runA2SQuery(server.ip, server.port, options, settings);
   const result: LocalLatencyResult = {

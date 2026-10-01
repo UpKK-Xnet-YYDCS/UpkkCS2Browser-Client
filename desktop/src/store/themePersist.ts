@@ -81,7 +81,13 @@ export function readStoredTheme(): ThemeSettings {
 }
 
 export function persistThemeSettings(theme: ThemeSettings): void {
-  localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(theme));
+  // A large background image (data URL) can exceed the storage quota; a throw
+  // here would escape the ThemeProvider effect and unmount the whole app.
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(theme));
+  } catch (error) {
+    console.error('Failed to save theme settings:', error);
+  }
 }
 
 export function resetColorRegionValue(darkMode: boolean, region: ColorRegion): RGBAColor {

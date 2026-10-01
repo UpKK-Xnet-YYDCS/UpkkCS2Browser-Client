@@ -15,13 +15,14 @@ import {
 } from '@/api/servers';
 import type { Action, AppState, FetchFilters, FetchOptions } from './appState';
 import { getServerFetchPageInfo, toServerFetchStorePayload } from './fetchServersResult';
+import { createServerFetchGate } from './serverFetchGate';
 
 export function createFetchServers(
   dispatch: Dispatch<Action>,
   stateRef: MutableRefObject<AppState>,
   requestVersionRef: MutableRefObject<number>,
 ) {
-  let activeAbort: AbortController | null = null;
+  const gate = createServerFetchGate(requestVersionRef);
 
   return async (page = 1, filters?: FetchFilters, options?: FetchOptions) => {
     const silent = options?.silent ?? false;
@@ -31,12 +32,12 @@ export function createFetchServers(
       cancelPrefetch();
     }
 
-    // Increment request version to invalidate any in-flight requests
-    requestVersionRef.current += 1;
-    const currentVersion = requestVersionRef.current;
-    activeAbort?.abort();
-    const abort = new AbortController();
-    activeAbort = abort;
+    // Increment request version to invalidate (and abort) any in-flight requests.
+    // A background refresh never supersedes or aborts a user-driven fetch
+    // (e.g. a page change) that is still loading: it is skipped instead.
+    const ticket = gate.begin(silent);
+    if (!ticket) return;
+    const { version: currentVersion, abort } = ticket;
     const callOptions = { signal: abort.signal };
     
     // Use provided filters or fall back to current state
@@ -145,7 +146,12 @@ export function createFetchServers(
       }
     } catch (error) {
       // Silent mode: swallow errors — background refresh failures should not disrupt UX
-      if (silent) return;
+      if (silent) {
+        // A silent request only starts while no user fetch is pending, so the
+        // latest one must not leave a loading flag behind.
+        if (gate.isLatest(currentVersion)) dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
       if (isRequestAbortError(error)) return;
 
       // Only dispatch error if this is still the latest request
@@ -158,6 +164,8 @@ export function createFetchServers(
         payload: error instanceof Error ? error.message : '获取服务器列表失败',
       });
       dispatch({ type: 'SET_LOADING', payload: false });
+    } finally {
+      gate.finish(currentVersion);
     }
   };
 }

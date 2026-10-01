@@ -16,6 +16,7 @@ import {
   swapFavoriteOrder,
   isFavoritesAuthError,
 } from '@/services/favoritesPageQuery';
+import { createLatestSerialWriter } from '@/services/persistSerial';
 import type { ServerStatus } from '@/types';
 
 export { FAVORITES_PAGE_SIZE_OPTIONS, type FavoriteRow } from '@/services/favoritesPageQuery';
@@ -101,13 +102,23 @@ export function useFavoritesPage() {
     setTimeout(() => loadFavorites(), FAVORITE_SYNC_DELAY_MS);
   }, [loadFavorites]);
 
+  // Saves run one at a time, latest order wins: an older full order posted
+  // concurrently could otherwise land after a newer one.
+  const [saveSortOrder] = useState(() => createLatestSerialWriter(
+    async (orders: ReturnType<typeof favoriteSortOrders>) => {
+      try {
+        await updateFavoriteSortOrder(orders);
+      } catch (err) {
+        console.error('[Favorites] Failed to update sort order:', err);
+      }
+    },
+  ));
+
   const handleReorder = async (sourceIndex: number, direction: 'up' | 'down') => {
     const next = swapFavoriteOrder(favorites, sourceIndex, direction);
     if (!next) return;
     setFavorites(next);
-    updateFavoriteSortOrder(favoriteSortOrders(next)).catch(err => {
-      console.error('[Favorites] Failed to update sort order:', err);
-    });
+    void saveSortOrder(favoriteSortOrders(next));
   };
 
   const handlePageSizeChange = (size: number) => {

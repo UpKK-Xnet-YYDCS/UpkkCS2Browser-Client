@@ -49,3 +49,54 @@ test('duplicate getAllFavorites calls share one in-flight page read', async () =
   assert.equal(listCalls, 1);
   setApiHttpFetchForTests(null);
 });
+
+test('getAllFavorites releases its dedupe entry when every attempt hits the request deadline', async (t) => {
+  memory.clear();
+  invalidateRequestCache();
+  setApiBaseUrl('https://one.example');
+  clearApiToken();
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const flush = () => new Promise<void>(resolve => setImmediate(resolve));
+
+  let listCalls = 0;
+  let answer = false;
+  setApiHttpFetchForTests((url, init) => {
+    if (!String(url).includes('/api/favorites/list')) return Promise.reject(new Error(String(url)));
+    listCalls += 1;
+    if (answer) {
+      return Promise.resolve(new Response(JSON.stringify({
+        favorites: [],
+        total: 0,
+        page: 1,
+        per_page: 100,
+        total_pages: 1,
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }
+    // plugin-http: never answers, rejects with a plain string once cancelled.
+    return new Promise<Response>((_resolve, reject) => {
+      init?.signal?.addEventListener('abort', () => reject('Request canceled'), { once: true });
+    });
+  });
+
+  let failure: unknown;
+  const stalled = getAllFavorites().catch(error => {
+    failure = error;
+  });
+  const duplicate = getAllFavorites().catch(() => {});
+  await flush();
+  assert.equal(listCalls, 1);
+  for (let step = 0; step < 400 && failure === undefined; step += 1) {
+    t.mock.timers.tick(1_000);
+    await flush();
+  }
+  await stalled;
+  await duplicate;
+  assert.equal(failure instanceof Error && failure.message.startsWith('网络请求失败'), true);
+  assert.equal(listCalls, 3);
+
+  answer = true;
+  const recovered = await getAllFavorites();
+  assert.deepEqual(recovered.favorites, []);
+  assert.equal(listCalls, 4);
+  setApiHttpFetchForTests(null);
+});

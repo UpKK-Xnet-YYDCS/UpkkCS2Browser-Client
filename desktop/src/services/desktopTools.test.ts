@@ -12,6 +12,7 @@ import {
   resolveJoinTarget,
   type LocalLatencyResult,
 } from './desktopTools.ts';
+import { LATENCY_PROBE_CACHE_LIMIT } from './desktopToolProbe.ts';
 import type { ServerStatus } from '@/types';
 
 const settings: LatencyDetectionSettings = {
@@ -163,6 +164,49 @@ test('does not cache a probe result after its batch is cancelled', async () => {
 
   await probeRecommendedServers([candidate], { query, settings });
   assert.equal(calls, 2);
+});
+
+test('probe cache hits report the current candidate details', async () => {
+  let calls = 0;
+  const query = async (ip: string, port: string): Promise<A2SQueryResult> => {
+    calls += 1;
+    return a2s(ip, port, true, 30);
+  };
+  const before = server('Old name', '203.0.113.10', 3);
+  const [first] = await probeRecommendedServers([before], { query, settings, now: () => 0 });
+  assert.equal(first.server, before);
+
+  const after = server('New name', '203.0.113.10', 21);
+  const [second] = await probeRecommendedServers([after], { query, settings, now: () => 59_999 });
+  assert.equal(calls, 1);
+  assert.equal(second.server, after);
+  assert.deepEqual({ ...second, server: undefined }, { ...first, server: undefined });
+
+  const [expired] = await probeRecommendedServers([after], { query, settings, now: () => 60_000 });
+  assert.equal(calls, 2);
+  assert.equal(expired.server, after);
+});
+
+test('probe cache is bounded to its LRU capacity', async () => {
+  const addresses = Array.from({ length: LATENCY_PROBE_CACHE_LIMIT + 12 }, (_, index) =>
+    `10.77.${Math.floor(index / 200)}.${index % 200}`,
+  );
+  const calls = new Map<string, number>();
+  const query = async (ip: string, port: string): Promise<A2SQueryResult> => {
+    calls.set(ip, (calls.get(ip) ?? 0) + 1);
+    return a2s(ip, port, true, 10);
+  };
+  for (let index = 0; index < addresses.length; index += 6) {
+    const batch = addresses.slice(index, index + 6).map(ip => server(ip, ip, 1));
+    await probeRecommendedServers(batch, { query, settings: { ...settings, retryCount: 0 }, now: () => 0 });
+  }
+  await probeRecommendedServers([server('first', addresses[0], 1), server('last', addresses.at(-1)!, 1)], {
+    query,
+    settings: { ...settings, retryCount: 0 },
+    now: () => 0,
+  });
+  assert.equal(calls.get(addresses[0]), 2, 'the oldest entry was evicted');
+  assert.equal(calls.get(addresses.at(-1)!), 1, 'recent entries stay cached');
 });
 
 function server(name: string, ip: string, players: number): RecommendedServer {

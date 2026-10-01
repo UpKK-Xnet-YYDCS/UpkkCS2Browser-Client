@@ -3,10 +3,12 @@ import path from 'node:path';
 import process from 'node:process';
 import {
   extractApiCalls,
+  extractCargoLockVersions,
   extractInterfaceKeys,
   extractLiteralCalls,
   extractRustEvents,
   extractRustHandlerCommands,
+  findTauriVersionMismatches,
   routeKey,
 } from './contract-utils.mjs';
 
@@ -39,16 +41,38 @@ function compareSets(label, expected, actual, violations) {
   }
 }
 
-const [typescriptFiles, rustFiles, desktopTypes, routeMatrixSource, defaultCapabilitySource] = await Promise.all([
+const [
+  typescriptFiles,
+  rustFiles,
+  desktopTypes,
+  routeMatrixSource,
+  defaultCapabilitySource,
+  packageLockSource,
+  cargoLockSource,
+] = await Promise.all([
   collectFiles(sourceDir, /\.tsx?$/),
   collectFiles(rustDir, /\.rs$/),
   readFile(desktopTypesPath, 'utf8'),
   readFile(routeMatrixPath, 'utf8'),
   readFile(path.join(desktopDir, 'src-tauri', 'capabilities', 'default.json'), 'utf8'),
+  readFile(path.join(desktopDir, 'package-lock.json'), 'utf8'),
+  readFile(path.join(desktopDir, 'src-tauri', 'Cargo.lock'), 'utf8'),
 ]);
 const productionTypescript = typescriptFiles.filter(file => !/\.test\.tsx?$/.test(file));
 const rustSources = await Promise.all(rustFiles.map(file => readFile(file, 'utf8')));
 const violations = [];
+
+const lockedNpmVersions = new Map(
+  Object.entries(JSON.parse(packageLockSource).packages ?? {})
+    .filter(([key]) => key.startsWith('node_modules/@tauri-apps/'))
+    .map(([key, entry]) => [key.slice('node_modules/'.length), entry.version]),
+);
+for (const mismatch of findTauriVersionMismatches(
+  lockedNpmVersions,
+  extractCargoLockVersions(cargoLockSource),
+)) {
+  violations.push(`Tauri npm/crate major.minor mismatch (tauri build refuses to run): ${mismatch}`);
+}
 const defaultCapability = JSON.parse(defaultCapabilitySource);
 if (
   defaultCapability.windows.length !== 1 ||

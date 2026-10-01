@@ -32,8 +32,10 @@ export function useForumPage() {
 
   useEffect(() => {
     if (!openAttempted.current) {
-      openAttempted.current = true;
       const timer = window.setTimeout(() => {
+        // Marked when the attempt runs: a cleared timer (StrictMode remount,
+        // early dependency change) must not consume the one-shot open.
+        openAttempted.current = true;
         if (!isLoggedIn) {
           openLoginModal();
           setStatus('waiting-login');

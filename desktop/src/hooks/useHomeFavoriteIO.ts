@@ -1,11 +1,11 @@
 import { useCallback, type Dispatch, type SetStateAction } from 'react';
 import {
-  offlineFavoriteAddresses,
-  parseImportedFavoriteAddresses,
-} from '@/services/homeFavoriteFilters';
+  clearableOfflineFavoriteAddresses,
+  remainingAfterClearingOffline,
+} from '@/hooks/homeFavoriteClearOffline';
+import { parseImportedFavoriteAddresses } from '@/services/homeFavoriteFilters';
 import type { Translations } from '@/store/i18n';
 import type { ServerStatus } from '@/types';
-import { isServerOnline } from '@/utils/serverStatus';
 
 interface UseHomeFavoriteIOOptions {
   favorites: string[];
@@ -37,12 +37,13 @@ export function useHomeFavoriteIO({
   }, [favorites, t.exportFavorites, t.exportFavoritesSuccess]);
 
   const handleClearOffline = useCallback(() => {
-    const offlineAddrs = offlineFavoriteAddresses(favServers);
+    // Reload placeholders stay Online: false until their A2S result arrives.
+    const offlineAddrs = clearableOfflineFavoriteAddresses(favServers);
     if (offlineAddrs.length === 0) return;
     for (const addr of offlineAddrs) {
       removeFavorite(addr);
     }
-    setFavServers(prev => prev.filter(s => isServerOnline(s)));
+    setFavServers(remainingAfterClearingOffline);
   }, [favServers, removeFavorite, setFavServers]);
 
   const handleImportFavorites = useCallback(() => {

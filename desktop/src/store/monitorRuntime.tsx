@@ -21,9 +21,11 @@ import {
   loadMonitorRulesFromFile,
   setMonitorEnabled,
 } from '@/services/monitorPersistence';
+import type { CheckedMonitorServers } from '@/services/monitoredServerDetails';
 import type { MatchedServer, MonitorRule, MonitorStatus } from '@/services/monitorTypes';
 import { pruneMonitorMatchState } from '@/services/monitorMatchState';
 import { isDocumentHidden, remainingCountdownSeconds } from '@/services/deadlineCountdown';
+import { createMonitorCheckSerial } from './monitorCheckSerial';
 
 const initialStatus: MonitorStatus = {
   isRunning: false,
@@ -45,9 +47,11 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
   });
   const [status, setStatus] = useState<MonitorStatus>(initialStatus);
   const [currentMatches, setCurrentMatches] = useState<MatchedServer[]>([]);
+  const [checkedServers, setCheckedServers] = useState<CheckedMonitorServers | null>(null);
   const [countdown, setCountdown] = useState(0);
   const rulesRef = useRef(rules);
-  const runCheckRef = useRef<() => Promise<void>>(async () => undefined);
+  const runCheckRef = useRef<(isStale: () => boolean) => Promise<void>>(async () => undefined);
+  const [checkSerial] = useState(createMonitorCheckSerial);
   const countdownDeadlineRef = useRef(0);
 
   useEffect(() => {
@@ -75,17 +79,26 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const runCheck = useCallback(async () => {
+  const runCheck = useCallback(async (isStale: () => boolean) => {
     const currentRules = rulesRef.current;
     if (currentRules.length === 0) return;
     setStatus(previous => ({ ...previous, isRunning: true }));
     const { performMonitorCheck } = await import('@/services/monitorCheck');
-    const result = await performMonitorCheck(currentRules);
+    const result = await performMonitorCheck(currentRules, { isCancelled: isStale });
+    if (isStale()) {
+      // Stopped, restarted or unmounted mid-check: drop the stale results.
+      setStatus(previous => ({ ...previous, isRunning: false }));
+      return;
+    }
+    const checkedAt = new Date().toISOString();
     setCurrentMatches([...result.currentMatches].reverse());
+    if (result.error == null) {
+      setCheckedServers({ at: checkedAt, servers: result.servers });
+    }
     setStatus(previous => ({
       ...previous,
       isRunning: false,
-      lastCheckTime: new Date().toISOString(),
+      lastCheckTime: checkedAt,
       checkCount: previous.checkCount + 1,
       errorCount: result.error ? previous.errorCount + 1 : previous.errorCount,
       lastError: result.error,
@@ -121,9 +134,12 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
       return undefined;
     }
 
+    const generation = checkSerial.nextGeneration();
     let cancelled = false;
     let checkTimer: ReturnType<typeof setTimeout> | null = null;
     let countdownTimer: ReturnType<typeof setTimeout> | null = null;
+    // Waits for a check still in flight from an earlier run before starting.
+    const runCheckInOrder = () => checkSerial.run(generation, isStale => runCheckRef.current(isStale));
 
     const scheduleNext = () => {
       if (cancelled) return;
@@ -144,7 +160,7 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
       countdownTimer = setTimeout(tick, 1000);
       checkTimer = setTimeout(() => {
         if (cancelled) return;
-        void runCheckRef.current().finally(() => {
+        void runCheckInOrder().finally(() => {
           if (!cancelled) scheduleNext();
         });
       }, interval * 1000);
@@ -152,7 +168,7 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
 
     const initialTimer = setTimeout(() => {
       if (cancelled) return;
-      void runCheckRef.current().finally(() => {
+      void runCheckInOrder().finally(() => {
         if (!cancelled) scheduleNext();
       });
     }, 100);
@@ -165,12 +181,13 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
 
     return () => {
       cancelled = true;
+      checkSerial.nextGeneration(); // the in-flight check, if any, is now stale
       document.removeEventListener('visibilitychange', onVisibility);
       clearTimeout(initialTimer);
       if (checkTimer) clearTimeout(checkTimer);
       if (countdownTimer) clearTimeout(countdownTimer);
     };
-  }, [hasEnabledRules, interval, isEnabled]);
+  }, [checkSerial, hasEnabledRules, interval, isEnabled]);
 
   const value = useMemo<MonitorRuntimeValue>(() => ({
     rules,
@@ -182,8 +199,9 @@ export function MonitorRuntimeProvider({ children }: { children: ReactNode }) {
     status,
     setStatus,
     currentMatches,
+    checkedServers,
     setCountdown,
-  }), [currentMatches, interval, isEnabled, rules, status]);
+  }), [checkedServers, currentMatches, interval, isEnabled, rules, status]);
 
   return (
     <MonitorRuntimeContext.Provider value={value}>

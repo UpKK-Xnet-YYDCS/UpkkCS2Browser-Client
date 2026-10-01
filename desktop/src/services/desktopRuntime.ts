@@ -10,6 +10,10 @@ export type DesktopUnlisten = () => void;
 export type DesktopHttpFetch = typeof import('@tauri-apps/plugin-http').fetch;
 let optionalHttpFetchPromise: Promise<DesktopHttpFetch | null> | null = null;
 
+export function isDesktopRuntime(): boolean {
+  return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+}
+
 function isModuleLoadError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return message.includes('module') ||
@@ -45,11 +49,24 @@ export async function openExternalUrl(url: string): Promise<void> {
 }
 
 export async function getDesktopHttpFetch(): Promise<DesktopHttpFetch> {
+  if (!isDesktopRuntime()) {
+    // Direct consumers already fall back to browser fetch on module errors.
+    throw new Error('Tauri HTTP module is unavailable in browser preview');
+  }
   const { fetch } = await import('@tauri-apps/plugin-http');
   return fetch;
 }
 
+/**
+ * Cancels a response body the caller will not read. plugin-http keeps every
+ * unread body in the webview resource table until it is consumed or cancelled.
+ */
+export async function releaseResponseBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => {});
+}
+
 export function getOptionalDesktopHttpFetch(): Promise<DesktopHttpFetch | null> {
+  if (!isDesktopRuntime()) return Promise.resolve(null);
   optionalHttpFetchPromise ??= getDesktopHttpFetch().catch(error => {
     if (isModuleLoadError(error)) return null;
     throw error;

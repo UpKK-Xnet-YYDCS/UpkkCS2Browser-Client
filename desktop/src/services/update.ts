@@ -15,6 +15,7 @@
  */
 
 import { XPROJ_USER_AGENT } from '@/api/clientConfig';
+import { releaseResponseBody } from './desktopRuntime.ts';
 import { forceMandatoryIfBelowMinimum, isNewerVersion } from './updateVersion.ts';
 
 // Current app version - auto-read from version.txt via Vite compile-time define
@@ -73,6 +74,7 @@ export async function checkForUpdates(): Promise<UpdateCheckResult> {
     }
 
     if (!response.ok) {
+      await releaseResponseBody(response);
       return {
         hasUpdate: false,
         currentVersion: APP_VERSION,

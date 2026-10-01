@@ -41,6 +41,32 @@ No production runtime dependency was added. `lucide-react` was replaced by `src/
 
 `vendor.js` gzip is 64,008 B versus the August named-chunk snapshot (+5,165 B, React 19.3). That was a growth *warning*, not a budget failure. Chunk splits are not counted as total-size reduction. [`performance-baseline.json`](../performance-baseline.json) was refreshed after the passing 2026-09-14 production build so later warnings track the current logical names (`boot.js`, `joinUi.js`, merged `vendor.js`, and so on). Protocol: [`performance-baseline.md`](./performance-baseline.md).
 
+Warning cleanup verified on **2026-10-01**: the redundant dynamic monitor-channel
+import is now static, and Tailwind scans `src/` and `index.html`. The production
+build took 416 ms on this workspace, with no ineffective-import or plugin-timing
+warning. Initial gzip is 171,122 B; all-asset gzip is 306,082 B. Existing hard
+budgets, baseline and growth thresholds remain unchanged. Two growth warnings
+remain visible: total gzip +2,612 B and `addServer.js` +10,669 B versus the
+September baseline. Automatic chunking and a React-priority grouping were
+measured but did not remove total growth; the existing chunk configuration was
+retained. These measurements do not imply native Windows runtime acceptance.
+
+The browser preview was also checked after this production build: the server
+list, monitor and settings views render without a Tauri IPC invocation error.
+Requests to the configured remote API and release feed failed in this test
+environment, so live backend connectivity was not verified.
+
+Supplementary `cargo audit` on **2026-10-01** exited successfully but reported
+seven upstream warnings. Six concern unmaintained crates: `proc-macro-error`
+through the GTK 3 macro dependencies, and five `unic-*` crates through
+`tauri-plugin-http` → `urlpattern`. The remaining warning is
+[`glib` RUSTSEC-2024-0429](https://rustsec.org/advisories/RUSTSEC-2024-0429.html):
+the current Linux GTK/WebKit dependency graph uses 0.18.5, while the published
+fix starts at 0.20.0. That is a different incompatible release line; adding a
+new direct `glib` dependency would not replace the affected transitive copy.
+These upstream dependencies and audit results remain visible. No fork, advisory
+exclusion or removal of desktop HTTP/Linux support was introduced.
+
 Compatible re-exports: `src/api/index.ts` (no second client, no `@/store/log`), `src/store/log.ts` → `operationLog`, packed locale values + `locales/keys.ts`. Five languages still load synchronously and share the same key set (`src/i18n/translations.test.ts`).
 
 ## Hot paths (P2–P6)

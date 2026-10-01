@@ -1,9 +1,13 @@
 use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
+use std::future::Future;
 use std::net::UdpSocket;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tokio::sync::{Mutex as AsyncMutex, Semaphore};
+
+mod resolve;
+use resolve::{resolve_a2s_address, ResolvedAddresses};
 
 const A2S_INFO: [u8; 25] = [
     0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x53, 0x6f, 0x75, 0x72, 0x63, 0x65, 0x20, 0x45, 0x6e, 0x67, 0x69,
@@ -183,8 +187,13 @@ fn parse_a2s_info(
     })
 }
 
-fn a2s_query(ip: &str, port: &str, timeout_ms: Option<u64>) -> A2SQueryResult {
-    let address = format!("{ip}:{port}");
+/// `resolved` comes from `resolve_a2s_address`, which runs before the A2S permit.
+fn a2s_query(
+    ip: &str,
+    port: &str,
+    timeout_ms: Option<u64>,
+    resolved: ResolvedAddresses,
+) -> A2SQueryResult {
     let socket = match UdpSocket::bind("0.0.0.0:0") {
         Ok(socket) => socket,
         Err(error) => return failed_result(ip, port, format!("Failed to create socket: {error}")),
@@ -192,7 +201,7 @@ fn a2s_query(ip: &str, port: &str, timeout_ms: Option<u64>) -> A2SQueryResult {
     if let Err(error) = socket.set_read_timeout(Some(clamp_a2s_timeout(timeout_ms))) {
         return failed_result(ip, port, format!("Failed to set timeout: {error}"));
     }
-    if let Err(error) = socket.connect(&address) {
+    if let Err(error) = resolved.and_then(|addresses| socket.connect(addresses.as_slice())) {
         return failed_result(ip, port, format!("Failed to connect: {error}"));
     }
 
@@ -261,13 +270,16 @@ fn attach_queue_wait(mut result: A2SQueryResult, queue_wait_ms: u64) -> A2SQuery
     result
 }
 
-async fn query_targets_with<F>(
+async fn query_targets_with<R, Resolving, F>(
     targets: Vec<A2SQueryTarget>,
     concurrency: Option<usize>,
+    resolve: R,
     query: F,
 ) -> Vec<A2SQueryResult>
 where
-    F: Fn(A2SQueryTarget) -> A2SQueryResult + Send + Sync + 'static,
+    R: Fn(String, String) -> Resolving + Send + Sync + 'static,
+    Resolving: Future<Output = ResolvedAddresses> + Send,
+    F: Fn(A2SQueryTarget, ResolvedAddresses) -> A2SQueryResult + Send + Sync + 'static,
 {
     let total = targets.len();
     if total == 0 {
@@ -275,6 +287,7 @@ where
     }
 
     let worker_count = batch_concurrency(concurrency).min(total);
+    let resolve = Arc::new(resolve);
     let query = Arc::new(query);
     let fallbacks: Vec<(String, String)> = targets
         .iter()
@@ -289,6 +302,7 @@ where
     let mut workers = Vec::with_capacity(worker_count);
     for _ in 0..worker_count {
         let jobs = Arc::clone(&jobs);
+        let resolve = Arc::clone(&resolve);
         let query = Arc::clone(&query);
         let slots = Arc::clone(&slots);
         workers.push(tokio::spawn(async move {
@@ -299,9 +313,11 @@ where
                 };
                 let fallback_ip = target.ip.clone();
                 let fallback_port = target.port.clone();
+                // Resolve before taking an A2S permit.
+                let resolved = resolve(target.ip.clone(), target.port.clone()).await;
                 let query = Arc::clone(&query);
                 let outcome = run_blocking_a2s(move |queue_wait_ms| {
-                    attach_queue_wait(query(target), queue_wait_ms)
+                    attach_queue_wait(query(target, resolved), queue_wait_ms)
                 })
                 .await
                 .unwrap_or_else(|error| failed_result(&fallback_ip, &fallback_port, error));
@@ -340,8 +356,9 @@ pub async fn query_server_a2s(
 ) -> Result<A2SQueryResult, String> {
     let fallback_ip = ip.clone();
     let fallback_port = port.clone();
+    let resolved = resolve_a2s_address(ip.clone(), port.clone()).await;
     run_blocking_a2s(move |queue_wait_ms| {
-        attach_queue_wait(a2s_query(&ip, &port, timeout_ms), queue_wait_ms)
+        attach_queue_wait(a2s_query(&ip, &port, timeout_ms, resolved), queue_wait_ms)
     })
     .await
     .map_err(|error| format!("Query task failed for {fallback_ip}:{fallback_port}: {error}"))
@@ -352,9 +369,12 @@ pub async fn query_servers_a2s(
     targets: Vec<A2SQueryTarget>,
     concurrency: Option<usize>,
 ) -> Result<Vec<A2SQueryResult>, String> {
-    Ok(query_targets_with(targets, concurrency, |target| {
-        a2s_query(&target.ip, &target.port, target.timeout_ms)
-    })
+    Ok(query_targets_with(
+        targets,
+        concurrency,
+        resolve_a2s_address,
+        |target, resolved| a2s_query(&target.ip, &target.port, target.timeout_ms, resolved),
+    )
     .await)
 }
 

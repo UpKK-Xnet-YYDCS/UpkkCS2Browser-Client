@@ -27,6 +27,7 @@ export function useMonitorPage() {
     status,
     setStatus,
     currentMatches,
+    checkedServers,
     setCountdown,
   } = useMonitorRuntime();
   const [editingRule, setEditingRule] = useState<MonitorRule | null>(null);
@@ -117,7 +118,7 @@ export function useMonitorPage() {
 
   // Collect all unique monitored servers from all rules
   const allMonitoredServers = useMemo(() => collectMonitoredServerKeys(rules), [rules]);
-  const monitoredServerInfo = useMonitoredServerInfo(allMonitoredServers, status.lastCheckTime);
+  const monitoredServerInfo = useMonitoredServerInfo(allMonitoredServers, status.lastCheckTime, checkedServers);
 
   const removeServerFromAllRules = (serverKey: string) => {
     setRules(prev => {

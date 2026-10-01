@@ -50,19 +50,25 @@ export function useServerDetailPrefetch({
     }
   }, [serverId, serverIp, serverPort]);
 
+  // Three independent prefetches, each keyed only on its own inputs: the cloud
+  // favorite and version results must not re-trigger the player-list fetch.
   useEffect(() => {
-    const timers: number[] = [];
     if (shouldPrefetchCloudFavorite(isLoggedIn, cloudFavState, serverIp, serverPort)) {
       apiCheckFavorite(String(serverIp), String(serverPort))
         .then(result => setCloudFavState(result.is_favorite))
         .catch(() => {});
     }
-    if (shouldPrefetchPlayers(serverPlayers)) {
-      const timer = window.setTimeout(() => {
-        void fetchPlayers();
-      }, 0);
-      timers.push(timer);
-    }
+  }, [cloudFavState, isLoggedIn, serverIp, serverPort, setCloudFavState]);
+
+  useEffect(() => {
+    if (!shouldPrefetchPlayers(serverPlayers)) return undefined;
+    const timer = window.setTimeout(() => {
+      void fetchPlayers();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [fetchPlayers, serverPlayers]);
+
+  useEffect(() => {
     if (shouldPrefetchServerVersion(detailVersion, serverIp, serverPort)) {
       getServerDetail(serverIp + ':' + serverPort)
         .then(detail => {
@@ -70,10 +76,7 @@ export function useServerDetailPrefetch({
         })
         .catch(() => {});
     }
-    return () => {
-      timers.forEach((timer) => window.clearTimeout(timer));
-    };
-  }, [cloudFavState, detailVersion, fetchPlayers, isLoggedIn, serverIp, serverPlayers, serverPort, setCloudFavState]);
+  }, [detailVersion, serverIp, serverPort]);
 
   return {
     players,

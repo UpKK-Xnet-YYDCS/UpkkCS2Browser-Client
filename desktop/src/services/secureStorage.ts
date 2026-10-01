@@ -9,7 +9,7 @@
  */
 
 import type { ApiTokenResponse, CredentialResponse } from '@/types/desktop';
-import { invokeDesktop } from './desktopRuntime';
+import { invokeDesktop, isDesktopRuntime } from './desktopRuntime.ts';
 
 export type { ApiTokenResponse, CredentialResponse } from '@/types/desktop';
 
@@ -110,6 +110,7 @@ export async function getDeviceFingerprint(): Promise<string> {
  * Check if credentials are stored
  */
 export async function hasStoredCredentials(): Promise<boolean> {
+  if (!isDesktopRuntime()) return false;
   try {
     return await invokeDesktop('has_stored_credentials');
   } catch (error) {

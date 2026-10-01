@@ -31,17 +31,41 @@ export function delayWithSignal(ms: number, signal?: AbortSignal): Promise<void>
   });
 }
 
-export function mergeAbortSignals(primary?: AbortSignal, secondary?: AbortSignal): AbortSignal | undefined {
-  if (!primary) return secondary;
-  if (!secondary) return primary;
-  if (typeof AbortSignal.any === 'function') return AbortSignal.any([primary, secondary]);
+export interface RequestDeadline {
+  /** Aborts when a parent aborts (with its reason) or when the deadline expires. */
+  readonly signal: AbortSignal;
+  /** True only when the deadline, not a parent, aborted the request. */
+  readonly expired: boolean;
+  /** Clears the timer and detaches from parents; call once the request settles. */
+  dispose(): void;
+}
+
+export function startRequestDeadline(timeoutMs: number, ...parents: Array<AbortSignal | undefined>): RequestDeadline {
   const controller = new AbortController();
-  const abort = () => controller.abort();
-  if (primary.aborted || secondary.aborted) {
-    abort();
-    return controller.signal;
+  let expired = false;
+  const timer = setTimeout(() => {
+    if (controller.signal.aborted) return;
+    expired = true;
+    controller.abort(new DOMException('The request deadline expired.', 'TimeoutError'));
+  }, timeoutMs);
+  const subscriptions: Array<[AbortSignal, () => void]> = [];
+  for (const parent of parents) {
+    if (!parent) continue;
+    const onAbort = () => controller.abort(parent.reason);
+    if (parent.aborted) onAbort();
+    else {
+      parent.addEventListener('abort', onAbort, { once: true });
+      subscriptions.push([parent, onAbort]);
+    }
   }
-  primary.addEventListener('abort', abort, { once: true });
-  secondary.addEventListener('abort', abort, { once: true });
-  return controller.signal;
+  return {
+    signal: controller.signal,
+    get expired() {
+      return expired;
+    },
+    dispose() {
+      clearTimeout(timer);
+      for (const [parent, onAbort] of subscriptions) parent.removeEventListener('abort', onAbort);
+    },
+  };
 }

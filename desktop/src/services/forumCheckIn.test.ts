@@ -4,6 +4,7 @@ import {
   checkInStatusGradient,
   formatCheckInRequestError,
   parseCheckInPayload,
+  shouldFallBackToWebViewCheckIn,
 } from './forumCheckInParse.ts';
 import { formatForumWindowError } from './forumWindowFormat.ts';
 
@@ -32,3 +33,19 @@ test('formatForumWindowError distinguishes missing Tauri from other failures', (
   assert.equal(formatForumWindowError(new Error('boom'), labels), 'open-failed: boom');
 });
 
+
+test('check-in only re-POSTs through the WebView when the desktop plugin could not run', () => {
+  // Desktop runtime: HTTP, parse, and plugin transport failures are real results.
+  assert.equal(shouldFallBackToWebViewCheckIn(new Error('请求失败: 500'), true), false);
+  assert.equal(shouldFallBackToWebViewCheckIn(new SyntaxError('Unexpected token < in JSON'), true), false);
+  assert.equal(shouldFallBackToWebViewCheckIn('error sending request for url (https://bbs.upkk.com/)', true), false);
+  assert.equal(shouldFallBackToWebViewCheckIn('Request canceled', true), false);
+  // Desktop runtime without a loadable plugin module keeps the fallback.
+  assert.equal(shouldFallBackToWebViewCheckIn(new Error('Cannot find module @tauri-apps/plugin-http'), true), true);
+  assert.equal(shouldFallBackToWebViewCheckIn(new TypeError('Failed to resolve module specifier'), true), true);
+  // Browser preview keeps its existing WebView fallback for any failure.
+  assert.equal(
+    shouldFallBackToWebViewCheckIn(new TypeError("Cannot read properties of undefined (reading 'invoke')"), false),
+    true,
+  );
+});
