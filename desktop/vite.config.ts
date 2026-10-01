@@ -39,76 +39,44 @@ export default defineConfig({
     minify: true,
     rolldownOptions: {
       output: {
-        manualChunks(id: string) {
-          const moduleId = id.replaceAll('\\', '/');
-          if (moduleId.includes('node_modules/react-dom') || moduleId.includes('node_modules/react/')) {
-            return 'vendor';
-          }
-          if (moduleId.includes('@tauri-apps/plugin-') || moduleId.includes('@tauri-apps/api')) {
-            return 'tauri';
-          }
-          if (
-            moduleId.includes('/src/api/clientConfig.') ||
-            moduleId.includes('/src/api/clientQuery.') ||
-            moduleId.includes('/src/api/clientPrefetch.') ||
-            moduleId.includes('/src/api/client.') ||
-            moduleId.includes('/src/services/boundedLru.') ||
-            moduleId.includes('/src/services/operationLog.') ||
-            moduleId.includes('/src/services/desktopRuntime.')
-          ) {
-            return 'boot';
-          }
-          if (
-            moduleId.includes('/src/services/forumConstants.') ||
-            moduleId.includes('/src/services/forumLoginParse.') ||
-            moduleId.includes('/src/services/forumAuthFlow.') ||
-            moduleId.includes('/src/services/forumWindow.') ||
-            moduleId.includes('/src/services/forumLogin.')
-          ) {
-            return 'forum';
-          }
-          // These UI modules share shell dependencies. Rolldown coalesces their
-          // dependencies across named chunks; keep the measured assignment so
-          // both initial-load and all-asset budgets stay within limits.
-          if (
-            moduleId.includes('/src/components/lucideIcons.') ||
-            moduleId.includes('/src/components/JoinServerConfirmModal.') ||
-            moduleId.includes('/src/components/JoinServerPickerModal.')
-          ) {
-            return 'addServer';
-          }
-          if (
-            moduleId.includes('/src/services/canvasChartHover.') ||
-            moduleId.includes('/src/services/canvasLineChart.') ||
-            moduleId.includes('/src/components/PlayerHistoryChart.') ||
-            moduleId.includes('/src/components/MapHistory.') ||
-            moduleId.includes('/src/components/QueryRecords.')
-          ) {
-            return 'history';
-          }
-          if (
-            moduleId.includes('/src/services/updatePrompt.') ||
-            moduleId.includes('/src/services/update.') ||
-            moduleId.includes('/src/components/UpdateModal.')
-          ) {
-            return 'updateUi';
-          }
-          // Monitor checks and notification channels are used together; one
-          // chunk avoids compressing their shared code in separate assets.
-          if (
-            moduleId.includes('/src/services/monitorCheck.') ||
-            moduleId.includes('/src/services/monitorChannels.') ||
-            moduleId.includes('/src/services/monitorChannelPayloads.') ||
-            moduleId.includes('/src/services/postMonitorJson.')
-          ) {
-            return 'monitorRuntime';
-          }
-          if (
-            moduleId.includes('/src/components/home/AddLocalServerModal.') ||
-            moduleId.includes('/src/components/AddServerModal.')
-          ) {
-            return 'joinUi';
-          }
+        codeSplitting: {
+          groups: [
+            // Claim shared dependencies before recursive feature groups can
+            // absorb React or the startup client into a lazy dialog chunk.
+            { name: 'vendor', test: /node_modules[\\/](?:react-dom|react)[\\/]/, priority: 100 },
+            { name: 'tauri', test: /node_modules[\\/]@tauri-apps[\\/]/, priority: 90 },
+            { name: 'shell', test: /[\\/]src[\\/]/, tags: ['$initial'], priority: 80 },
+            {
+              debugName: 'lazyFeatures',
+              name(id: string) {
+                const moduleId = id.replaceAll('\\', '/');
+                if (/\/src\/services\/forum(?:Constants|LoginParse|AuthFlow|Window|Login)\./.test(moduleId)) {
+                  return 'forum';
+                }
+                // Keep server action dialogs together, while the shell owns
+                // their shared static dependencies and icons.
+                if (/\/src\/components\/(?:lucideIcons|JoinServerConfirmModal|JoinServerPickerModal|AddServerModal|home\/AddLocalServerModal)\./.test(moduleId)) {
+                  return 'serverActions';
+                }
+                if (
+                  /\/src\/services\/canvas(?:ChartHover|LineChart)\./.test(moduleId) ||
+                  /\/src\/components\/(?:PlayerHistoryChart|MapHistory|QueryRecords)\./.test(moduleId)
+                ) {
+                  return 'history';
+                }
+                if (
+                  /\/src\/services\/update(?:Prompt)?\./.test(moduleId) ||
+                  moduleId.includes('/src/components/UpdateModal.')
+                ) {
+                  return 'updateUi';
+                }
+                if (/\/src\/services\/(?:monitorCheck|monitorChannels|monitorChannelPayloads|postMonitorJson)\./.test(moduleId)) {
+                  return 'monitorRuntime';
+                }
+                return null;
+              },
+            },
+          ],
         },
       },
     },

@@ -64,20 +64,32 @@ Windows native timings, 8-hour stability, and installer size are still pending o
 
 ## Production bundle
 
-Recorded **2026-09-14** from `npm run build` on this workspace (Vite 8.3.0 / Rolldown). Hard gates passed: initial raw ≤640 KiB / gzip ≤170 KiB; all raw ≤1100 KiB / gzip ≤300 KiB; single JS gzip ≤84 KiB; CSS gzip ≤20 KiB.
+Recorded **2026-10-01** from `npm run build` on this workspace (Node 26.8.2, Vite 8.3.1 / Rolldown). Hard gates remain unchanged: initial raw ≤640 KiB / gzip ≤170 KiB; all raw ≤1100 KiB / gzip ≤300 KiB; single JS gzip ≤84 KiB; CSS gzip ≤20 KiB.
 
-| Metric | 2026-08-23 | Current | Change |
+| Metric | Before this fix (2026-10-01) | Current | Change |
 |---|---:|---:|---:|
-| Initial raw | 592,810 B | 615,862 B | +23,052 B |
-| Initial gzip | 153,847 B | 168,420 B | +14,573 B |
-| All assets raw | 1,094,448 B | 1,088,182 B | -6,266 B |
-| All assets gzip | 304,131 B | 303,470 B | -661 B |
-| Warm Vite build | 413 ms | ~730 ms | informational |
-| macOS ARM DMG (local, ad-hoc) | — | 5.0 MiB | informational |
+| Initial raw | 625,592 B | 589,855 B | -35,737 B |
+| Initial gzip | 171,122 B | 158,365 B | -12,757 B |
+| All assets raw | 1,099,195 B | 1,098,537 B | -658 B |
+| All assets gzip | 306,082 B | 304,294 B | -1,788 B |
 
-`vendor.js` gzip is 64,007 B. Versus the 2026-08-23 named-chunk snapshot that is about +5.2 KiB, attributed to React 19.3, not a hard-gate failure. `desktop/performance-baseline.json` was refreshed on 2026-09-14 after this passing production build so future growth warnings compare against the current chunk set (`boot.js`, `joinUi.js`, merged `vendor.js`, and so on). Splitting chunks is not counted as a total-size reduction; all-asset gzip is under 300 KiB.
+Recursive manual groups had pulled React, startup API services and join dialogs into `addServer.js` (18,844 B gzip), so the old logical name no longer described its contents. Explicit group priorities now reserve React for `vendor.js` (67,387 B gzip), Tauri for `tauri.js`, and statically reachable application modules for `shell.js` (74,223 B gzip). The remaining server action dialogs share the lazy `serverActions.js` (7,147 B gzip). History sections retain their lazy boundary. `cloudToken.ts` uses the already statically reachable secure-storage module directly, avoiding an ineffective dynamic import. No runtime dependency was added.
 
-`npm run check:performance` keeps the existing hard budgets and emits CI warnings when total gzip grows by
-more than 1 KiB or an existing chunk grows by more than 5 KiB.
+Before refreshing the chunk snapshot, the new all-asset gzip total was only 824 B above the 2026-09-14 baseline (303,470 B), within the existing 1 KiB growth limit. The snapshot was refreshed on 2026-10-01 to represent the verified new module ownership and logical names; the absolute budgets and numeric growth limits were not increased.
+
+`npm run check:performance` now fails when initial or total gzip grows by more than 1 KiB, or an individual chunk grows by more than 5 KiB. Unknown or removed logical assets, duplicate logical names, malformed thresholds and inconsistent baseline totals also fail. Content hashes are ignored when matching assets. `npm run build` already invokes this check, so `scripts/desktop-check.sh` and the Desktop Check workflow enforce it without a second build.
+
+For an intentional, reviewed change to the chunk layout or bundle size:
+
+```bash
+cd desktop
+npm exec vite build
+node scripts/check-performance.mjs --print-baseline > performance-baseline.next.json
+# Review the measurements, module ownership and diff, then replace the snapshot.
+mv performance-baseline.next.json performance-baseline.json
+npm run check:performance
+```
+
+Printing the snapshot preserves the configured growth limits, checks all absolute budgets and does not edit the existing baseline. Use a separate output file because the checker reads the current baseline. Baseline changes must accompany the reason and before/after measurements; do not refresh it just to hide a regression. CLI fixture tests in `scripts/check-performance.test.mjs` cover threshold boundaries, offsetting chunk changes, asset renames and all six absolute budgets, including snapshot generation.
 
 Windows native timings, 8-hour stability, and four-platform CI packages are still pending on the acceptance machine. A local ad-hoc macOS ARM DMG (5.0 MiB, not notarized) was produced on 2026-09-14. Host default `rustc` remains 1.97.0. Named-toolchain `cargo +1.89.0` (the former MSRV) and `cargo +1.98.1` check/test both passed locally; Tauri 2.12 raises the current project floor to Rust 1.90, enforced by `.github/workflows/desktop-check.yml`.

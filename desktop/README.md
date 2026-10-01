@@ -124,6 +124,12 @@ npm run check:performance # 需要先生成 dist/
 `performance-budget.json`；逐 chunk 基线与渲染场景记录见
 `performance-baseline.json` 和 `docs/performance-baseline.md`。
 
+生产构建同时强制相对基线的增长门禁：首屏和全部资源 gzip 分别最多增长
+1 KiB，单个 chunk 最多增长 5 KiB；新增、移除或改名的逻辑资源必须更新
+经审阅的基线。超限直接使构建、`scripts/desktop-check.sh` 和 CI 失败。
+构建 hash 变化不影响逻辑资源匹配，刷新基线也不能绕过上述绝对预算。
+基线更新方法见 `docs/performance-baseline.md`。
+
 构建产物位于 `src-tauri/target/release/bundle/`:
 - Windows: `.msi` 和 `.exe` 安装包
 - Linux: `.AppImage` 和 `.deb` 包

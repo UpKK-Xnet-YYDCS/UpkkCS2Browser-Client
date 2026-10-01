@@ -57,11 +57,40 @@ function printAssetTable(measured, baselineAssets = {}) {
   }
 }
 
-function emitWarning(message) {
-  if (process.env.GITHUB_ACTIONS === 'true') {
-    console.warn(`::warning title=Desktop bundle growth::${message}`);
-  } else {
-    console.warn(`Performance warning: ${message}`);
+function assetSnapshot(measured) {
+  const assets = {};
+  for (const asset of measured) {
+    const name = logicalAssetName(asset.file);
+    if (Object.hasOwn(assets, name)) {
+      throw new Error(`Duplicate logical asset name: ${name}`);
+    }
+    assets[name] = { rawBytes: asset.rawBytes, gzipBytes: asset.gzipBytes };
+  }
+  return Object.fromEntries(Object.entries(assets).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function requireBytes(value, label) {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+}
+
+function validateBaseline(baseline) {
+  requireBytes(baseline.growthThresholds?.totalGzipGrowthBytes, 'baseline total growth threshold');
+  requireBytes(baseline.growthThresholds?.chunkGzipGrowthBytes, 'baseline chunk growth threshold');
+  requireBytes(baseline.initialAssets?.rawBytes, 'baseline initial raw');
+  requireBytes(baseline.initialAssets?.gzipBytes, 'baseline initial gzip');
+  requireBytes(baseline.allAssetsGzipBytes, 'baseline all-assets gzip');
+  if (!baseline.assets || typeof baseline.assets !== 'object' || Array.isArray(baseline.assets)) {
+    throw new Error('baseline assets must be an object');
+  }
+  for (const [name, asset] of Object.entries(baseline.assets)) {
+    requireBytes(asset?.rawBytes, `baseline ${name} raw`);
+    requireBytes(asset?.gzipBytes, `baseline ${name} gzip`);
+  }
+  const total = Object.values(baseline.assets).reduce((sum, asset) => sum + asset.gzipBytes, 0);
+  if (total !== baseline.allAssetsGzipBytes) {
+    throw new Error('baseline all-assets gzip must equal the sum of its assets');
   }
 }
 
@@ -94,9 +123,9 @@ try {
     if (reference) initialReferences.add(reference);
   }
 
-  const initialFiles = [...initialReferences]
+  const initialFiles = [...new Set([...initialReferences]
     .map(localAssetPath)
-    .filter(Boolean);
+    .filter(Boolean))];
   for (const file of initialFiles) await stat(file);
   const allAssetFiles = await collectFiles(assetsDir);
   const initial = await measureFiles(initialFiles);
@@ -108,49 +137,20 @@ try {
     null,
   );
   const cssGzipBytes = css.reduce((total, asset) => total + asset.gzipBytes, 0);
-
-  if (process.argv.includes('--print-baseline')) {
-    const assets = Object.fromEntries(
-      allAssets.measured
-        .map(asset => [logicalAssetName(asset.file), {
-          rawBytes: asset.rawBytes,
-          gzipBytes: asset.gzipBytes,
-        }])
-        .sort(([left], [right]) => left.localeCompare(right)),
-    );
-    console.log(JSON.stringify({ allAssetsGzipBytes: allAssets.gzipBytes, assets }, null, 2));
-    process.exit(0);
-  }
-
+  const assets = assetSnapshot(allAssets.measured);
   const baseline = JSON.parse(await readFile(baselinePath, 'utf8'));
+  validateBaseline(baseline);
+  const printBaseline = process.argv.includes('--print-baseline');
 
-  console.log(`Initial assets: raw ${formatBytes(initial.rawBytes)}, gzip ${formatBytes(initial.gzipBytes)}`);
-  console.log(`All assets: raw ${formatBytes(allAssets.rawBytes)}, gzip ${formatBytes(allAssets.gzipBytes)}`);
-  console.log(
-    `Largest JS gzip: ${formatBytes(largestJavaScript?.gzipBytes ?? 0)}` +
-    `${largestJavaScript ? ` (${path.basename(largestJavaScript.file)})` : ''}`,
-  );
-  console.log(`Total CSS gzip: ${formatBytes(cssGzipBytes)}`);
-  printAssetTable(allAssets.measured, baseline.assets);
-
-  const totalGrowth = allAssets.gzipBytes - baseline.allAssetsGzipBytes;
-  if (totalGrowth > baseline.warningThresholds.totalGzipGrowthBytes) {
-    emitWarning(
-      `all-assets gzip grew by ${totalGrowth} B; warning threshold is ` +
-      `${baseline.warningThresholds.totalGzipGrowthBytes} B`,
+  if (!printBaseline) {
+    console.log(`Initial assets: raw ${formatBytes(initial.rawBytes)}, gzip ${formatBytes(initial.gzipBytes)}`);
+    console.log(`All assets: raw ${formatBytes(allAssets.rawBytes)}, gzip ${formatBytes(allAssets.gzipBytes)}`);
+    console.log(
+      `Largest JS gzip: ${formatBytes(largestJavaScript?.gzipBytes ?? 0)}` +
+      `${largestJavaScript ? ` (${path.basename(largestJavaScript.file)})` : ''}`,
     );
-  }
-  for (const asset of allAssets.measured) {
-    const name = logicalAssetName(asset.file);
-    const previous = baseline.assets[name];
-    if (!previous) continue;
-    const growth = asset.gzipBytes - previous.gzipBytes;
-    if (growth > baseline.warningThresholds.chunkGzipGrowthBytes) {
-      emitWarning(
-        `${name} gzip grew by ${growth} B; warning threshold is ` +
-        `${baseline.warningThresholds.chunkGzipGrowthBytes} B`,
-      );
-    }
+    console.log(`Total CSS gzip: ${formatBytes(cssGzipBytes)}`);
+    printAssetTable(allAssets.measured, baseline.assets);
   }
 
   const violations = [];
@@ -175,12 +175,51 @@ try {
     violations.push(`CSS gzip ${cssGzipBytes} > ${budget.maxCssGzipBytes}`);
   }
 
+  if (!printBaseline) {
+    const totalThreshold = baseline.growthThresholds.totalGzipGrowthBytes;
+    for (const [label, current, previous] of [
+      ['initial-assets', initial.gzipBytes, baseline.initialAssets.gzipBytes],
+      ['all-assets', allAssets.gzipBytes, baseline.allAssetsGzipBytes],
+    ]) {
+      const growth = current - previous;
+      if (growth > totalThreshold) {
+        violations.push(`${label} gzip grew by ${growth} B; growth limit is ${totalThreshold} B`);
+      }
+    }
+    for (const [name, asset] of Object.entries(assets)) {
+      const previous = baseline.assets[name];
+      if (!previous) {
+        violations.push(`${name}: missing from performance baseline; review the new asset`);
+        continue;
+      }
+      const growth = asset.gzipBytes - previous.gzipBytes;
+      const threshold = baseline.growthThresholds.chunkGzipGrowthBytes;
+      if (growth > threshold) {
+        violations.push(`${name} gzip grew by ${growth} B; growth limit is ${threshold} B`);
+      }
+    }
+    for (const name of Object.keys(baseline.assets)) {
+      if (!Object.hasOwn(assets, name)) {
+        violations.push(`${name}: stale performance baseline entry; review the removed asset`);
+      }
+    }
+  }
+
   if (violations.length > 0) {
     console.error('Performance budget failed:');
     for (const violation of violations) console.error(`- ${violation}`);
     process.exit(1);
   }
-  console.log('Performance budget passed.');
+  if (printBaseline) {
+    console.log(JSON.stringify({
+      growthThresholds: baseline.growthThresholds,
+      initialAssets: { rawBytes: initial.rawBytes, gzipBytes: initial.gzipBytes },
+      allAssetsGzipBytes: allAssets.gzipBytes,
+      assets,
+    }, null, 2));
+  } else {
+    console.log('Performance budget and baseline passed.');
+  }
 } catch (error) {
   console.error(`Performance budget could not run: ${error.message}`);
   process.exit(1);

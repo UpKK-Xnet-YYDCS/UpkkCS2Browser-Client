@@ -1,3 +1,5 @@
+import * as storage from './secureStorage.ts';
+
 export const LEGACY_API_TOKEN_KEY = 'xproj_api_token';
 
 export interface SecureTokenStorage {
@@ -33,7 +35,6 @@ function browserStorage(): Pick<Storage, 'getItem' | 'removeItem'> | undefined {
 }
 
 async function tauriTokenStorage(): Promise<SecureTokenStorage> {
-  const storage = await import('./secureStorage');
   return {
     async load() {
       const result = await storage.loadApiToken();

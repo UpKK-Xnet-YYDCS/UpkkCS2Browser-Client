@@ -51,6 +51,29 @@ September baseline. Automatic chunking and a React-priority grouping were
 measured but did not remove total growth; the existing chunk configuration was
 retained. These measurements do not imply native Windows runtime acceptance.
 
+Bundle growth follow-up on **2026-10-01** resolved those two warnings. Recursive
+chunk ownership had moved React and startup API code into the misleading
+`addServer.js` group. Explicit React/Tauri/shell priorities and one lazy server
+action group reduce initial gzip from 171,122 B to 158,365 B and all-asset gzip
+from 306,082 B to 304,294 B. History sections remain lazy. The secure-storage
+import already reachable at startup is now static, removing its ineffective
+dynamic-import warning. All-asset gzip is 824 B above the September baseline,
+below its unchanged 1,024 B growth limit, before refreshing the chunk snapshot.
+The verified logical names and sizes are now recorded in
+`performance-baseline.json`. Growth checks fail the build for initial/total
+gzip increases over 1 KiB, chunk increases over 5 KiB, or unreviewed logical
+asset additions/removals. The existing production build carries these gates
+into the complete baseline and CI; all absolute budgets remain unchanged.
+Fifteen CLI fixture tests exercise the checks and baseline generation.
+
+The complete `scripts/desktop-check.sh` passed for this follow-up: 416 frontend
+tests, 28 Rust tests, lint, typecheck, contract/architecture checks, production
+build and bundle gates, production dependency audit (zero vulnerabilities),
+Rust fmt/check and clippy with `-D warnings`. Production browser preview checks
+also confirmed that the Add Server dialog, monitor and settings views load.
+Remote API and update-feed requests remain unavailable in this environment;
+live server data and native Windows acceptance were not verified.
+
 The browser preview was also checked after this production build: the server
 list, monitor and settings views render without a Tauri IPC invocation error.
 Requests to the configured remote API and release feed failed in this test
