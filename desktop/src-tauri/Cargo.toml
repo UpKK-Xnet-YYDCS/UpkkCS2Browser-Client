@@ -28,13 +28,13 @@ codegen-units = 1
 strip = true
 
 [build-dependencies]
-tauri-build = { version = "~2.7.1", features = [] }
+tauri-build = { version = "~2.7.3", features = [] }
 
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
-tauri = { version = "~2.12.1", features = [] }
+tauri = { version = "~2.12.4", features = [] }
 tauri-plugin-log = "~2.10"
 tauri-plugin-shell = "~2.4"
 # Keep on the same major.minor line as the npm `@tauri-apps/plugin-http`
@@ -47,7 +47,7 @@ url = "2.5.8"
 tokio = { version = "1", features = ["sync", "rt-multi-thread", "time"] }
 # Secure credential storage
 aes-gcm = "0.11.1"
-sha2 = "0.11.0"
+sha2 = "0.11.1"
 base64 = "0.23.1"
 rand = "0.10.3"
 machine-uid = "0.6.0"
