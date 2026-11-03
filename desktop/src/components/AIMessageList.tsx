@@ -1,7 +1,7 @@
 import { Bot, ChevronDown, Sparkles, UserRound } from '@/components/lucideIcons';
 import { memo, type ComponentProps, type RefObject } from 'react';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { remarkGfmRead } from '@/services/remarkGfmRead';
 import { AITokenMeter } from '@/components/AITokenMeter';
 import type { AIChatLabels } from '@/i18n/aiChat';
 import type { DesktopChatMessage } from '@/services/aiChatSessions';
@@ -27,7 +27,7 @@ interface AIMessageRowProps {
   setThinkingOpen(id: string, open: boolean): void;
 }
 
-const MARKDOWN_PLUGINS: NonNullable<ComponentProps<typeof ReactMarkdown>['remarkPlugins']> = [remarkGfm];
+const MARKDOWN_PLUGINS: NonNullable<ComponentProps<typeof ReactMarkdown>['remarkPlugins']> = [remarkGfmRead];
 const MARKDOWN_COMPONENTS: NonNullable<ComponentProps<typeof ReactMarkdown>['components']> = {
 	img: ({alt, src}) => <img alt={alt ?? ''} src={src} loading="lazy" referrerPolicy="no-referrer" className="my-3 max-h-52 max-w-full rounded-lg object-contain" onError={event => {event.currentTarget.hidden = true;}} />,
   a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-blue-400">{children}</a>,

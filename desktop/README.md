@@ -34,6 +34,10 @@
 
 ### 安装依赖
 
+从仓库根目录保留 `desktop/` 与 `shared/` 的相对位置。桌面搜索使用
+`shared/server-search.ts`，测试还需要 `shared/server-search-cases.json`。
+GitHub Actions 的桌面检查和打包会在这两个目录发生变更时触发。
+
 ```bash
 cd desktop
 npm install

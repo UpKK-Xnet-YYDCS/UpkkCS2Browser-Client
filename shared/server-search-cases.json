@@ -1,0 +1,467 @@
+[
+  {
+    "query": "upkk 躲猫猫",
+    "name": "upkk 社区 · 躲猫猫",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "躲猫猫 upkk",
+    "name": "upkk 社区 · 躲猫猫",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "upkk 躲猫猫",
+    "name": "upkk 社区",
+    "fields": [
+      "躲猫猫"
+    ],
+    "expected": false
+  },
+  {
+    "query": "upkk 躲猫猫,upkk",
+    "name": "UPKK 服务器",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "upkk　躲猫猫",
+    "name": "upkk 躲猫猫",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "upkk upkk",
+    "name": "upkk",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "gfl；upkk\nupkk",
+    "name": "UPKK",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "93x 躲猫猫",
+    "name": "UPKK 躲猫猫",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "upkk",
+    "name": "93x 躲猫猫",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "93x",
+    "name": "Original 93X server",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "x93x",
+    "name": "UPKK",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "93x",
+    "name": "other",
+    "fields": [
+      "upkk"
+    ],
+    "expected": false
+  },
+  {
+    "query": "%_",
+    "name": "100%_ literal",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "%_",
+    "name": "anything",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "203.0.113.1:27015",
+    "name": "Other",
+    "fields": [
+      "203.0.113.1:27015"
+    ],
+    "expected": true
+  },
+  {
+    "query": "de_dust2",
+    "name": "Other",
+    "fields": [
+      "de_dust2"
+    ],
+    "expected": true
+  },
+  {
+    "query": "upkk躲猫猫",
+    "name": "upkk 躲猫猫",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "upkk 躲猫猫 ",
+    "name": "upkk 躲猫猫",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "﻿upkk",
+    "name": "upkk",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "93x",
+    "name": "UPKK server",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": " 93X ",
+    "name": "Original 93X server",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "93x",
+    "name": "other",
+    "fields": [
+      "93x",
+      "93x.example:27015"
+    ],
+    "expected": false
+  },
+  {
+    "query": "93x 躲猫猫",
+    "name": "93x 躲猫猫",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "93x 躲猫猫",
+    "name": "UPKK server",
+    "fields": [
+      "93x 躲猫猫"
+    ],
+    "expected": false
+  },
+  {
+    "query": "93x 躲猫猫",
+    "name": "UPKK 躲猫猫",
+    "fields": [
+      "93x"
+    ],
+    "expected": true
+  },
+  {
+    "query": "93x,gfl",
+    "name": "other",
+    "fields": [
+      "gfl.example:27015"
+    ],
+    "expected": true
+  },
+  {
+    "query": "93x,gfl",
+    "name": "Original 93X server",
+    "fields": [
+      "93x"
+    ],
+    "expected": false
+  },
+  {
+    "query": "93x,93x 躲猫猫",
+    "name": "other",
+    "fields": [
+      "93x 躲猫猫"
+    ],
+    "expected": false
+  },
+  {
+    "query": "93x,93x",
+    "name": "UPKK server",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "x93x",
+    "name": "x93x server",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "93x1",
+    "name": "UPKK server",
+    "fields": [],
+    "expected": false
+  },
+  {
+    "query": "93x1",
+    "name": "other",
+    "fields": [
+      "93x1"
+    ],
+    "expected": true
+  },
+  {
+    "query": "  ",
+    "name": "other",
+    "fields": [],
+    "expected": true
+  },
+  {
+    "query": "93x",
+    "name": "GFL server",
+    "fields": [],
+    "expected": true,
+    "aliases": [
+      {
+        "to": [
+          "upkk",
+          "gfl"
+        ],
+        "enabled": true,
+        "from": "93x"
+      }
+    ]
+  },
+  {
+    "query": "93x",
+    "name": "Original 93X server",
+    "fields": [],
+    "expected": false,
+    "aliases": [
+      {
+        "to": [
+          "upkk",
+          "gfl"
+        ],
+        "enabled": true,
+        "from": "93x"
+      }
+    ]
+  },
+  {
+    "query": "93x",
+    "name": "other",
+    "fields": [
+      "gfl"
+    ],
+    "expected": false,
+    "aliases": [
+      {
+        "to": [
+          "upkk",
+          "gfl"
+        ],
+        "enabled": true,
+        "from": "93x"
+      }
+    ]
+  },
+  {
+    "query": "93x",
+    "name": "Original 93X server",
+    "fields": [],
+    "expected": true,
+    "aliases": [
+      {
+        "to": [
+          "upkk",
+          "gfl"
+        ],
+        "enabled": false,
+        "from": "93x"
+      }
+    ]
+  },
+  {
+    "query": "93x",
+    "name": "other",
+    "fields": [
+      "93x"
+    ],
+    "expected": true,
+    "aliases": [
+      {
+        "to": [
+          "upkk",
+          "gfl"
+        ],
+        "enabled": false,
+        "from": "93x"
+      }
+    ]
+  },
+  {
+    "query": "93x",
+    "name": "UPKK server",
+    "fields": [],
+    "expected": false,
+    "aliases": [
+      {
+        "to": [
+          "upkk",
+          "gfl"
+        ],
+        "enabled": false,
+        "from": "93x"
+      }
+    ]
+  },
+  {
+    "query": "93x",
+    "name": "Original 93X server",
+    "fields": [],
+    "expected": true,
+    "aliases": []
+  },
+  {
+    "query": "93x",
+    "name": "UPKK server",
+    "fields": [],
+    "expected": true,
+    "aliases": [
+      {
+        "to": [
+          " UPKK "
+        ],
+        "enabled": true,
+        "from": " 93X "
+      }
+    ]
+  },
+  {
+    "query": "a",
+    "name": "b",
+    "fields": [],
+    "expected": true,
+    "aliases": [
+      {
+        "from": "a",
+        "to": [
+          "b"
+        ],
+        "enabled": true
+      },
+      {
+        "from": "b",
+        "to": [
+          "c"
+        ],
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "query": "a",
+    "name": "a",
+    "fields": [],
+    "expected": false,
+    "aliases": [
+      {
+        "from": "a",
+        "to": [
+          "b"
+        ],
+        "enabled": true
+      },
+      {
+        "from": "b",
+        "to": [
+          "c"
+        ],
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "query": "a",
+    "name": "c",
+    "fields": [],
+    "expected": false,
+    "aliases": [
+      {
+        "from": "a",
+        "to": [
+          "b"
+        ],
+        "enabled": true
+      },
+      {
+        "from": "b",
+        "to": [
+          "c"
+        ],
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "query": "a",
+    "name": "other",
+    "fields": [
+      "a"
+    ],
+    "expected": false,
+    "aliases": [
+      {
+        "from": "a",
+        "to": [
+          "b"
+        ],
+        "enabled": true
+      },
+      {
+        "from": "b",
+        "to": [
+          "c"
+        ],
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "query": "a",
+    "name": "a",
+    "fields": [],
+    "expected": true,
+    "aliases": [
+      {
+        "from": "a",
+        "to": [
+          "a"
+        ],
+        "enabled": true
+      }
+    ]
+  },
+  {
+    "query": "a",
+    "name": "other",
+    "fields": [
+      "a"
+    ],
+    "expected": false,
+    "aliases": [
+      {
+        "from": "a",
+        "to": [
+          "a"
+        ],
+        "enabled": true
+      }
+    ]
+  }
+]

@@ -1,5 +1,24 @@
 # Desktop performance baseline
 
+## Desktop build recovery — 2026-11-03
+
+The latest dependency refresh produced **308,590 B** all-assets gzip and failed
+the existing absolute and growth gates. The AI view only reads Markdown, so it
+now registers the parsing extensions from the already installed
+`micromark-extension-gfm` 3.0.0 and `mdast-util-gfm` 3.1.0 directly. This lets the
+bundler discard the Markdown serialization handlers. `remark-gfm` 4.0.1 provides
+the development-only rendering reference for the regression test. Package paths
+and resolved versions in the npm lock stayed identical.
+
+All-assets gzip is now **302,155 B** (−6,435 B), initial gzip **159,055 B**, and
+the AI chunk **61,945 B** gzip (−6,412 B). The regression test compares rendered
+HTML for headings, links, images, tables, task lists, strikethrough, footnotes,
+code, raw HTML, combined documents, and every prefix of those documents to cover
+partial streaming messages. The complete desktop baseline passes, including
+465 frontend tests and 28 Rust tests. Measurements use Node 26.12.1 and Vite
+8.3.5 on macOS arm64. The existing snapshot and budgets supply the acceptance
+thresholds for these results.
+
 ## Server summary entry — 2026-10-22
 
 The server summary entry opens the deployment's independent Web summary page through an API redirect. List/image rendering, source parsing and translations live in Web, so the desktop bundle reuses the existing HTTP configuration and external-browser service. No runtime dependency or duplicate summary UI is shipped. The entry remains available when AI is disabled and on the signed-out page; no API token is put into the redirect URL.
