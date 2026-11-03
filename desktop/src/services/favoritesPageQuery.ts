@@ -1,3 +1,4 @@
+import {matchesServerSearch, defaultSearchConfig, type SearchConfig} from "../../../shared/server-search.ts";
 import type { FavoriteServer } from '@/api/favorites';
 import type { LatencyFilter } from './latencyDisplay.ts';
 import { applyLatencySnapshotToServer, matchesLatencyFilter } from './latencyDisplay.ts';
@@ -80,15 +81,15 @@ export function projectFavoriteRowsWithLatency(
 export function searchFavoriteRows<T extends { fav: Pick<FavoriteServer, 'current_name' | 'server_name' | 'server_ip' | 'server_port' | 'map_name' | 'category'> }>(
   rows: readonly T[],
   searchQuery: string,
+ config:SearchConfig=defaultSearchConfig,
 ): T[] {
   if (!searchQuery.trim()) return rows as T[];
-  const q = searchQuery.toLowerCase();
   return rows.filter(({ fav }) => {
     const name = (fav.current_name || fav.server_name || '').toLowerCase();
     const addr = (fav.server_ip + ':' + fav.server_port).toLowerCase();
     const map = (fav.map_name || '').toLowerCase();
     const category = (fav.category || '').toLowerCase();
-    return name.includes(q) || addr.includes(q) || map.includes(q) || category.includes(q);
+    return matchesServerSearch(searchQuery,name,[addr,map,category],config);
   });
 }
 

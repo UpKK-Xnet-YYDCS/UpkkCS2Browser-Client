@@ -1,5 +1,11 @@
 # Desktop performance baseline
 
+## Server summary entry — 2026-10-22
+
+The server summary entry opens the deployment's independent Web summary page through an API redirect. List/image rendering, source parsing and translations live in Web, so the desktop bundle reuses the existing HTTP configuration and external-browser service. No runtime dependency or duplicate summary UI is shipped. The entry remains available when AI is disabled and on the signed-out page; no API token is put into the redirect URL.
+
+The current workspace also contains the AI message preview/error changes. The measured snapshot records the complete production output on Node 26.12.1 / Vite 8.3.5: all-assets gzip **304,294 → 305,434 B** (+1,140 B, 0.37%); initial raw **590,004 B**, initial gzip **158,470 B**. All existing absolute gates remain unchanged, including all-assets gzip **≤307,200 B**. The subsequent total/chunk growth thresholds remain **1,024 / 5,120 B**. `performance-baseline.json` was generated with `--print-baseline` after reviewing the functional entry and removing the duplicate UI; no budget or assertion was relaxed.
+
 Baseline date: 2026-08-23. Measurements use the same local Node 26 production-build environment.
 Timing remains informational; deterministic render boundaries and bundle budgets are the merge gates.
 Program evidence and remaining Windows/packaging gaps: [`performance-report.md`](./performance-report.md).

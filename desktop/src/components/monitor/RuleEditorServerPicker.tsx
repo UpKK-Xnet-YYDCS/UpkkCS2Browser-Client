@@ -1,3 +1,4 @@
+import {useServerSearchConfig} from "@/hooks/useServerSearchConfig";
 import type { FavoriteServer } from '@/api/favorites';
 import {
   buildRuleEditorServerEntries,
@@ -26,11 +27,13 @@ export function RuleEditorServerPicker(props: RuleEditorServerPickerProps) {
     favoriteServers, localFavorites, localServerNames, serverPage, onPageChange, onToggle,
   } = props;
   const allEntries = buildRuleEditorServerEntries(favoriteServers, localFavorites, localServerNames);
-  const filtered = filterRuleEditorServers(allEntries, serverSearch);
+  const {config,error:searchConfigError}=useServerSearchConfig();
+  const filtered = filterRuleEditorServers(allEntries, serverSearch,config);
   const { pageItems: paginated, totalPages } = paginateRuleEditorServers(filtered, serverPage);
 
   return (
     <div>
+ {searchConfigError&&<p role="alert">{searchConfigError}</p>}
       <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
         {t.monitorSelectedServers}
       </label>

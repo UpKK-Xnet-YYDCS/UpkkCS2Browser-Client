@@ -11,28 +11,30 @@ import { BoundedLruMap } from './boundedLru.ts';
  * recounts otherwise, so eviction only costs a recount.
  */
 export const OUTPUT_TOKEN_ACCUMULATOR_LIMIT = 32;
-const outputTokenAccumulators = new BoundedLruMap<string, { thinking: string; content: string; accumulator: AITokenAccumulator }>(
-  OUTPUT_TOKEN_ACCUMULATOR_LIMIT,
-);
+type TokenAccumulators = BoundedLruMap<string, {thinking: string; content: string; accumulator: AITokenAccumulator}>;
+let accumulatorCache: TokenAccumulators | undefined;
+function outputTokenAccumulators(): TokenAccumulators {
+  return accumulatorCache ??= new BoundedLruMap(OUTPUT_TOKEN_ACCUMULATOR_LIMIT);
+}
 
 export function getOutputTokenAccumulatorCount(): number {
-  return outputTokenAccumulators.size;
+  return accumulatorCache?.size ?? 0;
 }
 
 function outputTokensFor(message: DesktopChatMessage, thinking: string, content: string): number {
-  const existing = outputTokenAccumulators.get(message.id);
+  const existing = outputTokenAccumulators().get(message.id);
   if (existing && existing.thinking === thinking && content.startsWith(existing.content)) {
     existing.accumulator.append(content.slice(existing.content.length));
     existing.content = content;
     return existing.accumulator.value();
   }
   const accumulator = createAITokenAccumulator(thinking + content);
-  outputTokenAccumulators.set(message.id, { thinking, content, accumulator });
+  outputTokenAccumulators().set(message.id, { thinking, content, accumulator });
   return accumulator.value();
 }
 
 function clearOutputTokens(messageId: string): void {
-  outputTokenAccumulators.delete(messageId);
+  accumulatorCache?.delete(messageId);
 }
 
 export function applyAIChatAssistantEvent(message: DesktopChatMessage, event: AIChatEvent): DesktopChatMessage {

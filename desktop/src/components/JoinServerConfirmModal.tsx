@@ -10,6 +10,7 @@ interface JoinServerConfirmModalProps {
   server: ServerStatus;
   latencyMs?: number;
   onClose: () => void;
+  runAction?: (operation: () => Promise<void>, kind: 'once' | 'queue') => Promise<void>;
 }
 
 const labels = {
@@ -20,7 +21,7 @@ const labels = {
   ko: { title: '%s 서버에 접속할까요?', once: '한 번 접속', queue: '자동 대기열', cancel: '취소', players: '플레이어', latency: '로컬 RTT' },
 } as const;
 
-export function JoinServerConfirmModal({ server, latencyMs, onClose }: JoinServerConfirmModalProps) {
+export function JoinServerConfirmModal({ server, latencyMs, onClose, runAction }: JoinServerConfirmModalProps) {
   const { language } = useI18n();
   const text = labels[language];
   const [autoQueue, setAutoQueue] = useState(false);
@@ -34,16 +35,16 @@ export function JoinServerConfirmModal({ server, latencyMs, onClose }: JoinServe
   const players = Number(server.real_players ?? server.players ?? server.Players ?? 0);
   const maxPlayers = Number(server.max_players ?? server.MaxPlayers ?? 0);
 
-  const joinOnce = async () => {
-    setJoining(true);
-    setError('');
+  const perform = async (kind: 'once' | 'queue') => {
+    setJoining(true);setError('');
     try {
-      await openServerOnce(server);
-      onClose();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setJoining(false);
-    }
+      const operation = async () => {
+        if (kind === 'once') {await openServerOnce(server);onClose();}
+        else setAutoQueue(true);
+      };
+      if (runAction) await runAction(operation,kind);else await operation();
+    } catch (cause) {setError(cause instanceof Error ? cause.message : String(cause));}
+    finally {setJoining(false);}
   };
 
   return createPortal(
@@ -68,10 +69,10 @@ export function JoinServerConfirmModal({ server, latencyMs, onClose }: JoinServe
         </div>
 
         <footer className="grid gap-2 border-t border-gray-200 p-4 sm:grid-cols-3 dark:border-gray-700">
-          <button type="button" onClick={() => void joinOnce()} disabled={joining} className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+          <button type="button" onClick={() => void perform('once')} disabled={joining} className="flex items-center justify-center gap-2 rounded-md bg-blue-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             <Play className="h-4 w-4" />{text.once}
           </button>
-          <button type="button" onClick={() => setAutoQueue(true)} disabled={joining} className="flex items-center justify-center gap-2 rounded-md bg-cyan-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50">
+          <button type="button" onClick={() => void perform('queue')} disabled={joining} className="flex items-center justify-center gap-2 rounded-md bg-cyan-600 px-3 py-2.5 text-sm font-semibold text-white hover:bg-cyan-700 disabled:opacity-50">
             <Clock3 className="h-4 w-4" />{text.queue}
           </button>
           <button type="button" onClick={onClose} disabled={joining} className="rounded-md bg-gray-100 px-3 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-200 disabled:opacity-50 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600">

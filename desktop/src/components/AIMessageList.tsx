@@ -9,6 +9,8 @@ import type { DesktopChatMessage } from '@/services/aiChatSessions';
 interface AIMessageListProps {
   messages: DesktopChatMessage[];
   labels: AIChatLabels;
+  desktopResultLabel?: string;
+  interruptedLabel?: string;
   status: string;
   scrollRef: RefObject<HTMLDivElement | null>;
   prompts: string[];
@@ -20,11 +22,14 @@ interface AIMessageListProps {
 interface AIMessageRowProps {
   message: DesktopChatMessage;
   labels: AIChatLabels;
+  desktopResultLabel?: string;
+  interruptedLabel?: string;
   setThinkingOpen(id: string, open: boolean): void;
 }
 
 const MARKDOWN_PLUGINS: NonNullable<ComponentProps<typeof ReactMarkdown>['remarkPlugins']> = [remarkGfm];
 const MARKDOWN_COMPONENTS: NonNullable<ComponentProps<typeof ReactMarkdown>['components']> = {
+	img: ({alt, src}) => <img alt={alt ?? ''} src={src} loading="lazy" referrerPolicy="no-referrer" className="my-3 max-h-52 max-w-full rounded-lg object-contain" onError={event => {event.currentTarget.hidden = true;}} />,
   a: ({ children, href }) => <a href={href} target="_blank" rel="noreferrer" className="text-blue-600 underline dark:text-blue-400">{children}</a>,
   p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
   ul: ({ children }) => <ul className="mb-2 list-disc pl-5 last:mb-0">{children}</ul>,
@@ -33,7 +38,7 @@ const MARKDOWN_COMPONENTS: NonNullable<ComponentProps<typeof ReactMarkdown>['com
   pre: ({ children }) => <pre className="my-2 overflow-auto rounded-md bg-gray-950 p-3 text-xs text-gray-100">{children}</pre>,
 };
 
-export function AIMessageList({ messages, labels, status, scrollRef, prompts, promptDisabled, onPrompt, setThinkingOpen }: AIMessageListProps) {
+export function AIMessageList({ messages, labels, desktopResultLabel, interruptedLabel, status, scrollRef, prompts, promptDisabled, onPrompt, setThinkingOpen }: AIMessageListProps) {
   const visibleMessages = messages.filter(message => message.id !== 'welcome');
   return (
     <div ref={scrollRef} className="min-h-0 flex-1 overscroll-contain overflow-y-auto px-3 py-5 sm:px-6" aria-live="polite">
@@ -58,6 +63,8 @@ export function AIMessageList({ messages, labels, status, scrollRef, prompts, pr
               key={message.id}
               message={message}
               labels={labels}
+              desktopResultLabel={desktopResultLabel}
+              interruptedLabel={interruptedLabel}
               setThinkingOpen={setThinkingOpen}
             />
           ))}
@@ -73,7 +80,7 @@ export function AIMessageList({ messages, labels, status, scrollRef, prompts, pr
   );
 }
 
-const AIMessageRow = memo(function AIMessageRow({ message, labels, setThinkingOpen }: AIMessageRowProps) {
+const AIMessageRow = memo(function AIMessageRow({ message, labels, desktopResultLabel, interruptedLabel, setThinkingOpen }: AIMessageRowProps) {
   const content = message.content;
   const showTokens = message.role === 'assistant' && (
     message.pending
@@ -102,6 +109,8 @@ const AIMessageRow = memo(function AIMessageRow({ message, labels, setThinkingOp
         {message.role === 'assistant' ? <Bot className="h-4 w-4" aria-hidden="true" /> : <UserRound className="h-4 w-4" aria-hidden="true" />}
       </span>
       <div className={bodyClass}>
+        {(message.status === 'interrupted' || message.status === 'stopped') && message.source !== 'model_error' && <small role="status" className="block text-xs text-gray-500">{interruptedLabel}</small>}
+        {message.source?.startsWith('desktop_') && <small className="block text-xs text-gray-500">{desktopResultLabel}</small>}
         {message.thinking && (
           <details
             open={message.thinkingOpen}

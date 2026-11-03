@@ -1,3 +1,4 @@
+import {useServerSearchConfig} from "./useServerSearchConfig";
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { LatencyFilterValue } from '@/types/ui';
 import {
@@ -30,6 +31,7 @@ export function useHomeFavoriteView({
   showFavoritesOnly,
   latencyStore,
 }: UseHomeFavoriteViewOptions) {
+  const {config:searchConfig,error:searchConfigError}=useServerSearchConfig();
   const [favPage, setFavPage] = useState(1);
   const [favSearchQuery, setFavSearchQuery] = useState('');
   const [showOfflineServers, setShowOfflineServers] = useState(false);
@@ -53,7 +55,7 @@ export function useHomeFavoriteView({
   const gameFavServers = useMemo(() => filterFavoriteServersByGame(onlineFavServers, favGameFilter), [onlineFavServers, favGameFilter]);
 
   // Stage 3: Search filter (depends on stage 2)
-  const filteredFavServers = useMemo(() => filterFavoriteServersBySearch(gameFavServers, favSearchQuery), [gameFavServers, favSearchQuery]);
+  const filteredFavServers = useMemo(() => filterFavoriteServersBySearch(gameFavServers, favSearchQuery,searchConfig), [gameFavServers, favSearchQuery,searchConfig]);
 
   const computeFiltered = useCallback(
     () => projectFavoriteLatency(filteredFavServers, latencyStore.getSnapshots(), latencyFilter),
@@ -93,7 +95,7 @@ export function useHomeFavoriteView({
   );
   const displayedServersWithLatency = useLatencyProjection(latencyStore, computeDisplayed);
 
-  return {
+  return {searchConfigError,
     favPage,
     setFavPage,
     favSearchQuery,

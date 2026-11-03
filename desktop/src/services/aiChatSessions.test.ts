@@ -109,3 +109,17 @@ test('persist signature ignores thinkingOpen and other non-stored UI flags', () 
   };
   assert.equal(aiChatPersistSignature(open), aiChatPersistSignature(closed));
 });
+
+test('read-only legacy history never creates a draft or writes stored messages', async () => {
+  const {loadReadOnlyAIChatHistory} = await import('./aiChatSessions.ts');
+  assert.deepEqual(loadReadOnlyAIChatHistory(undefined, 'New chat'), []);
+  assert.deepEqual(loadReadOnlyAIChatHistory({getItem: () => 'invalid JSON'}, 'New chat'), []);
+  const legacy = JSON.stringify({sessions: [{id:'old',title:'Old history',createdAt:1,updatedAt:1,messages:[{id:'u',role:'user',content:'private old question'},{id:'a',role:'assistant',content:'saved answer'}]}]});
+  let writes = 0; let stored = legacy;
+  const storage = {getItem: () => stored, setItem: (_key: string, value: string) => {writes++;stored=value;}};
+  const restored = loadReadOnlyAIChatHistory(storage, 'New chat');
+  assert.equal(restored.length, 1);
+  assert.equal(restored[0].messages.find(message => message.id === 'a')?.content, 'saved answer');
+  assert.equal(writes, 0);
+  assert.equal(stored, legacy);
+});

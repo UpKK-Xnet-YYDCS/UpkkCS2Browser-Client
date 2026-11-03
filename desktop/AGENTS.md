@@ -2,6 +2,15 @@
 
 本文件适用于 `desktop/` 的 React/Vite 前端、Tauri IPC 与 Rust 实现。用户在当前任务中的明确要求优先。
 
+## 项目事实与依赖
+
+- 前端为 React 19、Vite 8、Tailwind CSS 4，桌面运行时为 Tauri 2；精确版本读取 `package.json`、`package-lock.json`、`src-tauri/Cargo.toml` 和 `Cargo.lock`。Rust 最低版本由 `rust-version` 与 CI 的 MSRV job 共同约束。
+- npm 为唯一前端包管理基线；使用 `npm ci`。`typescript-7` 提供构建与类型检查 CLI，`typescript` 的 TypeScript 6 别名供 ESLint compiler API 使用。
+- Tauri npm 包及对应 Rust crate 的 major.minor 必须一致，运行 `npm run check:contracts` 验证；不得使用 `--ignore-version-mismatches` 绕过。
+- `version.txt`、npm / Cargo 清单和 `src-tauri/tauri.conf.json` 的应用版本由 `sync-version.sh` 管理；依赖升级不顺带发布新应用版本。
+- `npm run dev` 提供浏览器预览；`npm run tauri:dev` 启动原生开发环境；`npm run build` 只构建前端；`npm run tauri:build` 生成平台安装包。React Compiler 当前未启用，保持 `vite.config.ts` 的现有行为。
+- 新的原生安装脚本按精确版本审核；Rust 间接依赖以 Cargo 解析为准，不强行跨越 Tauri / GTK 的上游约束。
+
 ## 行为兼容
 
 - 性能优化不得无意改变 UI、功能、文案、API 契约、IPC 参数、存储键、持久化格式、服务器排序、监控规则、通知与自动加入顺序。
@@ -45,7 +54,7 @@
 bash scripts/desktop-check.sh
 ```
 
-该入口包含锁定安装、lint、类型检查、前端测试、架构门禁、生产构建、包体门禁、依赖审计，以及 Rust 的格式、检查、测试和 clippy。CI 或发布前应运行它；不是每个小改动的必经步骤。无法运行时说明具体原因和未覆盖的风险。
+该入口包含锁定安装、lint、类型检查、前端测试、版本与 IPC/API 契约、架构门禁、生产构建、包体门禁、生产依赖审计，以及 Rust 的格式、检查、测试和 clippy。依赖更新额外核对完整 npm / Cargo 安全扫描；Rust 锁变更核对 MSRV，平台覆盖由 `.github/workflows/desktop-check.yml` 与发布 workflow 提供。CI 或发布前应运行完整基线；不是每个小改动的必经步骤。无法运行时说明具体原因和未覆盖的风险。
 
 ## 交付要求
 

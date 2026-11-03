@@ -1,3 +1,4 @@
+import {useServerSearchConfig} from "./useServerSearchConfig";
 import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import type { FavoriteServer } from '@/api/favorites';
 import type { LatencyFilterValue } from '@/types/ui';
@@ -55,10 +56,11 @@ export function useFavoritesPageView({
   measureServers,
   setCurrentPage,
 }: UseFavoritesPageViewOptions) {
+  const {config:searchConfig,error:searchConfigError}=useServerSearchConfig();
   const [buildRows] = useState(createFavoriteRowBuilder);
   const [projectRows] = useState(createStableFavoriteRowProjector);
   const favoriteRows = useMemo(() => buildRows(favorites), [buildRows, favorites]);
-  const searchedFavoriteRows = useMemo(() => searchFavoriteRows(favoriteRows, searchQuery), [favoriteRows, searchQuery]);
+  const searchedFavoriteRows = useMemo(() => searchFavoriteRows(favoriteRows, searchQuery,searchConfig), [favoriteRows, searchQuery,searchConfig]);
   const computeFilteredRows = useCallback(
     () => projectRows(searchedFavoriteRows, latencyStore.getSnapshots(), latencyFilter),
     [searchedFavoriteRows, latencyFilter, latencyStore, projectRows],
@@ -122,7 +124,7 @@ export function useFavoritesPageView({
     return undefined;
   }, [currentPage, totalPages, setCurrentPage]);
 
-  return {
+  return {searchConfigError,
     filteredFavoriteRows,
     paginatedFavoriteRows,
     totalPages,

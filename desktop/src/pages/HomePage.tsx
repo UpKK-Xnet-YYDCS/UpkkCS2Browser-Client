@@ -114,7 +114,7 @@ export function HomePage() {
         setFavGameFilter={fav.setFavGameFilter}
       />
       <HomeServerGrid
-        error={error}
+        error={error || (fav.showFavoritesOnly ? fav.searchConfigError : null)}
         clearError={clearError}
         isLoading={isLoading}
         servers={servers}

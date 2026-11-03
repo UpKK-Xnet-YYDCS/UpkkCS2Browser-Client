@@ -1,3 +1,4 @@
+import {matchesServerSearch, defaultSearchConfig, type SearchConfig} from "../../../shared/server-search.ts";
 import { parseServerAddress } from './a2sAddress.ts';
 import type { ServerStatus } from '../types/index.ts';
 import { isServerOnline } from '../utils/serverStatus.ts';
@@ -32,15 +33,15 @@ export function filterFavoriteServersByGame<T extends { game?: string }>(
 export function filterFavoriteServersBySearch<T extends Pick<ServerStatus, 'name' | 'ip' | 'port' | 'map_name' | 'game'>>(
   servers: readonly T[],
   query: string,
+ config:SearchConfig=defaultSearchConfig,
 ): T[] {
   if (!query.trim()) return servers as T[];
-  const needle = query.toLowerCase();
   return servers.filter(server => {
     const name = (server.name || '').toLowerCase();
     const addr = (server.ip + ':' + server.port).toLowerCase();
     const map = (server.map_name || '').toLowerCase();
     const game = (server.game || '').toLowerCase();
-    return name.includes(needle) || addr.includes(needle) || map.includes(needle) || game.includes(needle);
+    return matchesServerSearch(query,name,[addr,map,game],config);
   });
 }
 

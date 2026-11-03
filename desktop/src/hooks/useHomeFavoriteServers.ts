@@ -46,6 +46,7 @@ export function useHomeFavoriteServers({
     latencySchedulerOptions,
   });
   const {
+    searchConfigError,
     favPage,
     setFavPage,
     favSearchQuery,
@@ -130,7 +131,7 @@ export function useHomeFavoriteServers({
     setFavServers,
   });
 
-  return {
+  return {searchConfigError,
     showFavoritesOnly,
     setShowFavoritesOnly,
     favServers,

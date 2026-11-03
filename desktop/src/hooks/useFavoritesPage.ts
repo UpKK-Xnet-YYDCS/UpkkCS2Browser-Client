@@ -138,6 +138,7 @@ export function useFavoritesPage() {
   };
 
   const {
+    searchConfigError,
     filteredFavoriteRows,
     paginatedFavoriteRows,
     totalPages,
@@ -161,7 +162,7 @@ export function useFavoritesPage() {
     totalFavorites,
     isLoading,
     isManualRefresh,
-    error,
+    error: error || searchConfigError,
     setError,
     selectedServer,
     setSelectedServer,

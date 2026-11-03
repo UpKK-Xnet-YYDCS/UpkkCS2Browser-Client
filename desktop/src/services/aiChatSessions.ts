@@ -7,6 +7,8 @@ export interface DesktopChatMessage {
   id: string;
   role: 'assistant' | 'user';
   content: string;
+  status?: string;
+  source?: string;
   thinking?: string;
   thinkingOpen?: boolean;
   pending?: boolean;
@@ -44,6 +46,19 @@ export function createAIChatSession(
     updatedAt: now,
     messages: [welcomeMessage()],
   };
+}
+
+/** Read legacy history without creating drafts or writing any storage value. */
+export function loadReadOnlyAIChatHistory(
+  storage: Pick<AIChatSessionStorage, 'getItem'> | undefined,
+  defaultTitle: string,
+): AIChatSession[] {
+  try {
+    const raw = storage?.getItem(AI_CHAT_SESSIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as {sessions?: unknown};
+    return normalizeSessions(parsed.sessions, defaultTitle).filter(session => session.messages.some(message => message.role === 'user'));
+  } catch {return [];}
 }
 
 export function loadAIChatSessionState(

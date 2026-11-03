@@ -1,3 +1,4 @@
+import {matchesServerSearch,defaultSearchConfig,type SearchConfig} from "../../../shared/server-search.ts";
 export const RULE_EDITOR_SERVERS_PER_PAGE = 10;
 
 export interface RuleEditorCloudServer {
@@ -44,13 +45,12 @@ export function buildRuleEditorServerEntries(
 export function filterRuleEditorServers(
   entries: readonly RuleEditorServerEntry[],
   query: string,
+ config:SearchConfig=defaultSearchConfig,
 ): RuleEditorServerEntry[] {
   const q = query.trim().toLowerCase();
   if (!q) return [...entries];
   return entries.filter(entry => (
-    entry.name.toLowerCase().includes(q)
-    || entry.key.toLowerCase().includes(q)
-    || entry.map.toLowerCase().includes(q)
+    matchesServerSearch(q,entry.name,[entry.key,entry.map],config)
   ));
 }
 

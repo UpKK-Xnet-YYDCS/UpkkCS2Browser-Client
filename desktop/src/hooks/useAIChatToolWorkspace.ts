@@ -6,7 +6,6 @@ import {
 import type { Language } from '@/store/i18n';
 import type { ServerStatus } from '@/types';
 import {
-  formatLocalLatencyContext,
   probeRecommendedServers,
   probeServerAddress,
   recommendedServerToStatus,
@@ -16,8 +15,7 @@ import {
 } from '@/services/desktopTools';
 import { collectJoinableServers } from '@/services/aiChatWorkspace';
 import { formatLocalStatus, localToolStatus } from '@/services/aiChatPresentation';
-import { getSkipJoinConfirm } from '@/services/joinConfirmPreference';
-import { startJoinServer } from '@/services/joinServerAction';
+import { requestJoinServer } from '@/services/joinServerAction';
 
 interface UseAIChatToolWorkspaceOptions {
   language: Language;
@@ -61,6 +59,7 @@ export function useAIChatToolWorkspace({
     setLocalToolResults([]);
     setLocalToolRunning(false);
     setJoinCandidates([]);
+    setJoinTarget(null); setLastSelectedServer(null); setJoinLatency(undefined);
   }, []);
 
   const measureActiveCandidates = useCallback(async (category?: string, signal?: AbortSignal) => {
@@ -78,10 +77,10 @@ export function useAIChatToolWorkspace({
     return probeRecommendedServers(candidates, { signal });
   }, [language, servers]);
 
-  const requestJoin = useCallback((server: ServerStatus, latencyMs?: number) => {
+  const requestJoin = useCallback(async (server: ServerStatus, latencyMs?: number) => {
     setLastSelectedServer(server);
     setJoinLatency(latencyMs ?? server.local_latency_ms);
-    startJoinServer(server, setJoinTarget);
+    return requestJoinServer(server, setJoinTarget);
   }, []);
 
   const handleJoinIntent = useCallback(async (
@@ -114,13 +113,11 @@ export function useAIChatToolWorkspace({
       return localToolStatus(language, 'chooseServer');
     }
     if (resolution.kind !== 'resolved') return localToolStatus(language, 'unresolved');
-    requestJoin(resolution.server, resolution.server.local_latency_ms);
-    return localToolStatus(language, getSkipJoinConfirm() ? 'joining' : 'confirmJoin');
+    const result = await requestJoin(resolution.server, resolution.server.local_latency_ms);
+    return localToolStatus(language, result === 'joined' ? 'joining' : 'confirmJoin');
   }, [joinableServers, language, lastSelectedServer, requestJoin]);
 
   return {
-    servers,
-    setServers,
     joinTarget,
     setJoinTarget,
     joinCandidates,
@@ -131,11 +128,9 @@ export function useAIChatToolWorkspace({
     localToolRunning,
     setLocalToolRunning,
     localToolOperationRef,
-    joinableServers,
     clearTransientWorkspace,
     measureActiveCandidates,
     requestJoin,
     handleJoinIntent,
-    formatLocalLatencyContext,
-  };
+    };
 }
